@@ -105,6 +105,39 @@ pub struct Observation {
     /// Pixel registration in the archived screenshot, never an item identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_grid: Option<SourceGrid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quantity_evidence: Option<QuantityEvidence>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct QuantityEvidence {
+    pub method: String,
+    pub item_id: String,
+    pub text: String,
+    pub confidence: Option<f64>,
+    pub max_quantity: u32,
+    pub crop: PixelCrop,
+    pub status: QuantityStatus,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum QuantityStatus {
+    Candidate,
+    NoText,
+    Ambiguous,
+    OutOfRange,
+    LowConfidence,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PixelCrop {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

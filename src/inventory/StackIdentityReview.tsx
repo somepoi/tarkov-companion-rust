@@ -2,16 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ItemsById } from '../api/types'
 import { recordFromSpot, useLearnedStore } from '../scan/learned'
 import { readArchivedScreenshot, type Observation, type Stack } from './client'
+import { canReadQuantity, type QuantityReading } from '../scan/quantity'
 
 const inputClass = 'rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink'
 
 /** One expanded reviewer at a time: archived pixels and explicit identity choices. */
-export function StackIdentityReview({ stack, observation, items, onChange, onClose }: {
+export function StackIdentityReview({ stack, observation, items, onChange, onClose, onReadQuantity }: {
   stack: Stack
   observation: Observation | undefined
   items: ItemsById | undefined
   onChange: (patch: Partial<Stack>) => void
   onClose: () => void
+  onReadQuantity: () => Promise<QuantityReading | undefined>
 }) {
   const [query, setQuery] = useState('')
   const [evidence, setEvidence] = useState<{ blob: Blob; url: string; width: number; height: number } | null>(null)
@@ -62,9 +64,26 @@ export function StackIdentityReview({ stack, observation, items, onChange, onClo
   const choose = (itemId: string | null) => {
     onChange({
       itemId,
-      provenance: { ...stack.provenance, identityConfirmed: false, corrected: true },
+      provenance: { ...stack.provenance, identityConfirmed: false, quantityConfirmed: false, corrected: true },
     })
     setNote('Identity changed. Confirm it after checking the screenshot; amount and FIR are separate.')
+  }
+  async function readAmount() {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setNote('')
+    try {
+      const result = await onReadQuantity()
+      if (alive.current && result)
+        setNote(result.quantity === null
+          ? 'No reliable integer amount was read. The amount is unknown; check it manually.'
+          : `OCR suggests ${result.quantity}. Check it in the screenshot and confirm the amount separately.`)
+    } catch (cause) {
+      if (alive.current) setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      if (alive.current) setBusy(false)
+    }
   }
   async function remember() {
     if (busy || !evidence || !grid || !observation || !stack.itemId || !stack.provenance.identityConfirmed) return
@@ -128,6 +147,19 @@ export function StackIdentityReview({ stack, observation, items, onChange, onClo
             </button>
           </div>
           <p className="text-xs text-ink-muted">Confirm this stack's identity before remembering. Adjust the footprint if needed; choosing an item does not change its position or size.</p>
+          <div className="space-y-2 border-t border-line pt-3">
+            <button className="btn" disabled={busy || !validPatch || !stack.provenance.identityConfirmed
+              || !canReadQuantity(items?.[stack.itemId ?? ''], { col: location.column, row: location.row, w: location.width, h: location.height })}
+              onClick={() => void readAmount()}>Read stack amount again</button>
+            <p className="text-xs text-ink-muted">For known stackable items only. Re-reading clears the amount confirmation; blank or ambiguous text stays unknown.</p>
+            {observation?.quantityEvidence && (
+              <p className="text-xs text-ink-muted">
+                Original quantity OCR for {items?.[observation.quantityEvidence.itemId]?.shortName ?? observation.quantityEvidence.itemId}: {observation.quantityEvidence.text ? `“${observation.quantityEvidence.text}”` : 'no text'} · {observation.quantityEvidence.status}
+                {observation.quantityEvidence.confidence !== null && ` · word score ${observation.quantityEvidence.confidence.toFixed(1)}/100 (heuristic)`}
+                {` · catalog stack limit ${observation.quantityEvidence.maxQuantity}`}. This source output does not confirm the current amount.
+              </p>
+            )}
+          </div>
         </div>
       </div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}

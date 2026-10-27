@@ -248,7 +248,7 @@ export function ScanDialog() {
       if (!current()) return
       // Read the printed item names first (a few seconds); scanning without them still works.
       setPhase('Reading item names…')
-      const words = await readWords(img, box).catch(() => undefined)
+      const words = await readWords(img, box, { isCurrent: current }).catch(() => undefined)
       if (!current()) return
       setPhase('Matching items…')
       // A selection inside an already-scanned screenshot keeps its known cell size.

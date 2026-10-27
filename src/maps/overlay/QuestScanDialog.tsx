@@ -15,16 +15,16 @@ import { matchQuestNames, questNameIndex, type QuestNameMatch } from './questLis
 interface Shot {
   id: number
   label: string
-  state: 'reading' | 'done' | 'error'
+  state: 'queued' | 'reading' | 'done' | 'error'
   found: number
   error?: string
 }
 
 /** Reads the screenshot twice (white text, then a cut-off picked from the picture) and keeps the best read per quest. */
-async function readQuestNames(image: Blob, index: ReturnType<typeof questNameIndex>): Promise<QuestNameMatch[]> {
+async function readQuestNames(image: Blob, index: ReturnType<typeof questNameIndex>, isCurrent: () => boolean): Promise<QuestNameMatch[]> {
   const best = new Map<string, QuestNameMatch>()
   for (const threshold of [150, 'auto'] as const) {
-    for (const m of matchQuestNames(await readWords(image, null, { threshold }), index)) {
+    for (const m of matchQuestNames(await readWords(image, null, { threshold, isCurrent }), index)) {
       const prev = best.get(m.name)
       if (!prev || m.score > prev.score) best.set(m.name, m)
     }
@@ -48,6 +48,15 @@ export function QuestScanDialog({ mapName, mapTasks, allTasks, statuses, onClose
   const [gameShots, setGameShots] = useState<{ name: string; modified: number }[]>([])
   const fileInput = useRef<HTMLInputElement>(null)
   const nextId = useRef(1)
+  const active = useRef(true)
+  const reads = useRef(Promise.resolve())
+  const pending = useRef({ count: 0, bytes: 0 })
+  const [queueError, setQueueError] = useState('')
+
+  useEffect(() => {
+    active.current = true
+    return () => { active.current = false }
+  }, [])
 
   const index = useMemo(() => questNameIndex(allTasks), [allTasks])
   const hereById = useMemo(() => new Map(mapTasks.map((m) => [m.task.id, m.task])), [mapTasks])
@@ -67,10 +76,29 @@ export function QuestScanDialog({ mapName, mapTasks, allTasks, statuses, onClose
 
   const read = useCallback(
     (image: Blob, label: string) => {
+      if (!active.current) return
+      if (!image.size || image.size > 64 * 1024 * 1024) {
+        setQueueError(`${label}: image was not added. Choose a nonempty image no larger than 64 MiB.`)
+        return
+      }
+      if (pending.current.count >= 64 || pending.current.bytes + image.size > 256 * 1024 * 1024) {
+        setQueueError('Some images were not added because the quest queue limit was reached (64 images or 256 MiB). Wait for the current batch and add the remaining images again.')
+        return
+      }
       const id = nextId.current++
-      setShots((s) => [...s, { id, label, state: 'reading', found: 0 }])
-      readQuestNames(image, index)
+      const mode = useProgressStore.getState().gameMode
+      const isCurrent = () => active.current && useProgressStore.getState().gameMode === mode
+      pending.current.count++
+      pending.current.bytes += image.size
+      setShots((s) => [...s, { id, label, state: 'queued', found: 0 }])
+      // Admit one image (both threshold passes) to the shared reader at a time.
+      const job = reads.current.then(async () => {
+        if (!isCurrent()) throw new Error('Image read was cancelled after closing or changing game mode. Add it again if needed.')
+        setShots((s) => s.map((x) => x.id === id ? { ...x, state: 'reading' } : x))
+        return readQuestNames(image, index, isCurrent)
+      })
         .then((matches) => {
+          if (!isCurrent()) throw new Error('Game mode changed during the image read. Add it again if needed.')
           setShots((s) => s.map((x) => (x.id === id ? { ...x, state: 'done', found: matches.length } : x)))
           setFound((prev) => {
             const next = new Map(prev)
@@ -83,14 +111,23 @@ export function QuestScanDialog({ mapName, mapTasks, allTasks, statuses, onClose
             return next
           })
         })
-        .catch((e: unknown) => setShots((s) => s.map((x) => (x.id === id ? { ...x, state: 'error', error: e instanceof Error ? e.message : String(e) } : x))))
+        .catch((e: unknown) => {
+          if (active.current) setShots((s) => s.map((x) => (x.id === id ? { ...x, state: 'error', error: e instanceof Error ? e.message : String(e) } : x)))
+        })
+        .finally(() => {
+          pending.current.count--
+          pending.current.bytes -= image.size
+        })
+      reads.current = job
     },
     [index, hereById],
   )
 
   useEffect(() => {
     warmUpOcr()
-    if (isDesktop()) void window.desktop?.listGameScreenshots().then(setGameShots)
+    if (isDesktop()) void window.desktop?.listGameScreenshots().then((value) => {
+      if (active.current) setGameShots(value)
+    }).catch(() => undefined)
     const onPaste = (e: ClipboardEvent) => {
       const img = imageFromClipboard(e)
       if (img) read(img, 'Pasted screenshot')
@@ -106,7 +143,7 @@ export function QuestScanDialog({ mapName, mapTasks, allTasks, statuses, onClose
     }
   }, [read, onClose])
 
-  const reading = shots.some((s) => s.state === 'reading')
+  const reading = shots.some((s) => s.state === 'reading' || s.state === 'queued')
   const toggle = (id: string, on: boolean) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -160,6 +197,13 @@ export function QuestScanDialog({ mapName, mapTasks, allTasks, statuses, onClose
             )}
           </div>
 
+          {queueError && (
+            <div role="alert" className="flex items-start gap-2 text-xs text-danger">
+              <p className="min-w-0 flex-1 break-words">{queueError}</p>
+              <button type="button" className="btn shrink-0" onClick={() => setQueueError('')}>Dismiss</button>
+            </div>
+          )}
+
           {shots.length > 0 && (
             <ul className="space-y-0.5 text-xs text-ink-muted">
               {shots.map((s) => (
@@ -167,7 +211,7 @@ export function QuestScanDialog({ mapName, mapTasks, allTasks, statuses, onClose
                   {s.state === 'reading' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   <span className="min-w-0 truncate">{s.label}</span>
                   <span className={`shrink-0 ${s.state === 'error' ? 'text-red-400' : 'text-ink-dim'}`}>
-                    · {s.state === 'reading' ? 'reading…' : s.state === 'error' ? `could not read it (${s.error})` : `${s.found} quest name${s.found === 1 ? '' : 's'} found`}
+                    · {s.state === 'queued' ? 'queued…' : s.state === 'reading' ? 'reading…' : s.state === 'error' ? `could not read it (${s.error})` : `${s.found} quest name${s.found === 1 ? '' : 's'} found`}
                   </span>
                 </li>
               ))}

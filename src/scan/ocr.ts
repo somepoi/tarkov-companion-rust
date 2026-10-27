@@ -6,6 +6,7 @@
  */
 import { createWorker, OEM, PSM } from 'tesseract.js'
 import type { OcrWord } from './core'
+import { checkedCrop, type ImageCrop } from './registration'
 
 type TessWorker = Awaited<ReturnType<typeof createWorker>>
 
@@ -30,7 +31,12 @@ function getWorker(): Promise<TessWorker> {
         cacheMethod: 'none',
         workerBlobURL: true,
       })
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT })
+      try {
+        await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT })
+      } catch (error) {
+        await worker.terminate().catch(() => undefined)
+        throw error
+      }
       return worker
     })().catch((err: unknown) => {
       workerPromise = null
@@ -110,17 +116,50 @@ function otsuThreshold(lum: Float32Array): number {
  * is kept (item names are white), enlarged 2x for small screenshots. `threshold` 'auto'
  * picks the cut-off from the picture (grey text on dark panels, e.g. the quest list).
  */
-export async function readWords(image: Blob, crop: { x: number; y: number; w: number; h: number } | null, opts: { threshold?: number | 'auto' } = {}): Promise<OcrWord[]> {
+interface ReadOptions {
+  threshold?: number | 'auto'
+  /** Quantity strips have already been enlarged in their atlas. */
+  scale?: 1 | 2 | 4
+  isCurrent?: () => boolean
+}
+
+let ocrQueue = Promise.resolve()
+let queuedReads = 0
+
+/** One executing read and at most one waiting read share the offline engine. */
+export function readWords(image: Blob, crop: ImageCrop | null, opts: ReadOptions = {}): Promise<OcrWord[]> {
+  if (queuedReads >= 2) return Promise.reject(new Error('The text reader is busy. Finish the current scan and try again.'))
+  queuedReads++
+  const read = ocrQueue.then(() => readWordsNow(image, crop, opts))
+  ocrQueue = read.then(() => undefined, () => undefined)
+  return read.finally(() => { queuedReads-- })
+}
+
+async function readWordsNow(image: Blob, crop: ImageCrop | null, opts: ReadOptions): Promise<OcrWord[]> {
+  const checkCurrent = () => {
+    if (opts.isCurrent && !opts.isCurrent()) throw new DOMException('Text read was cancelled', 'AbortError')
+  }
+  checkCurrent()
   const bitmap = await createImageBitmap(image)
-  const area = crop ?? { x: 0, y: 0, w: bitmap.width, h: bitmap.height }
-  const scale = area.w < 1800 ? 2 : 1
+  let area: ImageCrop
+  let src: OffscreenCanvas
+  let sctx: OffscreenCanvasRenderingContext2D
+  try {
+    checkCurrent()
+    area = checkedCrop(crop, bitmap)
+    src = new OffscreenCanvas(area.w, area.h)
+    const context = src.getContext('2d', { willReadFrequently: true })
+    if (!context) throw new Error('The text reader cannot create an image canvas')
+    sctx = context
+    sctx.drawImage(bitmap, area.x, area.y, area.w, area.h, 0, 0, area.w, area.h)
+  } finally {
+    bitmap.close()
+  }
+  const scale = opts.scale ?? (area.w < 1800 ? 2 : 1)
+  if (area.w * area.h * scale * scale > 40_000_000)
+    throw new Error('The enlarged text image exceeds the pixel budget. Select a smaller area.')
   // Luminance at native size, then a sharp bicubic enlargement (the browser's own canvas
   // scaling blurs the small lettering and the reader then misreads names).
-  const src = new OffscreenCanvas(area.w, area.h)
-  const sctx = src.getContext('2d', { willReadFrequently: true })
-  if (!sctx) return []
-  sctx.drawImage(bitmap, area.x, area.y, area.w, area.h, 0, 0, area.w, area.h)
-  bitmap.close()
   const rgba = sctx.getImageData(0, 0, area.w, area.h).data
   const lum = new Float32Array(area.w * area.h)
   for (let i = 0; i < lum.length; i++) lum[i] = rgba[i * 4] * 0.299 + rgba[i * 4 + 1] * 0.587 + rgba[i * 4 + 2] * 0.114
@@ -132,7 +171,7 @@ export async function readWords(image: Blob, crop: { x: number; y: number; w: nu
   // A blank margin: Tesseract misses text that touches the image border (narrow snips).
   const canvas = new OffscreenCanvas(W + 2 * PAD, H + 2 * PAD)
   const ctx = canvas.getContext('2d')
-  if (!ctx) return []
+  if (!ctx) throw new Error('The text reader cannot create its enlarged image canvas')
   ctx.fillStyle = '#fff'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   const out = ctx.createImageData(W, H)
@@ -143,8 +182,15 @@ export async function readWords(image: Blob, crop: { x: number; y: number; w: nu
   }
   ctx.putImageData(out, PAD, PAD)
   const png = await canvas.convertToBlob({ type: 'image/png' })
+  checkCurrent()
   const worker = await getWorker()
-  const { data } = await worker.recognize(png, {}, { blocks: true })
+  checkCurrent()
+  const { data } = await worker.recognize(png, {}, { blocks: true }).catch(async (error: unknown) => {
+    workerPromise = null
+    await worker.terminate().catch(() => undefined)
+    throw error
+  })
+  checkCurrent()
   const words: OcrWord[] = []
   for (const b of data.blocks ?? []) {
     for (const para of b.paragraphs) {

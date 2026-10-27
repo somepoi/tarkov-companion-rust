@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, path::Path, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -135,6 +135,11 @@ impl Repository {
         if version < 3 {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             tx.execute_batch(include_str!("../migrations/0003_scan_evidence.sql"))?;
+            tx.commit()?;
+        }
+        if version < 4 {
+            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            tx.execute_batch(include_str!("../migrations/0004_quantity_evidence.sql"))?;
             tx.commit()?;
         }
         Ok(Self { connection })
@@ -672,6 +677,35 @@ fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(), StorageErr
             return Err(StorageError::Invalid(
                 "observation IDs must be unique and quantities positive or unknown".into(),
             ));
+        }
+        if let Some(evidence) = &observation.quantity_evidence {
+            text(&evidence.item_id, "quantity evidence item ID")?;
+            let crop = evidence.crop;
+            if evidence.method != "bottom-strip-v1"
+                || evidence.text.len() > 1024
+                || evidence.max_quantity <= 1
+                || crop.w == 0
+                || crop.h == 0
+                || u64::from(crop.x) + u64::from(crop.w) > 65_536
+                || u64::from(crop.y) + u64::from(crop.h) > 65_536
+                || u64::from(crop.w) * u64::from(crop.h) > 40_000_000
+                || evidence
+                    .confidence
+                    .is_some_and(|score| !score.is_finite() || !(0.0..=100.0).contains(&score))
+                || observation
+                    .quantity
+                    .is_some_and(|amount| amount > evidence.max_quantity)
+                || matches!(evidence.status, QuantityStatus::Candidate)
+                    != observation.quantity.is_some()
+                || matches!(evidence.status, QuantityStatus::Candidate)
+                    && (evidence.text.trim().is_empty()
+                        || !evidence.confidence.is_some_and(|score| score >= 85.0))
+                || observation.source_grid.is_none()
+            {
+                return Err(StorageError::Invalid(
+                    "invalid stack quantity evidence".into(),
+                ));
+            }
         }
         for candidate in &observation.candidates {
             text(&candidate.item_id, "candidate item ID")?;

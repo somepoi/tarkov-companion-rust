@@ -17,6 +17,7 @@ import {
 import { fetchRecipeCatalog } from './recipeCatalog'
 import { buildRequirements } from './requirements'
 import { PlanResults } from './PlanResults'
+import { quantityFitsCatalog } from '../scan/quantity'
 
 const inputClass =
   'rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink'
@@ -258,6 +259,10 @@ function PlannerEditor({
   }
   async function calculate() {
     const gaps = [...normalized.coverageGaps]
+    for (const entry of inventory.containers)
+      for (const stack of entry.snapshot?.stacks ?? [])
+        if (stack.quantity !== null && !quantityFitsCatalog(stack.quantity, items.data?.items[stack.itemId ?? '']))
+          gaps.push(`${entry.container.name}, cell ${stack.location.column}/${stack.location.row}: amount exceeds the current catalog stack limit; review the snapshot`)
     if (
       !game.data ||
       game.isError ||

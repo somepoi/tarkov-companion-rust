@@ -1,6 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import type { GameMode } from '../api/client'
 import type { Grid } from '../scan/core'
+import type { QuantityEvidence } from '../scan/quantity'
 
 export interface LocalProfile {
   id: string
@@ -50,6 +51,7 @@ export interface Observation {
   fir: Fir
   reviewed: boolean
   sourceGrid?: Grid
+  quantityEvidence?: QuantityEvidence
 }
 export interface ScanDraft {
   fullCoverageConfirmed: boolean

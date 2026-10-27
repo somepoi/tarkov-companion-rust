@@ -11,6 +11,7 @@ import type { Grid } from '../scan/core'
 import { checkedCrop, checkedGrid, type ImageCrop } from '../scan/registration'
 import { registerCaptureDestination } from '../scan/captureDestination'
 import { imageFromClipboard } from '../scan/scanStore'
+import { canReadQuantity, quantityFitsCatalog, readStackQuantities, type QuantityReading, type QuantityReport } from '../scan/quantity'
 import { subscribe } from '../desktop/adapters/tauriEvents'
 import {
   archiveScreenshot,
@@ -23,6 +24,8 @@ import {
   type ScanSession,
   type Stack,
   type CommitResult,
+  type Observation,
+  readArchivedScreenshot,
 } from '../inventory/client'
 
 const inputClass =
@@ -123,6 +126,9 @@ function StashManager({ mode }: { mode: GameMode }) {
   const selected = inventory?.containers.find(
     (entry) => entry.container.id === selectedId,
   )
+  const observationsById = useMemo(() => new Map(
+    draft?.observations.map((observation) => [observation.id, observation]) ?? [],
+  ), [draft?.observations])
   const totals = useMemo(() => {
     const map = new Map<
       string,
@@ -287,6 +293,41 @@ function StashManager({ mode }: { mode: GameMode }) {
     setStagedImage({ blob: file, hash, width, height })
     setNotice('Screenshot archived. Select one complete container before recognizing it. Existing draft rows are unchanged.')
   }
+  async function retryQuantity(stack: Stack): Promise<QuantityReading | undefined> {
+    const observation = observationsById.get(stack.provenance.observationId ?? '')
+    if (!draft || !stack.itemId || !stack.provenance.identityConfirmed || !observation?.sourceGrid)
+      throw new Error('Confirm the item identity and register its screenshot grid before reading the amount.')
+    const token = generation.current
+    const footprint = {
+      col: stack.location.column, row: stack.location.row,
+      w: stack.location.width, h: stack.location.height,
+      itemId: stack.itemId, rotated: stack.location.rotated, error: 0, alternatives: [],
+    }
+    if (!canReadQuantity(catalog.data?.items[stack.itemId], footprint))
+      throw new Error('Quantity OCR requires a known stackable item and its complete catalog footprint. Enter the amount manually.')
+    const file = await readArchivedScreenshot(observation.screenshotHash)
+    if (generation.current !== token) return
+    const result = await readStackQuantities(file, observation.sourceGrid, [footprint],
+      catalog.data?.items ?? {}, () => generation.current === token)
+    if (generation.current !== token) return
+    const reading = result.readings.get(0)
+    if (!reading) throw new Error('This quantity region is outside the image or OCR resource limits. Check the footprint or enter the amount manually.')
+    if (draft.observations.length >= 65_536)
+      throw new Error('This draft has reached its evidence limit. Save it and start a new scan before reading more quantities.')
+    const next: Observation = {
+      ...observation, id: crypto.randomUUID(), location: stack.location,
+      quantity: reading.quantity, quantityEvidence: reading.evidence, reviewed: false,
+    }
+    changeDraft({
+      ...draft,
+      observations: [...draft.observations, next],
+      stacks: draft.stacks.map((entry) => entry.id === stack.id ? {
+        ...entry, quantity: reading.quantity,
+        provenance: { ...entry.provenance, quantityConfirmed: false, observationId: next.id },
+      } : entry),
+    })
+    return reading
+  }
   async function recognizeImage(crop: ImageCrop, grid?: Grid): Promise<Grid | undefined> {
     if (!session || !draft || !stagedImage || !selected) return
     const token = generation.current
@@ -303,7 +344,7 @@ function StashManager({ mode }: { mode: GameMode }) {
     await useLearnedStore.getState().load()
     if (generation.current !== token) return
     let ocrFailed = false
-    const words = await readWords(file, crop).catch(() => {
+    const words = await readWords(file, crop, { isCurrent: () => generation.current === token }).catch(() => {
       ocrFailed = true
       return undefined
     })
@@ -322,8 +363,18 @@ function StashManager({ mode }: { mode: GameMode }) {
     if (result.grid.cols !== selected.container.columns || result.grid.rows !== selected.container.rows)
       throw new Error(`Detected ${result.grid.cols}×${result.grid.rows} cells; this container is ${selected.container.columns}×${selected.container.rows}. Adjust the selected area or set the grid manually. Draft rows are unchanged.`)
     checkedGrid(result.grid, crop)
+    let quantities: QuantityReport | undefined
+    let quantityFailure = ''
+    try {
+      quantities = await readStackQuantities(file, result.grid, result.detections,
+        catalog.data?.items ?? {}, () => generation.current === token)
+    } catch (cause) {
+      if (generation.current !== token) return
+      quantityFailure = cause instanceof Error ? cause.message : String(cause)
+    }
+    if (generation.current !== token) return
     setReviewStackId(null)
-    const observations = result.detections.map((det) => ({
+    const observations = result.detections.map((det, index) => ({
       id: crypto.randomUUID(),
       screenshotHash: hash,
       location: {
@@ -337,7 +388,8 @@ function StashManager({ mode }: { mode: GameMode }) {
         { itemId: det.itemId, error: det.error },
         ...det.alternatives,
       ],
-      quantity: null,
+      quantity: quantities?.readings.get(index)?.quantity ?? null,
+      quantityEvidence: quantities?.readings.get(index)?.evidence,
       fir: 'unknown' as const,
       reviewed: false,
       sourceGrid: result.grid,
@@ -347,12 +399,13 @@ function StashManager({ mode }: { mode: GameMode }) {
       fullCoverageConfirmed: false,
       reviewConfirmed: false,
       capturedAt: captureTime(),
-      algorithmVersion: ocrFailed ? 'rgb12-image-only-v1' : 'rgb12-ocr-v1',
+      algorithmVersion: `${ocrFailed ? 'rgb12-image-only-v1' : 'rgb12-ocr-v1'}+quantity-v1`,
       catalogVersion: catalog.dataUpdatedAt ? String(catalog.dataUpdatedAt) : 'unknown',
       observations,
       stacks: observations.map((observation) => ({
         ...unknown(),
         itemId: observation.candidates[0]?.itemId ?? null,
+        quantity: observation.quantity,
         location: observation.location,
         provenance: {
           identityConfirmed: false,
@@ -364,9 +417,12 @@ function StashManager({ mode }: { mode: GameMode }) {
         },
       })),
     })
-    setNotice(
-      `${ocrFailed ? 'Name OCR was unavailable; image matching was used. ' : ''}Review each identity and amount. FIR remains unknown until confirmed. Verify the entire container before saving.`,
-    )
+    const quantitySummary = quantityFailure
+      ? `Quantity OCR failed: ${quantityFailure}. Amounts remain unknown. `
+      : quantities?.eligible
+        ? `Quantity OCR: ${quantities.suggested} suggested, ${quantities.attempted - quantities.suggested} unread/ambiguous and ${quantities.skipped} skipped by geometry/resource limits (${quantities.eligible} eligible stacks). All amounts require confirmation. `
+        : 'No eligible stackable footprints; amounts remain unknown. '
+    setNotice(`${ocrFailed ? 'Name OCR was unavailable; image matching was used. ' : ''}${quantitySummary}Review each identity and amount. FIR remains unknown until confirmed. Verify the entire container before saving.`)
     return result.grid
   }
 
@@ -708,6 +764,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                           <input
                             type="number"
                             min={1}
+                            max={catalog.data?.items[stack.itemId ?? '']?.stackMaxSize ?? 0xffff_ffff}
                             step={1}
                             aria-label="Stack quantity"
                             className={`${inputClass} w-20`}
@@ -728,6 +785,15 @@ function StashManager({ mode }: { mode: GameMode }) {
                               })
                             }
                           />
+                          {!stack.provenance.quantityConfirmed
+                            && observationsById.get(stack.provenance.observationId ?? '')?.quantityEvidence?.status === 'candidate'
+                            && observationsById.get(stack.provenance.observationId ?? '')?.quantityEvidence?.itemId === stack.itemId
+                            && observationsById.get(stack.provenance.observationId ?? '')?.quantity === stack.quantity && (
+                            <p className="text-xs text-ink-muted">OCR suggestion · confirm amount</p>
+                          )}
+                          {stack.quantity !== null && !quantityFitsCatalog(stack.quantity, catalog.data?.items[stack.itemId ?? '']) && (
+                            <p className="max-w-40 text-xs text-danger">Above the catalog stack limit. Check the amount or identity.</p>
+                          )}
                         </td>
                         <td>
                           <select
@@ -805,7 +871,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                           <label className="flex gap-1 text-xs">
                             <input
                               type="checkbox"
-                              disabled={stack.quantity === null}
+                              disabled={stack.quantity === null || (!stack.provenance.quantityConfirmed && !quantityFitsCatalog(stack.quantity, catalog.data?.items[stack.itemId ?? '']))}
                               checked={stack.provenance.quantityConfirmed}
                               onChange={(e) =>
                                 updateStack(stack.id, {
@@ -841,8 +907,9 @@ function StashManager({ mode }: { mode: GameMode }) {
                           <td colSpan={7}>
                             <StackIdentityReview
                               stack={stack}
-                              observation={draft.observations.find((observation) => observation.id === stack.provenance.observationId)}
+                              observation={observationsById.get(stack.provenance.observationId ?? '')}
                               items={catalog.data?.items}
+                              onReadQuantity={() => action(() => retryQuantity(stack))}
                               onChange={(patch) => updateStack(stack.id, patch)}
                               onClose={() => setReviewStackId(null)}
                             />
@@ -900,7 +967,8 @@ function StashManager({ mode }: { mode: GameMode }) {
                   disabled={
                     busy ||
                     !draft.fullCoverageConfirmed ||
-                    !draft.reviewConfirmed
+                    !draft.reviewConfirmed ||
+                    draft.stacks.some((stack) => stack.provenance.quantityConfirmed && !quantityFitsCatalog(stack.quantity, catalog.data?.items[stack.itemId ?? '']))
                   }
                   onClick={() =>
                     void action(async () => {
