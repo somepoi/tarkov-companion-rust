@@ -1,5 +1,7 @@
 # Inventory planning contract
 
+Inventory freshness confirmation is bound to physical container revisions and the reused progression revision. A quest/hideout progression change or native profile/wipe signal clears the confirmation before new advice can be relied on. This covers consumption or a profile transition that can invalidate scans without directly writing a container snapshot.
+
 The native database owns physical inventory and per-profile planning preferences. Existing React stores remain authoritative for quest completions and built hideout levels during this migration; the application does not introduce another quest tracker. A request contains normalized requirements and catalog/progression revisions, never renderer-supplied physical inventory. The database actor checks the expected planning revision and exact container revision map before reading stock and calculating.
 
 The declared horizon includes unfinished faction quests, selected hideout target levels (all known levels by default, plus dependency closure) and explicitly selected craft/barter batches. Inferred quest completion and aggregate Item Collection counts do not prove a hand-in and are not subtracted. Partial objective hand-ins are not yet represented; full objective amounts are conservatively reserved. Wiki-only quests and unsupported item-state constraints remain explicit coverage gaps.

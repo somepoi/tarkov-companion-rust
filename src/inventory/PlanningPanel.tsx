@@ -110,9 +110,11 @@ function PlannerEditor({
       setEpoch((n) => n + 1)
     }
     const stop = subscribe('inventory-changed', invalidate)
+    const stopWipe = subscribe('wipe-detected', invalidate)
     window.addEventListener('blur', invalidate)
     return () => {
       stop()
+      stopWipe()
       window.removeEventListener('blur', invalidate)
     }
   }, [])
@@ -153,7 +155,7 @@ function PlannerEditor({
   const revisions = Object.fromEntries(
     inventory.containers.map((e) => [e.container.id, e.container.revision]),
   )
-  const inventorySignature = JSON.stringify(revisions)
+  const inventorySignature = JSON.stringify([revisions, progressionRevision])
   const dirty = JSON.stringify(preferences) !== JSON.stringify(base.preferences)
   const conflict = base.revision !== saved.revision
   const signature = JSON.stringify([
