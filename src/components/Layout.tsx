@@ -7,6 +7,7 @@ import { NAV_ITEMS } from '../config/nav'
 import { FirstRunSetup } from '../desktop/FirstRunSetup'
 import { SyncReviewDialog, SyncToast } from '../desktop/SyncReview'
 import { useScanStore } from '../scan/scanStore'
+import { routeCapturedImage } from '../scan/captureDestination'
 import { UpdateBanner } from '../desktop/UpdateBanner'
 import { hasAnyProgress, useLocalFlags } from '../desktop/localFlags'
 import { isDesktop, useDesktopStore } from '../desktop/useDesktop'
@@ -57,7 +58,12 @@ export function Layout() {
     if (pathname === '/' && landingPage !== '/' && valid) navigate(landingPage, { replace: true })
   }, [landingPage, hiddenTabs, pathname, navigate])
   // Desktop scan hotkey: the main process captured the game screen; open the scanner with it.
-  useEffect(() => window.desktop?.onScanCapture((png) => useScanStore.getState().openWith(new Blob([png as BlobPart], { type: 'image/png' }))), [])
+  useEffect(() => window.desktop?.onScanCapture((png) => {
+    const image = new Blob([png as BlobPart], { type: 'image/png' })
+    // An already-open Item Collection scanner keeps its active capture flow.
+    if (useScanStore.getState().open || !routeCapturedImage(image))
+      useScanStore.getState().openWith(image)
+  }), [])
   // Desktop search bar over the game: what is ticked or counted there (quests "On map", quests done,
   // items, keys, hideout levels, story steps) shows in the app at once.
   useEffect(() => (isDesktop() ? followOtherWindows([useMapOverlayStore, useProgressStore, useInventoryStore, useStoryStore]) : undefined), [])

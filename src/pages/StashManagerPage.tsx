@@ -9,6 +9,8 @@ import { StackIdentityReview } from '../inventory/StackIdentityReview'
 import { ScreenshotRegistration, type StagedScreenshot } from '../inventory/ScreenshotRegistration'
 import type { Grid } from '../scan/core'
 import { checkedCrop, checkedGrid, type ImageCrop } from '../scan/registration'
+import { registerCaptureDestination } from '../scan/captureDestination'
+import { imageFromClipboard } from '../scan/scanStore'
 import { subscribe } from '../desktop/adapters/tauriEvents'
 import {
   archiveScreenshot,
@@ -62,6 +64,7 @@ function StashManager({ mode }: { mode: GameMode }) {
   const [query, setQuery] = useState('')
   const [reviewStackId, setReviewStackId] = useState<string | null>(null)
   const [stagedImage, setStagedImage] = useState<StagedScreenshot | null>(null)
+  const [captureArmed, setCaptureArmed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
@@ -177,6 +180,13 @@ function StashManager({ mode }: { mode: GameMode }) {
       if (generation.current === token) setBusy(false)
     }
   }
+  function receiveImage(image: Blob) {
+    if (actionBusy.current) {
+      setNotice('Screenshot skipped: a stash operation is still running. Finish it and import again; the current draft is unchanged.')
+      return
+    }
+    void action(() => importImage(image))
+  }
   async function refresh(profileId = profile?.id) {
     if (profileId) {
       const token = generation.current
@@ -218,6 +228,7 @@ function StashManager({ mode }: { mode: GameMode }) {
   async function begin(container: Container) {
     setReviewStackId(null)
     setStagedImage(null)
+    setCaptureArmed(false)
     if (session?.status === 'draft')
       await inventoryCall({ operation: 'abandonScan', sessionId: session.id })
     const next = await inventoryCall<ScanSession>({
@@ -244,6 +255,7 @@ function StashManager({ mode }: { mode: GameMode }) {
   async function resume(container: Container) {
     setReviewStackId(null)
     setStagedImage(null)
+    setCaptureArmed(false)
     const scans = await inventoryCall<ScanSession[]>({
       operation: 'listScans',
       containerId: container.id,
@@ -357,6 +369,13 @@ function StashManager({ mode }: { mode: GameMode }) {
     )
     return result.grid
   }
+
+  // Install the current draft closure after each render; cleanup releases it on
+  // navigation/profile changes. No image or target is retained by the router.
+  useEffect(() => {
+    if (!available || !captureArmed || !session || !draft) return
+    return registerCaptureDestination((image) => receiveImage(image))
+  })
 
   if (!available)
     return (
@@ -532,6 +551,21 @@ function StashManager({ mode }: { mode: GameMode }) {
               disabled={busy}
               className="space-y-3"
               aria-labelledby="review-title"
+              onPaste={(event) => {
+                const image = imageFromClipboard(event.nativeEvent)
+                if (!image) return
+                event.preventDefault()
+                receiveImage(image)
+              }}
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes('Files')) event.preventDefault()
+              }}
+              onDrop={(event) => {
+                const file = event.dataTransfer.files[0]
+                if (!file) return
+                event.preventDefault()
+                receiveImage(file)
+              }}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 id="review-title" className="text-lg font-semibold">
@@ -552,6 +586,16 @@ function StashManager({ mode }: { mode: GameMode }) {
                   />
                 </label>
               </div>
+              <label className="flex gap-2 text-sm">
+                <input type="checkbox" checked={captureArmed} disabled={busy}
+                  onChange={(event) => setCaptureArmed(event.target.checked)} />
+                Send capture hotkey screenshots to {selected.container.name}
+              </label>
+              <p className="text-xs text-ink-muted">
+                {captureArmed ? 'Capture destination armed for this draft. ' : ''}
+                This applies while this page is open and the Item Collection scanner is closed.
+                You can also paste or drop a screenshot here. Review the area and recognized rows before saving.
+              </p>
               <p className="text-sm text-ink-muted">
                 A confirmed full scan replaces this container only. Empty or
                 unrecognized regions must be checked in the game. Reimporting
@@ -877,6 +921,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                       setSession(null)
                       setDraft(null)
                       setStagedImage(null)
+                      setCaptureArmed(false)
                       await refresh()
                       setNotice('Container snapshot saved atomically.')
                     })
@@ -896,6 +941,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                       setDraft(null)
                       setSession(null)
                       setStagedImage(null)
+                      setCaptureArmed(false)
                     })
                   }
                 >
