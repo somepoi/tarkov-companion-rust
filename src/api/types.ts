@@ -744,6 +744,8 @@ export interface ObjectiveLocation {
 }
 
 export interface TaskObjective {
+  /** Raw item state restrictions unsupported by physical stack facts. */
+  planningGaps?: string[]
   id: string
   type: string
   description: string

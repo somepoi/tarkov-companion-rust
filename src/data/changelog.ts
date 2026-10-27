@@ -16,6 +16,7 @@ export const UNRELEASED: string[] = [
   'Fork isolation: separate Windows installer, application data, update cache and cleanup names. Upstream updates and automatic cleanup are disabled while the fork release channel is prepared.',
   'Item guidance now distinguishes known needs from unknown quantities, FIR conditions and missing data. The legacy checklist no longer treats an empty requirement list as permission to sell.',
   'Native preview: Rust/Tauri host and persistent Stash Manager with named containers, reviewed scan drafts, atomic snapshot replacement and undo. Unknown recognition facts remain visible for review. Electron remains available while native desktop integrations are migrated.',
+  'Native stash planning: saved hideout targets, craft/barter batches, personal buffers, minimum reserves and never-sell rules. Global allocation explains physical KEEP / SELL / REVIEW portions and blocks sale advice when evidence or requirement coverage is incomplete.',
 ]
 
 export const RELEASES: ChangelogEntry[] = [

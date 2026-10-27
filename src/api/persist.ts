@@ -10,7 +10,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 const ONE_DAY = 24 * 60 * 60 * 1000
 /** Bump whenever an adapter in queries.ts changes the shape of cached data. */
-const CACHE_SCHEMA = 14
+const CACHE_SCHEMA = 15
 /** Query key roots that are live data and must not be served from disk. */
 const LIVE_ROOTS = new Set(['prices', 'status', 'logStats'])
 

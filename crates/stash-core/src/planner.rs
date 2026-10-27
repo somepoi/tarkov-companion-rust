@@ -171,6 +171,39 @@ struct Demand {
 /// Results are advice over exactly these input revisions. The caller must check
 /// revisions again before presenting them as current after an inventory change.
 pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
+    if input.requirements.len() > 8192
+        || input.reserves.len() > 8192
+        || input.coverage_gaps.len() > 8192
+        || input
+            .requirements
+            .iter()
+            .any(|r| r.alternatives.len() > 256)
+    {
+        return Err(PlannerError::Workload(
+            "too many requirements, alternatives or coverage gaps".into(),
+        ));
+    }
+    if input.coverage_gaps.iter().any(|g| g.len() > 4096)
+        || [
+            &input.horizon,
+            &input.catalog_version,
+            &input.plan_revision,
+            &input.progression_revision,
+        ]
+        .iter()
+        .any(|s| s.len() > 4096)
+        || input.requirements.iter().any(|r| {
+            !crate::planning::valid_id(&r.id)
+                || r.source.len() > 4096
+                || r.alternatives
+                    .iter()
+                    .any(|id| !crate::planning::valid_id(id))
+        })
+    {
+        return Err(PlannerError::Invalid(
+            "planner metadata exceeds supported bounds".into(),
+        ));
+    }
     if input.horizon.trim().is_empty() || input.catalog_version.trim().is_empty() {
         return Err(PlannerError::Invalid(
             "an explicit plan horizon and catalog version are required".into(),

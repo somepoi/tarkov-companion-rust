@@ -1,11 +1,12 @@
 use crate::model::*;
+use crate::planning::{CalculatePlan, PlanningPreferences, PlanningState};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, path::Path, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -19,6 +20,12 @@ pub enum StorageError {
     NotFound(&'static str),
     #[error("container changed: expected revision {expected}, current revision {actual}")]
     RevisionConflict { expected: u64, actual: u64 },
+    #[error(
+        "planning preferences changed: expected revision {expected}, current revision {actual}"
+    )]
+    PlanRevisionConflict { expected: u64, actual: u64 },
+    #[error("allocation failed: {0}")]
+    Planner(#[from] crate::planner::PlannerError),
     #[error("idempotency key was already used for a different request")]
     IdempotencyConflict,
     #[error("database schema {0} is newer than this application supports")]
@@ -35,7 +42,16 @@ pub struct Repository {
 
 impl Repository {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
-        Self::initialize(Connection::open(path)?)
+        let path = path.as_ref();
+        let connection = Connection::open(path)?;
+        let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version > 0 && version < SCHEMA_VERSION {
+            // SQLite backup includes committed WAL pages; do not copy the live file.
+            let destination =
+                path.with_extension(format!("before-v{SCHEMA_VERSION}-{}.sqlite", new_id()));
+            backup_connection(&connection, &destination)?;
+        }
+        Self::initialize(connection)
     }
 
     pub fn open_in_memory() -> Result<Self, StorageError> {
@@ -52,6 +68,11 @@ impl Repository {
         if version == 0 {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             tx.execute_batch(include_str!("../migrations/0001_user.sql"))?;
+            tx.commit()?;
+        }
+        if version < 2 {
+            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            tx.execute_batch(include_str!("../migrations/0002_planning.sql"))?;
             tx.commit()?;
         }
         Ok(Self { connection })
@@ -78,6 +99,99 @@ impl Repository {
         Ok(query
             .query_map([], profile_row)?
             .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn planning_state(&self, profile_id: &str) -> Result<PlanningState, StorageError> {
+        profile(&self.connection, profile_id)?;
+        let row: Option<(u64, String)> = self
+            .connection
+            .query_row(
+                "SELECT revision,preferences_json FROM planning_preferences WHERE profile_id=?1",
+                [profile_id],
+                |row| Ok((read_revision(row, 0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let (revision, preferences) = match row {
+            Some((revision, json)) => (revision, serde_json::from_str(&json)?),
+            None => (0, PlanningPreferences::default()),
+        };
+        crate::planning::validate(&preferences)?;
+        Ok(PlanningState {
+            profile_id: profile_id.to_owned(),
+            revision,
+            preferences,
+        })
+    }
+
+    pub fn save_planning_state(
+        &mut self,
+        profile_id: &str,
+        expected_revision: u64,
+        preferences: PlanningPreferences,
+    ) -> Result<PlanningState, StorageError> {
+        crate::planning::validate(&preferences)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        profile(&tx, profile_id)?;
+        let actual: u64 = tx
+            .query_row(
+                "SELECT revision FROM planning_preferences WHERE profile_id=?1",
+                [profile_id],
+                |row| read_revision(row, 0),
+            )
+            .optional()?
+            .unwrap_or(0);
+        if actual != expected_revision {
+            return Err(StorageError::PlanRevisionConflict {
+                expected: expected_revision,
+                actual,
+            });
+        }
+        let revision = actual
+            .checked_add(1)
+            .ok_or_else(|| StorageError::Invalid("plan revision overflow".into()))?;
+        tx.execute("INSERT INTO planning_preferences(profile_id,revision,preferences_json) VALUES (?1,?2,?3) ON CONFLICT(profile_id) DO UPDATE SET revision=excluded.revision,preferences_json=excluded.preferences_json",
+            params![profile_id, sql_revision(revision)?, serde_json::to_string(&preferences)?])?;
+        tx.commit()?;
+        Ok(PlanningState {
+            profile_id: profile_id.to_owned(),
+            revision,
+            preferences,
+        })
+    }
+
+    pub fn calculate_plan(&mut self, request: CalculatePlan) -> Result<crate::Plan, StorageError> {
+        let saved = self.planning_state(&request.profile_id)?;
+        if saved.revision != request.expected_plan_revision {
+            return Err(StorageError::PlanRevisionConflict {
+                expected: request.expected_plan_revision,
+                actual: saved.revision,
+            });
+        }
+        let inventory = self.inventory(&request.profile_id)?;
+        let revisions = inventory
+            .containers
+            .iter()
+            .map(|e| (e.container.id.clone(), e.container.revision))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        if revisions != request.expected_container_revisions {
+            return Err(StorageError::Invalid(
+                "inventory changed; reload before calculating recommendations".into(),
+            ));
+        }
+        Ok(crate::plan(&crate::PlannerInput {
+            inventory,
+            catalog_version: request.catalog_version,
+            progression_revision: request.progression_revision,
+            plan_revision: saved.revision.to_string(),
+            horizon: crate::planning::HORIZON.into(),
+            inventory_confirmed_current: request.inventory_confirmed_current,
+            requirements_complete: request.requirements_complete,
+            coverage_gaps: request.coverage_gaps,
+            requirements: request.requirements,
+            reserves: saved.preferences.reserves,
+        })?)
     }
 
     pub fn create_container(
@@ -392,16 +506,19 @@ impl Repository {
     /// SQLite's online backup includes committed WAL data. The caller supplies
     /// a fresh destination and backs up image blobs/settings separately.
     pub fn backup_to(&self, destination: impl AsRef<Path>) -> Result<(), StorageError> {
-        let destination = destination.as_ref();
-        std::fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(destination)?;
-        let mut target = Connection::open(destination)?;
-        let backup = rusqlite::backup::Backup::new(&self.connection, &mut target)?;
-        backup.run_to_completion(64, Duration::from_millis(10), None)?;
-        Ok(())
+        backup_connection(&self.connection, destination.as_ref())
     }
+}
+
+fn backup_connection(connection: &Connection, destination: &Path) -> Result<(), StorageError> {
+    std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(destination)?;
+    let mut target = Connection::open(destination)?;
+    let backup = rusqlite::backup::Backup::new(connection, &mut target)?;
+    backup.run_to_completion(64, Duration::from_millis(10), None)?;
+    Ok(())
 }
 
 fn new_id() -> String {

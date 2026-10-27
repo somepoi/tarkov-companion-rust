@@ -4,6 +4,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use stash_core::{CommitScan, GameMode, LegacyChecklist, Repository, ScanDraft, ScanScope};
 use std::{path::PathBuf, sync::mpsc};
+use tauri::Emitter;
 
 #[derive(Deserialize)]
 #[serde(
@@ -58,6 +59,17 @@ pub enum Operation {
     },
     ImportLegacy {
         checklist: LegacyChecklist,
+    },
+    PlanningState {
+        profile_id: String,
+    },
+    SavePlanningState {
+        profile_id: String,
+        expected_revision: u64,
+        preferences: stash_core::planning::PlanningPreferences,
+    },
+    CalculatePlan {
+        request: stash_core::planning::CalculatePlan,
     },
 }
 
@@ -164,20 +176,48 @@ fn execute(
             expected_revision,
         } => value(repository.undo_commit(&container_id, &snapshot_id, expected_revision)),
         Operation::ImportLegacy { checklist } => value(repository.import_legacy_counts(checklist)),
+        Operation::PlanningState { profile_id } => value(repository.planning_state(&profile_id)),
+        Operation::SavePlanningState {
+            profile_id,
+            expected_revision,
+            preferences,
+        } => value(repository.save_planning_state(&profile_id, expected_revision, preferences)),
+        Operation::CalculatePlan { request } => value(repository.calculate_plan(request)),
     }
 }
 
 #[tauri::command]
 pub async fn inventory_call(
     state: tauri::State<'_, std::sync::Arc<crate::desktop::HostState>>,
+    window: tauri::WebviewWindow,
     operation: Value,
 ) -> Result<Value, String> {
-    let operation = serde_json::from_value(operation)
+    if window.label() != "main" {
+        return Err("Inventory operations require the main application window".into());
+    }
+    if operation.to_string().len() > 8 * 1024 * 1024 {
+        return Err("Inventory request exceeds the 8 MiB limit".into());
+    }
+    let operation: Operation = serde_json::from_value(operation)
         .map_err(|error| format!("Invalid inventory request: {error}"))?;
+    let changed = !matches!(
+        operation,
+        Operation::ListProfiles
+            | Operation::ListContainers { .. }
+            | Operation::Inventory { .. }
+            | Operation::GetScan { .. }
+            | Operation::ListScans { .. }
+            | Operation::PlanningState { .. }
+            | Operation::CalculatePlan { .. }
+    );
     let state = std::sync::Arc::clone(state.inner());
-    tauri::async_runtime::spawn_blocking(move || state.inventory.call(operation))
+    let result = tauri::async_runtime::spawn_blocking(move || state.inventory.call(operation))
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+    if changed && result.is_ok() {
+        let _ = window.emit("inventory-changed", ());
+    }
+    result
 }
 
 fn validate_evidence(draft: &ScanDraft, evidence_dir: &std::path::Path) -> Result<(), String> {

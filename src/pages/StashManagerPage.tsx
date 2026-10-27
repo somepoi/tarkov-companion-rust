@@ -3,6 +3,8 @@ import { Boxes, ImageUp, Plus, Save, Trash2, Undo2 } from 'lucide-react'
 import { useItems } from '../api/hooks'
 import type { GameMode } from '../api/client'
 import { useProgressStore } from '../store/progress'
+import { PlanningPanel } from '../inventory/PlanningPanel'
+import { subscribe } from '../desktop/adapters/tauriEvents'
 import {
   archiveScreenshot,
   inventoryCall,
@@ -84,16 +86,26 @@ function StashManager({ mode }: { mode: GameMode }) {
   useEffect(() => {
     if (!profile) return
     const token = generation.current
-    void inventoryCall<Inventory>({
-      operation: 'inventory',
-      profileId: profile.id,
-    })
-      .then((value) => {
-        if (generation.current === token) setInventory(value)
+    let active = true
+    const load = () => {
+      void inventoryCall<Inventory>({
+        operation: 'inventory',
+        profileId: profile.id,
       })
-      .catch(
-        (e: unknown) => generation.current === token && setError(String(e)),
-      )
+        .then((value) => {
+          if (active && generation.current === token) setInventory(value)
+        })
+        .catch(
+          (e: unknown) =>
+            active && generation.current === token && setError(String(e)),
+        )
+    }
+    load()
+    const stop = subscribe('inventory-changed', load)
+    return () => {
+      active = false
+      stop()
+    }
   }, [profile])
 
   const selected = inventory?.containers.find(
@@ -846,6 +858,7 @@ function StashManager({ mode }: { mode: GameMode }) {
               )}
             </div>
           </section>
+          {inventory && <PlanningPanel inventory={inventory} />}
         </>
       )}
     </div>

@@ -6,6 +6,7 @@
 
 pub mod model;
 pub mod planner;
+pub mod planning;
 mod repository;
 
 pub use model::*;

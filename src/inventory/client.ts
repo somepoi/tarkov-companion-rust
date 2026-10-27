@@ -92,6 +92,77 @@ export interface CommitResult {
   previousSnapshotId: string | null
 }
 
+export interface UserReserve {
+  extraBuffer: number
+  minimumTotal: number
+  neverSell: boolean
+}
+export interface PlanningPreferences {
+  hideoutTargets: Record<string, number>
+  craftBatches: Record<string, number>
+  barterBatches: Record<string, number>
+  reserves: Record<string, UserReserve>
+}
+export interface PlanningState {
+  profileId: string
+  revision: number
+  preferences: PlanningPreferences
+}
+export interface Requirement {
+  id: string
+  source: string
+  kind: { kind: 'consume' } | { kind: 'reusable'; group: string }
+  alternatives: string[]
+  quantity: number | null
+  fir: 'any' | 'required' | 'unknown'
+}
+export interface RecommendationPlan {
+  profileId: string
+  mode: GameMode
+  catalogVersion: string
+  progressionRevision: string
+  planRevision: string
+  horizon: string
+  containerRevisions: Record<string, number>
+  saleDecisionsComplete: boolean
+  coverageGaps: string[]
+  allocations: {
+    containerId: string
+    snapshotId: string
+    stackId: string
+    itemId: string
+    quantity: number
+    requirementIds: string[]
+    reason: string
+  }[]
+  stacks: {
+    containerId: string
+    snapshotId: string
+    stackId: string
+    itemId: string | null
+    location: CellBox
+    portions: {
+      recommendation: 'KEEP' | 'SELL' | 'REVIEW'
+      quantity: number | null
+      reason: string
+    }[]
+  }[]
+  items: {
+    itemId: string
+    confirmedOwned: number
+    keep: number
+    sell: number
+    reviewKnownQuantity: number
+    unknownStacks: number
+  }[]
+  unfulfilled: {
+    requirementIds: string[]
+    alternatives: string[]
+    quantity: number | null
+    reason: string
+  }[]
+}
+
 export const nativeInventoryAvailable = () => isTauri()
 
 export async function inventoryCall<T>(
