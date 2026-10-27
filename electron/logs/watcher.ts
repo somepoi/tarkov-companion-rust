@@ -8,9 +8,9 @@
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { BackfillProgress, BackfillResult, GameEvent, SessionMode, WatcherState } from '../../src/shared/desktop-api'
+import type { BackfillProgress, BackfillResult, GameEvent, WatcherState } from '../../src/shared/desktop-api'
 import { GameLogInterpreter, logFileRole, logFolderTime } from './parser'
-import { detectResets } from './resets'
+import { finishBackfill } from '../../src/shared/logs/backfill'
 import { FileTail } from './tailer'
 
 const POLL_MS = 750
@@ -279,28 +279,6 @@ export class LogWatcher extends EventEmitter {
   }
 
   private finish(result: BackfillResult): BackfillResult {
-    // "You" per mode = the profile selected most recently in that mode. Older profiles
-    // (before a wipe/reset, or a second account on this PC) must not tick quests.
-    const ordered = [...result.events].sort((a, b) => a.at - b.at)
-    const profilesSeen: Record<SessionMode, Set<string>> = { regular: new Set(), pve: new Set(), seasonal: new Set(), unknown: new Set() }
-    for (const ev of ordered) {
-      if (ev.kind !== 'profile') continue
-      result.currentProfileByMode[ev.mode] = ev.profileId
-      profilesSeen[ev.mode].add(ev.profileId)
-    }
-    // Quests handed in before the latest reset/wipe belong to the old profile.
-    const resets = detectResets(ordered)
-    result.resetAtByMode = resets
-    const finished: Record<SessionMode, Set<string>> = { regular: new Set(), pve: new Set(), seasonal: new Set(), unknown: new Set() }
-    for (const ev of ordered) {
-      if (ev.kind !== 'taskFinished') continue
-      const current = result.currentProfileByMode[ev.mode]
-      const mine = ev.profileId ? ev.profileId === current : profilesSeen[ev.mode].size <= 1
-      const afterReset = ev.at >= (resets[ev.mode] ?? -Infinity)
-      if (mine && afterReset) finished[ev.mode].add(ev.taskId)
-      else result.skippedOtherProfile += 1
-    }
-    for (const mode of Object.keys(finished) as SessionMode[]) result.finishedByMode[mode] = [...finished[mode]]
-    return result
+    return finishBackfill(result)
   }
 }

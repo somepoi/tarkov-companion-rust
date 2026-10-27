@@ -59,6 +59,7 @@ pub struct HostState {
     pub startup_issues: Vec<String>,
     settings_read_error: bool,
     pub integrations: crate::integrations::Integrations,
+    pub logs: crate::logs::Logs,
 }
 
 impl HostState {
@@ -105,6 +106,7 @@ impl HostState {
         });
         let mut settings: Value =
             serde_json::from_str(DEFAULTS).map_err(|e| error("defaults", e.to_string()))?;
+        settings["nativeLogProfiles"] = json!({});
         let file = data_dir.join("settings.json");
         let mut settings_read_error = false;
         if file.exists() {
@@ -159,6 +161,7 @@ impl HostState {
             startup_issues,
             settings_read_error,
             integrations: crate::integrations::Integrations::default(),
+            logs: crate::logs::Logs::default(),
         })
     }
 
@@ -176,6 +179,7 @@ impl HostState {
             "lastCleanedVersion",
             "trayNoticeShown",
             "searchBarPos",
+            "nativeLogProfiles",
         ] {
             value.as_object_mut().unwrap().remove(key);
         }
@@ -258,9 +262,91 @@ impl HostState {
             }
             return Err(cause);
         }
+        let logs_changed =
+            next["logsPath"] != guard["logsPath"] || next["paused"] != guard["paused"];
         *guard = next;
         drop(guard);
+        if logs_changed {
+            self.logs
+                .configure(app, &self.settings()?, false)
+                .map_err(|e| error("logs", e))?;
+        }
         self.public_settings()
+    }
+
+    fn log_identity(&self, app: &tauri::AppHandle, event: &Value) -> Result<Value, NativeError> {
+        if self.settings_read_error {
+            return Err(error(
+                "settings_recovery",
+                "Log identity could not be saved because settings require recovery",
+            ));
+        }
+        let mut guard = self
+            .settings
+            .lock()
+            .map_err(|_| error("settings_lock", "Settings lock unavailable"))?;
+        let mut next = guard.clone();
+        let (reason, previous, current) = match event["kind"].as_str() {
+            Some("profile") => {
+                let mode = event["mode"]
+                    .as_str()
+                    .filter(|m| ["pve", "regular", "seasonal"].contains(m));
+                let Some(mode) = mode else {
+                    return Ok(Value::Null);
+                };
+                let profile = event["profileId"]
+                    .as_str()
+                    .filter(|p| {
+                        !p.is_empty()
+                            && p.len() <= 128
+                            && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    })
+                    .ok_or_else(|| error("log_identity", "Invalid game profile identity"))?;
+                let previous = next["nativeLogProfiles"][mode].as_str().map(str::to_owned);
+                if previous.as_deref() == Some(profile) {
+                    return Ok(Value::Null);
+                }
+                next["nativeLogProfiles"][mode] = json!(profile);
+                ("profile", previous, profile.to_owned())
+            }
+            Some("gameVersion") => {
+                let version = event["version"]
+                    .as_str()
+                    .filter(|v| {
+                        !v.is_empty()
+                            && v.len() <= 128
+                            && v.bytes()
+                                .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_')
+                    })
+                    .ok_or_else(|| error("log_identity", "Invalid game version"))?;
+                let previous = next["knownGameVersion"].as_str().map(str::to_owned);
+                if previous.as_deref() == Some(version) {
+                    return Ok(Value::Null);
+                }
+                next["knownGameVersion"] = json!(version);
+                let major = |v: &str| v.split('.').take(2).collect::<Vec<_>>().join(".");
+                (
+                    "version",
+                    previous.filter(|p| major(p) != major(version)),
+                    version.to_owned(),
+                )
+            }
+            _ => return Err(error("log_identity", "Unsupported log identity event")),
+        };
+        atomic_write(
+            &self.data_dir.join("settings.json"),
+            &serde_json::to_vec_pretty(&next).map_err(|e| error("settings_json", e.to_string()))?,
+        )?;
+        *guard = next;
+        drop(guard);
+        if let Some(previous) = previous {
+            app.emit(
+                "wipe-detected",
+                json!({"reason":reason,"previous":previous,"current":current}),
+            )
+            .map_err(|e| error("event", e.to_string()))?;
+        }
+        Ok(Value::Null)
     }
 }
 
@@ -431,9 +517,45 @@ fn dispatch(
                 .map_err(|e| error("event", e.to_string()))?;
             Ok(value)
         }
-        "watcher:getState" => Ok(
-            json!({"status":"no-folder","logsPath":state.settings()?["logsPath"],"detectedPath":null,"currentFolder":null,"lastEventAt":null,"sessionMode":"unknown","profileId":null,"accountId":null,"message":"Native log synchronization is being migrated. The Electron build remains available for log tracking."}),
-        ),
+        "watcher:getState" => state.logs.status().map_err(|e| error("logs", e)),
+        "watcher:identity" => {
+            if _window.label() != "main" {
+                return Err(error(
+                    "window",
+                    "Only the main window can update log identity",
+                ));
+            }
+            state.log_identity(app, first)
+        }
+        "watcher:connect" => state
+            .logs
+            .configure(app, &state.settings()?, true)
+            .map_err(|e| error("logs", e)),
+        "watcher:next" => state
+            .logs
+            .read_live(
+                first
+                    .as_u64()
+                    .ok_or_else(|| error("logs_epoch", "Expected log configuration revision"))?,
+            )
+            .map_err(|e| error("logs", e)),
+        "watcher:historyBegin" => state.logs.begin_history().map_err(|e| error("logs", e)),
+        "watcher:historyNext" => state
+            .logs
+            .read_history(
+                first
+                    .as_u64()
+                    .ok_or_else(|| error("logs_job", "Expected historical job ID"))?,
+            )
+            .map_err(|e| error("logs", e)),
+        "watcher:historyCancel" => state
+            .logs
+            .cancel_history(
+                first
+                    .as_u64()
+                    .ok_or_else(|| error("logs_job", "Expected historical job ID"))?,
+            )
+            .map_err(|e| error("logs", e)),
         "watcher:recent" => Ok(json!([])),
         "watcher:pickFolder" => {
             let selected = app.dialog().file().blocking_pick_folder();
@@ -445,6 +567,10 @@ fn dispatch(
                         .map_err(|e| error("directory", e.to_string()))?;
                     let path = safe_directory(&path.to_string_lossy())?;
                     state.update_settings(app, &json!({"logsPath":path.to_string_lossy()}))?;
+                    state
+                        .logs
+                        .configure(app, &state.settings()?, true)
+                        .map_err(|e| error("logs", e))?;
                     Ok(json!(path.to_string_lossy()))
                 }
             }
@@ -471,7 +597,7 @@ fn dispatch(
                 fs::create_dir_all(&dir)?;
                 dir
             } else {
-                let settings = state.settings()?;
+                let settings = state.logs.status().map_err(|e| error("logs", e))?;
                 safe_directory(
                     settings["logsPath"]
                         .as_str()

@@ -59,6 +59,7 @@ export function SyncReviewDialog() {
               Read {review.folders} game sessions.
               {done > 0 && ` ${done} already ticked in the app.`}
               {review.skippedOtherProfile > 0 && ` Ignored ${review.skippedOtherProfile} hand-ins from another profile (an older wipe or a second account).`}
+              {!!review.unknownModeEvents && ` Excluded ${review.unknownModeEvents} quest events with unknown game mode. Review those quests manually.`}
             </p>
           </div>
           <button type="button" onClick={dismissReview} aria-label="Close without ticking" className="rounded p-1 text-ink-dim hover:bg-surface-3 hover:text-ink">

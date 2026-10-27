@@ -90,6 +90,7 @@ function isKnownTask(mode: GameMode, taskId: string): boolean {
 
 /** Applies one parsed game event to the progress store. Safe to call repeatedly. */
 export function applyGameEvent(e: GameEvent): void {
+  if (e.mode === 'unknown' && (e.kind === 'taskFinished' || e.kind === 'taskStarted' || e.kind === 'taskFailed')) return
   const progress = useProgressStore.getState()
   const mode = modeToGameMode(e.mode, progress.gameMode)
   switch (e.kind) {
@@ -131,6 +132,7 @@ export interface BackfillReview {
   folders: number
   files: number
   skippedOtherProfile: number
+  unknownModeEvents?: number
   /** Quests the log shows as handed in that are already ticked. */
   alreadyDone: Record<GameMode, number>
   /**
@@ -152,6 +154,7 @@ async function buildReview(result: BackfillResult): Promise<BackfillReview> {
   // that has hand-ins; load it first so dailies/weeklies never slip through.
   const modesNeeded = new Set<GameMode>()
   for (const sessionMode of Object.keys(result.finishedByMode) as SessionMode[]) {
+    if (sessionMode === 'unknown') continue
     if (result.finishedByMode[sessionMode].length > 0) modesNeeded.add(modeToGameMode(sessionMode, 'regular'))
   }
   await Promise.all([...modesNeeded].map((m) => queryClient.ensureQueryData({ queryKey: gameDataKeys.mode(m), queryFn: ({ signal }) => fetchGameData(m, signal) })))
@@ -169,6 +172,7 @@ async function buildReview(result: BackfillResult): Promise<BackfillReview> {
   const stale: ReviewItem[] = []
   const resetAt: Record<GameMode, number | null> = { regular: null, pve: null }
   for (const sessionMode of Object.keys(result.resetAtByMode ?? {}) as SessionMode[]) {
+    if (sessionMode === 'unknown') continue
     const reset = result.resetAtByMode?.[sessionMode]
     if (!reset) continue
     const mode = modeToGameMode(sessionMode, 'regular')
@@ -192,6 +196,7 @@ async function buildReview(result: BackfillResult): Promise<BackfillReview> {
   }
   const items: ReviewItem[] = []
   for (const sessionMode of Object.keys(result.finishedByMode) as SessionMode[]) {
+    if (sessionMode === 'unknown') continue
     const mode = modeToGameMode(sessionMode, 'regular')
     for (const taskId of result.finishedByMode[sessionMode]) {
       if (!isKnownTask(mode, taskId)) continue
@@ -211,7 +216,8 @@ async function buildReview(result: BackfillResult): Promise<BackfillReview> {
     }
   }
   items.sort((a, b) => b.at - a.at)
-  return { items, folders: result.folders, files: result.files, skippedOtherProfile: result.skippedOtherProfile, alreadyDone, stale, resetAt }
+  const unknownModeEvents = result.events.filter((e) => e.mode === 'unknown' && (e.kind === 'taskFinished' || e.kind === 'taskStarted' || e.kind === 'taskFailed')).length
+  return { items, folders: result.folders, files: result.files, skippedOtherProfile: result.skippedOtherProfile, unknownModeEvents, alreadyDone, stale, resetAt }
 }
 
 /** Ticks the quests the user kept selected in the review (and unticks the selected stale ones). */

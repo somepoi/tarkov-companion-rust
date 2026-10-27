@@ -4,6 +4,8 @@ mod capture;
 mod desktop;
 mod integrations;
 mod inventory;
+mod log_locator;
+mod logs;
 
 use desktop::HostState;
 use std::sync::Arc;

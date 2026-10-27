@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { subscribe } from './tauriEvents'
+import { nativeLogBridge } from '../logs/nativeBridge'
 import type {
   BackfillProgress,
   DesktopApi,
@@ -32,6 +33,7 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     appVersion: string
     windowKind: 'main' | 'searchbar'
   }>('desktop_metadata')
+  const logs = metadata.windowKind === 'main' ? nativeLogBridge() : null
   const api: DesktopApi = {
     reportUiReady: () => call('ui:ready'),
     platform: metadata.platform,
@@ -53,7 +55,7 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     onSearchBarFocus: (cb) => subscribe<void>('searchbar:focus', () => cb()),
     onSearchBarMap: (cb) => subscribe<void>('searchbar:map', () => cb()),
     searchBarCorner: (corner) => call('searchbar:corner', corner),
-    getState: () => call('watcher:getState'),
+    getState: logs?.getState ?? (() => call('watcher:getState')),
     ensurePack: async (name: PackName) => {
       const rel =
         name === 'scan'
@@ -76,8 +78,8 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     setSettings: (patch: Partial<DesktopSettings>) =>
       call('settings:set', patch),
     pickLogsFolder: () => call('watcher:pickFolder'),
-    readPastLogs: () => call('watcher:backfill'),
-    getRecentEvents: () => call('watcher:recent'),
+    readPastLogs: logs?.readPastLogs ?? (() => call('watcher:backfill')),
+    getRecentEvents: logs?.getRecentEvents ?? (() => call('watcher:recent')),
     openLogsFolder: () => call('watcher:openFolder'),
     openExternal: (url: string) => call('shell:openExternal', url),
     readAppResource: async (rel: string) => {
@@ -146,7 +148,7 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     checkForUpdates: () => call('update:check'),
     installUpdate: () => call('update:install'),
     getUpdateOutcome: () => call('update:outcome'),
-    readLogStats: () => call('stats:read'),
+    readLogStats: logs?.readLogStats ?? (() => call('stats:read')),
     getLatestPosition: () => call('position:latest'),
     writeBackup: (json) => call('backup:write', json),
     listBackups: () => call('backup:list'),
@@ -157,10 +159,13 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     onPosition: (cb) => subscribe<PlayerPosition>('position:new', cb),
     runInstaller: (version) => call('update:runInstaller', version),
     onUpdateStatus: (cb) => subscribe<UpdateStatus>('update:status', cb),
-    onEvent: (cb) => subscribe<GameEvent>('watcher:event', cb),
-    onState: (cb) => subscribe<WatcherState>('watcher:state', cb),
-    onBackfillProgress: (cb) =>
-      subscribe<BackfillProgress>('watcher:backfillProgress', cb),
+    onEvent:
+      logs?.onEvent ?? ((cb) => subscribe<GameEvent>('watcher:event', cb)),
+    onState:
+      logs?.onState ?? ((cb) => subscribe<WatcherState>('watcher:state', cb)),
+    onBackfillProgress:
+      logs?.onBackfillProgress ??
+      ((cb) => subscribe<BackfillProgress>('watcher:backfillProgress', cb)),
     onWipeDetected: (cb) => subscribe<WipeEvent>('wipe:detected', cb),
     onSettingsChanged: (cb) =>
       subscribe<DesktopSettings>('settings:changed', cb),
