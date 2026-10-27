@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { isTauri } from '@tauri-apps/api/core'
 import { AlertTriangle, CheckCircle2, FolderOpen, HardDriveDownload, Info, RotateCcw, Stethoscope } from 'lucide-react'
 import { useGameData } from '../api/hooks'
 import { formatDateTime, formatTimeAgo } from '../lib/format'
@@ -10,10 +12,7 @@ import { useNow } from '../story/storyUtils'
 import { useDesktopStore } from './useDesktop'
 
 const SIX_HOURS = 6 * 3_600_000
-const todayName = () => {
-  const d = new Date()
-  return `progress-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`
-}
+const localDay = (timestamp: number) => new Date(timestamp).toDateString()
 
 /** Desktop, in the layout: writes today's backup once a day (checked at start and every 6 hours). */
 export function AutoBackup() {
@@ -23,7 +22,7 @@ export function AutoBackup() {
     const run = async () => {
       try {
         const list = await api.listBackups()
-        if (list[0]?.name === todayName()) return
+        if (list[0] && localDay(list[0].at) === localDay(Date.now())) return
         await api.writeBackup(JSON.stringify(buildProgressFile()))
       } catch {
         // a failed backup is shown in Settings → App health (no backup today)
@@ -101,6 +100,7 @@ export function HealthAndBackups() {
       <section className="space-y-2">
         <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted"><HardDriveDownload className="h-3.5 w-3.5" /> Backups</h3>
         <p className="text-xs text-ink-muted">Every day the app saves your whole progress (quests, item collection, keys, hideout, drawings, story, raid log) in its own data folder and keeps the last 7 days.</p>
+        {isTauri() && <p className="text-xs text-warning">Daily progress files exclude physical stash containers, scan history, screenshot evidence and recognition corrections. Use <Link className="underline" to="/stash">Stash Manager → Full backup and recovery</Link> to preserve those too.</p>}
         {backups && backups.length > 0 && (
           <ul className="divide-y divide-line rounded border border-line bg-surface text-xs">
             {backups.map((b) => (

@@ -52,9 +52,12 @@ fn now_ms() -> u64 {
 }
 
 pub struct HostState {
+    pub profile_root: PathBuf,
     pub data_dir: PathBuf,
     settings: Mutex<Value>,
-    pub inventory: crate::inventory::InventoryService,
+    pub inventory: Result<crate::inventory::InventoryService, String>,
+    pub startup_issues: Vec<String>,
+    settings_read_error: bool,
 }
 
 impl HostState {
@@ -91,20 +94,36 @@ impl HostState {
                 .map_err(|e| error("profile_path", e.to_string()))?,
         };
         fs::create_dir_all(&data_dir)?;
+        let profile_root = data_dir.canonicalize()?;
+        let mut startup_issues = Vec::new();
+        let data_dir = crate::backup::active_profile(&profile_root).unwrap_or_else(|message| {
+            startup_issues.push(format!(
+                "Recovered profile could not be opened: {message}. Original profile retained."
+            ));
+            profile_root.clone()
+        });
         let mut settings: Value =
             serde_json::from_str(DEFAULTS).map_err(|e| error("defaults", e.to_string()))?;
         let file = data_dir.join("settings.json");
+        let mut settings_read_error = false;
         if file.exists() {
-            let bytes = fs::read(&file)?;
-            if bytes.len() > MAX_JSON_BYTES {
-                return Err(error("settings_size", "Settings file is too large"));
-            }
-            let saved: Value = serde_json::from_slice(&bytes).map_err(|e| {
-                error(
-                    "settings_corrupt",
-                    format!("Settings could not be read; original file retained: {e}"),
-                )
-            })?;
+            let read = || -> Result<Value, String> {
+                if fs::metadata(&file).map_err(|e| e.to_string())?.len() > MAX_JSON_BYTES as u64 {
+                    return Err("Settings file is too large".into());
+                }
+                let saved: Value =
+                    serde_json::from_slice(&fs::read(&file).map_err(|e| e.to_string())?)
+                        .map_err(|e| e.to_string())?;
+                if !saved.is_object() {
+                    return Err("Settings must contain an object".into());
+                }
+                Ok(saved)
+            };
+            let saved = read().unwrap_or_else(|message| {
+                settings_read_error = true;
+                startup_issues.push(format!("Settings could not be read: {message}. Original file retained; settings writes are disabled until recovery."));
+                Value::Null
+            });
             // Only recognized settings with the expected primitive type are restored.
             if let (Some(current), Some(saved)) = (settings.as_object_mut(), saved.as_object()) {
                 for (key, value) in saved {
@@ -132,12 +151,17 @@ impl HostState {
         {
             settings["backupKeep"] = Value::from(7);
         }
-        let inventory = crate::inventory::InventoryService::open(data_dir.join("user.sqlite"))
-            .map_err(|message| error("inventory_start", message))?;
+        let inventory = crate::inventory::InventoryService::open(data_dir.join("user.sqlite"));
+        if let Err(message) = &inventory {
+            startup_issues.push(format!("Inventory could not be opened: {message}. Use full backup recovery; the current database is retained."));
+        }
         Ok(Self {
+            profile_root,
             data_dir,
             settings: Mutex::new(settings),
             inventory,
+            startup_issues,
+            settings_read_error,
         })
     }
 
@@ -162,6 +186,12 @@ impl HostState {
     }
 
     fn update_settings(&self, patch: &Value) -> Result<Value, NativeError> {
+        if self.settings_read_error {
+            return Err(error(
+                "settings_recovery",
+                "Settings could not be read. Restore a full backup before saving settings; the original file is retained.",
+            ));
+        }
         let patch = patch
             .as_object()
             .ok_or_else(|| error("invalid_settings", "Settings patch must be an object"))?;
@@ -244,7 +274,7 @@ fn compatible(key: &str, default: &Value, value: &Value) -> bool {
         || (default.is_object() && value.is_object())
 }
 
-fn atomic_write(file: &Path, bytes: &[u8]) -> Result<(), NativeError> {
+pub(crate) fn atomic_write(file: &Path, bytes: &[u8]) -> Result<(), NativeError> {
     static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let suffix = SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let temporary = file.with_extension(format!("{}.{}.pending", std::process::id(), suffix));

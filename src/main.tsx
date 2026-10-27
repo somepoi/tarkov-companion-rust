@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client'
 // loaded later with the lazy map, its white pop-ups and buttons won in the search bar).
 import 'leaflet/dist/leaflet.css'
 import './index.css'
-import { startAppearance } from './lib/appearance'
 
 import { bootstrapDesktop } from './desktop/bootstrap'
 
@@ -49,7 +48,10 @@ async function start() {
   }
 
   // Theme and text size before the first paint (no flash of the default theme).
-  if (!isSearchBar) startAppearance()
+  if (!isSearchBar) {
+    const { startAppearance } = await import('./lib/appearance')
+    startAppearance()
+  }
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
@@ -60,8 +62,23 @@ async function start() {
   )
 }
 
-void start().catch((error: unknown) => {
+void start().catch(async (error: unknown) => {
   const root = document.getElementById('root')
   if (root)
     root.textContent = `Could not start the desktop app: ${error instanceof Error ? error.message : String(error)}`
+  const { isTauri, invoke } = await import('@tauri-apps/api/core')
+  if (root && isTauri()) {
+    const button = document.createElement('button')
+    button.textContent = 'Return to original profile and restart'
+    button.className = 'btn'
+    button.onclick = () => {
+      button.disabled = true
+      void invoke('native_backup', {
+        operation: { operation: 'revert' },
+      }).catch(() => {
+        button.disabled = false
+      })
+    }
+    root.append(document.createElement('br'), button)
+  }
 })

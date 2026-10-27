@@ -74,8 +74,12 @@ pub enum Operation {
 }
 
 struct Job {
-    operation: Operation,
+    operation: Command,
     response: mpsc::Sender<Result<Value, String>>,
+}
+enum Command {
+    Operation(Operation),
+    BackupTo(PathBuf),
 }
 pub struct InventoryService {
     sender: mpsc::SyncSender<Job>,
@@ -103,9 +107,16 @@ impl InventoryService {
                     }
                 };
                 while let Ok(job) = requests.recv() {
-                    let _ =
-                        job.response
-                            .send(execute(&mut repository, job.operation, &evidence_dir));
+                    let result = match job.operation {
+                        Command::Operation(operation) => {
+                            execute(&mut repository, operation, &evidence_dir)
+                        }
+                        Command::BackupTo(path) => repository
+                            .backup_to(path)
+                            .map(|()| Value::Null)
+                            .map_err(|e| e.to_string()),
+                    };
+                    let _ = job.response.send(result);
                 }
             })
             .map_err(|error| error.to_string())?;
@@ -114,6 +125,14 @@ impl InventoryService {
     }
 
     pub fn call(&self, operation: Operation) -> Result<Value, String> {
+        self.submit(Command::Operation(operation))
+    }
+
+    pub fn backup_to(&self, path: PathBuf) -> Result<(), String> {
+        self.submit(Command::BackupTo(path)).map(|_| ())
+    }
+
+    fn submit(&self, operation: Command) -> Result<Value, String> {
         let (response, received) = mpsc::channel();
         self.sender
             .try_send(Job {
@@ -211,9 +230,15 @@ pub async fn inventory_call(
             | Operation::CalculatePlan { .. }
     );
     let state = std::sync::Arc::clone(state.inner());
-    let result = tauri::async_runtime::spawn_blocking(move || state.inventory.call(operation))
-        .await
-        .map_err(|error| error.to_string())?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        state
+            .inventory
+            .as_ref()
+            .map_err(Clone::clone)?
+            .call(operation)
+    })
+    .await
+    .map_err(|error| error.to_string())?;
     if changed && result.is_ok() {
         let _ = window.emit("inventory-changed", ());
     }

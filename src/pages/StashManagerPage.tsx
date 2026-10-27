@@ -4,6 +4,7 @@ import { useItems } from '../api/hooks'
 import type { GameMode } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { PlanningPanel } from '../inventory/PlanningPanel'
+import { BackupPanel } from '../inventory/BackupPanel'
 import { subscribe } from '../desktop/adapters/tauriEvents'
 import {
   archiveScreenshot,
@@ -861,6 +862,7 @@ function StashManager({ mode }: { mode: GameMode }) {
           {inventory && <PlanningPanel inventory={inventory} />}
         </>
       )}
+      <BackupPanel />
     </div>
   )
 }

@@ -41,6 +41,63 @@ pub struct Repository {
 }
 
 impl Repository {
+    /// Checks a supplied backup without migrating or writing to the source.
+    pub fn verify_file(path: impl AsRef<Path>) -> Result<BTreeSet<String>, StorageError> {
+        let connection =
+            Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        connection.execute_batch("PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;")?;
+        let version: u32 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version > SCHEMA_VERSION {
+            return Err(StorageError::NewerSchema(version));
+        }
+        if version == 0 {
+            return Err(StorageError::Invalid(
+                "backup has no supported inventory schema".into(),
+            ));
+        }
+        let result: String = connection.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
+        if result != "ok" {
+            return Err(StorageError::Invalid(format!(
+                "SQLite integrity check failed: {result}"
+            )));
+        }
+        let violation = connection.prepare("PRAGMA foreign_key_check")?.exists([])?;
+        if violation {
+            return Err(StorageError::Invalid(
+                "backup contains broken database references".into(),
+            ));
+        }
+        let repository = Self { connection };
+        repository.list_profiles()?;
+        let mut hashes = BTreeSet::new();
+        let mut stacks = repository
+            .connection
+            .prepare("SELECT payload_json FROM snapshot_stacks")?;
+        for json in stacks.query_map([], |r| r.get::<_, String>(0))? {
+            let stack: Stack = serde_json::from_str(&json?)?;
+            if let Some(hash) = stack.provenance.screenshot_hash {
+                digest(&hash)?;
+                hashes.insert(hash);
+            }
+        }
+        let mut drafts = repository
+            .connection
+            .prepare("SELECT draft_json FROM scan_sessions WHERE draft_json IS NOT NULL")?;
+        for json in drafts.query_map([], |r| r.get::<_, String>(0))? {
+            let draft: ScanDraft = serde_json::from_str(&json?)?;
+            for hash in draft
+                .stacks
+                .into_iter()
+                .filter_map(|s| s.provenance.screenshot_hash)
+                .chain(draft.observations.into_iter().map(|o| o.screenshot_hash))
+            {
+                digest(&hash)?;
+                hashes.insert(hash);
+            }
+        }
+        Ok(hashes)
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
         let path = path.as_ref();
         let connection = Connection::open(path)?;

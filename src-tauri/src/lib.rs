@@ -1,3 +1,4 @@
+mod backup;
 mod capture;
 mod desktop;
 mod inventory;
@@ -27,7 +28,8 @@ pub fn run() {
             desktop::read_game_screenshot,
             desktop::capture_screen,
             desktop::archive_screenshot,
-            inventory::inventory_call
+            inventory::inventory_call,
+            backup::native_backup
         ])
         .setup(|app| {
             let state = Arc::new(HostState::open(app.handle())?);

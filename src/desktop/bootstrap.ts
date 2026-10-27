@@ -5,4 +5,6 @@ export async function bootstrapDesktop(): Promise<void> {
   if (!isTauri()) return
   const { createTauriDesktop } = await import('./adapters/tauri')
   window.desktop = await createTauriDesktop()
+  const { restorePendingRenderer } = await import('../inventory/rendererBackup')
+  await restorePendingRenderer()
 }
