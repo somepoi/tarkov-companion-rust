@@ -6,6 +6,9 @@ import { useProgressStore } from '../store/progress'
 import { PlanningPanel } from '../inventory/PlanningPanel'
 import { BackupPanel } from '../inventory/BackupPanel'
 import { StackIdentityReview } from '../inventory/StackIdentityReview'
+import { ScreenshotRegistration, type StagedScreenshot } from '../inventory/ScreenshotRegistration'
+import type { Grid } from '../scan/core'
+import { checkedCrop, checkedGrid, type ImageCrop } from '../scan/registration'
 import { subscribe } from '../desktop/adapters/tauriEvents'
 import {
   archiveScreenshot,
@@ -58,11 +61,13 @@ function StashManager({ mode }: { mode: GameMode }) {
   const [dimensions, setDimensions] = useState({ columns: 14, rows: 14 })
   const [query, setQuery] = useState('')
   const [reviewStackId, setReviewStackId] = useState<string | null>(null)
+  const [stagedImage, setStagedImage] = useState<StagedScreenshot | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const generation = useRef(0)
   const commitKey = useRef('')
+  const actionBusy = useRef(false)
   const available = nativeInventoryAvailable()
 
   useEffect(() => {
@@ -155,17 +160,21 @@ function StashManager({ mode }: { mode: GameMode }) {
     [query, catalog.data],
   )
 
-  async function action(work: () => Promise<void>) {
-    if (busy) return
+  async function action<T>(work: () => Promise<T>): Promise<T | undefined> {
+    if (actionBusy.current) return
+    actionBusy.current = true
+    const token = generation.current
     setBusy(true)
     setError(null)
     setNotice('')
     try {
-      await work()
+      return await work()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      if (generation.current === token)
+        setError(e instanceof Error ? e.message : String(e))
     } finally {
-      setBusy(false)
+      actionBusy.current = false
+      if (generation.current === token) setBusy(false)
     }
   }
   async function refresh(profileId = profile?.id) {
@@ -208,6 +217,7 @@ function StashManager({ mode }: { mode: GameMode }) {
   }
   async function begin(container: Container) {
     setReviewStackId(null)
+    setStagedImage(null)
     if (session?.status === 'draft')
       await inventoryCall({ operation: 'abandonScan', sessionId: session.id })
     const next = await inventoryCall<ScanSession>({
@@ -233,6 +243,7 @@ function StashManager({ mode }: { mode: GameMode }) {
   }
   async function resume(container: Container) {
     setReviewStackId(null)
+    setStagedImage(null)
     const scans = await inventoryCall<ScanSession[]>({
       operation: 'listScans',
       containerId: container.id,
@@ -251,10 +262,23 @@ function StashManager({ mode }: { mode: GameMode }) {
     setLastCommit(null)
     commitKey.current = crypto.randomUUID()
   }
-  async function importImage(file: File) {
+  async function importImage(file: Blob) {
     if (!session || !draft) return
     const token = generation.current
     const hash = await archiveScreenshot(file)
+    if (generation.current !== token) return
+    const bitmap = await createImageBitmap(file)
+    const { width, height } = bitmap
+    bitmap.close()
+    checkedCrop(null, { width, height })
+    if (generation.current !== token) return
+    setStagedImage({ blob: file, hash, width, height })
+    setNotice('Screenshot archived. Select one complete container before recognizing it. Existing draft rows are unchanged.')
+  }
+  async function recognizeImage(crop: ImageCrop, grid?: Grid): Promise<Grid | undefined> {
+    if (!session || !draft || !stagedImage || !selected) return
+    const token = generation.current
+    const { blob: file, hash } = stagedImage
     const [
       { readWords },
       { scanImage },
@@ -265,16 +289,27 @@ function StashManager({ mode }: { mode: GameMode }) {
       import('../scan/learned'),
     ])
     await useLearnedStore.getState().load()
-    const words = await readWords(file, null).catch(() => undefined)
+    if (generation.current !== token) return
+    let ocrFailed = false
+    const words = await readWords(file, crop).catch(() => {
+      ocrFailed = true
+      return undefined
+    })
+    if (generation.current !== token) return
     const result = await scanImage(
       file,
-      null,
+      crop,
       undefined,
       learnedFingerprints(useLearnedStore.getState().records),
       undefined,
       words,
+      undefined,
+      grid,
     )
     if (generation.current !== token) return
+    if (result.grid.cols !== selected.container.columns || result.grid.rows !== selected.container.rows)
+      throw new Error(`Detected ${result.grid.cols}×${result.grid.rows} cells; this container is ${selected.container.columns}×${selected.container.rows}. Adjust the selected area or set the grid manually. Draft rows are unchanged.`)
+    checkedGrid(result.grid, crop)
     setReviewStackId(null)
     const observations = result.detections.map((det) => ({
       id: crypto.randomUUID(),
@@ -297,8 +332,11 @@ function StashManager({ mode }: { mode: GameMode }) {
     }))
     changeDraft({
       ...draft,
+      fullCoverageConfirmed: false,
+      reviewConfirmed: false,
       capturedAt: captureTime(),
-      algorithmVersion: 'rgb12-ocr-v1',
+      algorithmVersion: ocrFailed ? 'rgb12-image-only-v1' : 'rgb12-ocr-v1',
+      catalogVersion: catalog.dataUpdatedAt ? String(catalog.dataUpdatedAt) : 'unknown',
       observations,
       stacks: observations.map((observation) => ({
         ...unknown(),
@@ -315,8 +353,9 @@ function StashManager({ mode }: { mode: GameMode }) {
       })),
     })
     setNotice(
-      'Screenshot archived. Review each identity and amount. FIR remains unknown until confirmed. Crop to a single complete container before importing.',
+      `${ocrFailed ? 'Name OCR was unavailable; image matching was used. ' : ''}Review each identity and amount. FIR remains unknown until confirmed. Verify the entire container before saving.`,
     )
+    return result.grid
   }
 
   if (!available)
@@ -518,6 +557,18 @@ function StashManager({ mode }: { mode: GameMode }) {
                 unrecognized regions must be checked in the game. Reimporting
                 this session never adds to the previous snapshot.
               </p>
+              {stagedImage && (
+                <ScreenshotRegistration
+                  key={stagedImage.hash}
+                  image={stagedImage}
+                  columns={selected.container.columns}
+                  rows={selected.container.rows}
+                  busy={busy}
+                  hasDraftRows={draft.stacks.length > 0}
+                  onScan={(crop, grid) => action(() => recognizeImage(crop, grid))}
+                  onDismiss={() => setStagedImage(null)}
+                />
+              )}
               <div className="flex flex-wrap gap-2">
                 <input
                   className={`${inputClass} min-w-64`}
@@ -825,6 +876,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                       setLastCommit(result)
                       setSession(null)
                       setDraft(null)
+                      setStagedImage(null)
                       await refresh()
                       setNotice('Container snapshot saved atomically.')
                     })
@@ -843,6 +895,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                       })
                       setDraft(null)
                       setSession(null)
+                      setStagedImage(null)
                     })
                   }
                 >

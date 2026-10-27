@@ -6,6 +6,7 @@
 import type { Detection, FingerprintHeader, Grid, LearnedFingerprint, OcrWord } from './core'
 import type { IdentifyMatch, WorkerRequest, WorkerResponse } from './scan.worker'
 import ScanWorker from './scan.worker?worker'
+import { checkedCrop, checkedGrid } from './registration'
 
 export interface ScanResult {
   grid: Grid
@@ -98,14 +99,30 @@ export async function scanImage(
   words?: OcrWord[],
   /** Cell size of the last good scan, tried first (see cellSize.ts). */
   preferredPitch?: number,
+  /** Explicit full-image registration; bypasses grid discovery only. */
+  grid?: Grid,
 ): Promise<ScanResult> {
   await ensureWorker()
   const bitmap = await createImageBitmap(image)
+  try {
+    const area = checkedCrop(crop, bitmap)
+    if (grid) checkedGrid(grid, area)
+  } catch (error) {
+    bitmap.close()
+    throw error
+  }
   const id = nextId++
   return new Promise<ScanResult>((resolve, reject) => {
     pending.set(id, { resolve, reject, onProgress })
-    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words }
-    worker?.postMessage(msg, [bitmap])
+    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words, grid }
+    try {
+      if (!worker) throw new Error('Scanner is unavailable. Try again.')
+      worker.postMessage(msg, [bitmap])
+    } catch (error) {
+      pending.delete(id)
+      bitmap.close()
+      reject(error instanceof Error ? error : new Error(String(error)))
+    }
   })
 }
 

@@ -4,10 +4,11 @@
  * once ("init"), then screenshots ("scan") as ImageBitmaps plus an optional crop.
  */
 import { buildCandidates, chooseGrid, detectGrid, identifyRegion, refineGrid, indexFromParts, scanGrid, withLearned, type Rgba, type Detection, type FingerprintHeader, type FingerprintIndex, type Grid, type LearnedFingerprint, type OcrWord } from './core'
+import { checkedCrop, checkedGrid } from './registration'
 
 export type WorkerRequest =
   | { type: 'init'; header: FingerprintHeader; pixels: ArrayBuffer }
-  | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number; preferredPitch?: number; learned?: LearnedFingerprint[]; words?: OcrWord[] }
+  | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number; preferredPitch?: number; learned?: LearnedFingerprint[]; words?: OcrWord[]; grid?: Grid }
   /** Best items for one box of the last scan (grid cells), for the box editor. */
   | { type: 'identify'; id: number; box: { col: number; row: number; w: number; h: number } }
 
@@ -39,7 +40,8 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
     try {
       if (!index || !candidates) throw new Error('Scanner data not loaded yet')
       const t0 = performance.now()
-      const crop = msg.crop ?? { x: 0, y: 0, w: msg.bitmap.width, h: msg.bitmap.height }
+      const crop = checkedCrop(msg.crop, msg.bitmap)
+      const registered = msg.grid ? checkedGrid(msg.grid, crop) : undefined
       const canvas = new OffscreenCanvas(crop.w, crop.h)
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
       if (!ctx) throw new Error('No 2D canvas in this browser')
@@ -51,7 +53,9 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       // matcher judges a few proposed grids and keeps the one real items fit best.
       // Words in crop coordinates (OCR ran on the full screenshot).
       const words = (msg.words ?? []).map((w) => ({ ...w, x0: w.x0 - crop.x, x1: w.x1 - crop.x, y0: w.y0 - crop.y, y1: w.y1 - crop.y }))
-      const grid = msg.pitch ? refineGrid(img, detectGrid(img, msg.pitch), candidates) : chooseGrid(img, candidates, words, msg.preferredPitch)
+      const grid = registered
+        ? { ...registered, ox: registered.ox - crop.x, oy: registered.oy - crop.y }
+        : msg.pitch ? refineGrid(img, detectGrid(img, msg.pitch), candidates) : chooseGrid(img, candidates, words, msg.preferredPitch)
       const withMine = withLearned(candidates, msg.learned ?? [])
       const detections = scanGrid(img, grid, withMine, index, { words }, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
       last = { img, grid, words, candidates: withMine }
@@ -60,6 +64,8 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       post({ type: 'result', id: msg.id, grid: shifted, detections, ms: Math.round(performance.now() - t0) })
     } catch (err) {
       post({ type: 'error', id: msg.id, message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      msg.bitmap.close()
     }
   }
   if (msg.type === 'identify') {
