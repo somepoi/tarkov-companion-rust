@@ -3,32 +3,39 @@
  * (from the web server, or through the desktop bridge because Chromium cannot
  * fetch() file:// URLs) and turns an image into detections.
  */
-import type { Detection, FingerprintHeader, Grid, LearnedFingerprint, OcrWord } from './core'
+import type { Detection, Grid, LearnedFingerprint, OcrWord } from './core'
 import type { IdentifyMatch, WorkerRequest, WorkerResponse } from './scan.worker'
 import ScanWorker from './scan.worker?worker'
 import { checkedCrop, checkedGrid } from './registration'
+import { fingerprintHeader, scannerManifest, MAX_FINGERPRINT_BYTES, MAX_FINGERPRINT_HEADER_BYTES } from './assets'
 
 export interface ScanResult {
   grid: Grid
   detections: Detection[]
   ms: number
+  assetWarnings?: string[]
 }
 
 let worker: Worker | null = null
 let ready: Promise<number> | null = null
 let nextId = 1
+let assetWarnings: string[] = []
 const pending = new Map<number, { resolve: (r: ScanResult) => void; reject: (e: Error) => void; onProgress?: (p: number) => void }>()
 const identifying = new Map<number, { resolve: (m: IdentifyMatch[]) => void; reject: (e: Error) => void }>()
 
 async function loadFile(name: string): Promise<ArrayBuffer> {
   if (window.desktop?.readAppResource) {
     // Installed app: the scanner data is a content pack downloaded on first use.
-    await window.desktop.ensurePack('scan')
-    return window.desktop.readAppResource(`scan/${name}`)
+    const bytes = await window.desktop.readAppResource(`scan/${name}`)
+    if (bytes.byteLength > MAX_FINGERPRINT_BYTES) throw new Error('Scanner asset exceeds its byte budget')
+    return bytes
   }
   const res = await fetch(`${import.meta.env.BASE_URL}scan/${name}`, { cache: "no-cache" })
   if (!res.ok) throw new Error(`Scanner data missing (${name}, HTTP ${res.status}). Run "npm run scan:fingerprints".`)
-  return res.arrayBuffer()
+  if (Number(res.headers.get('content-length')) > MAX_FINGERPRINT_BYTES) throw new Error('Scanner asset exceeds its byte budget')
+  const bytes = await res.arrayBuffer()
+  if (bytes.byteLength > MAX_FINGERPRINT_BYTES) throw new Error('Scanner asset exceeds its byte budget')
+  return bytes
 }
 
 function ensureWorker(): Promise<number> {
@@ -41,7 +48,7 @@ function ensureWorker(): Promise<number> {
       if (m.type === 'ready') resolve(m.items)
       else if (m.type === 'progress') pending.get(m.id)?.onProgress?.(m.done / Math.max(1, m.total))
       else if (m.type === 'result') {
-        pending.get(m.id)?.resolve({ grid: m.grid, detections: m.detections, ms: m.ms })
+        pending.get(m.id)?.resolve({ grid: m.grid, detections: m.detections, ms: m.ms, assetWarnings })
         pending.delete(m.id)
       } else if (m.type === 'identified') {
         identifying.get(m.id)?.resolve(m.matches)
@@ -58,21 +65,31 @@ function ensureWorker(): Promise<number> {
     const fail = (message: string) => {
       const err = new Error(message)
       reject(err)
+      w.terminate()
+      if (worker !== w) return
       for (const p of pending.values()) p.reject(err)
       for (const p of identifying.values()) p.reject(err)
       pending.clear()
       identifying.clear()
-      w.terminate()
-      if (worker === w) {
-        worker = null
-        ready = null
-      }
+      worker = null
+      ready = null
     }
     w.onerror = (e) => fail(e.message || 'The scanner stopped unexpectedly. Try again, or scan a smaller part of the screenshot.')
     w.onmessageerror = () => fail('The scanner could not read its data. Try again.')
-    Promise.all([loadFile('fingerprints.json'), loadFile('fingerprints.bin')])
-      .then(([headerBuf, pixels]) => {
-        const header = JSON.parse(new TextDecoder().decode(headerBuf)) as FingerprintHeader
+    Promise.resolve(window.desktop?.ensurePack('scan'))
+      .then(() => Promise.all([loadFile('manifest.json'), loadFile('fingerprints.json'), loadFile('fingerprints.bin')]))
+      .then(async ([manifestBuf, headerBuf, pixels]) => {
+        if (manifestBuf.byteLength > 64 * 1024 || headerBuf.byteLength > MAX_FINGERPRINT_HEADER_BYTES) throw new Error('Scanner metadata exceeds its byte budget')
+        const manifest = scannerManifest(JSON.parse(new TextDecoder().decode(manifestBuf)))
+        for (const [name, bytes] of [['fingerprints.json', headerBuf], ['fingerprints.bin', pixels]] as const) {
+          const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+          if (bytes.byteLength !== manifest.files[name].size || digest !== manifest.files[name].sha256)
+            throw new Error('Scanner asset checksum differs. Rebuild or reinstall the matching content pack.')
+        }
+        const header = fingerprintHeader(JSON.parse(new TextDecoder().decode(headerBuf)), pixels.byteLength)
+        if (worker !== w) return
+        assetWarnings = manifest.excluded > 0
+          ? ['Some catalog entries have no usable grid reference. Check unrecognized areas and add missing items manually.'] : []
         const msg: WorkerRequest = { type: 'init', header, pixels }
         w.postMessage(msg, [pixels])
       })

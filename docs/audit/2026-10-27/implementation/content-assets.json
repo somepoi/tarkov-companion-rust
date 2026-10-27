@@ -1,0 +1,124 @@
+{
+  "kind": "content-asset-preparation",
+  "recordedAt": "2026-10-27T21:11:49.843Z",
+  "node": "v24.15.0",
+  "platform": "win32",
+  "architecture": "x64",
+  "screenshotVerification": "not performed at user request",
+  "tests": "not created or run",
+  "scanner": {
+    "modes": [
+      "pve",
+      "regular"
+    ],
+    "references": 5309,
+    "corrections": 0,
+    "modeSpecificInputs": 10718,
+    "excluded": {
+      "missing/placeholder grid image": 242
+    },
+    "files": {
+      "fingerprints.json": {
+        "size": 385885,
+        "sha256": "0cac8fe9b3f51a075ad8e72359cf1ada686601f2b8f1dc36c166c2bfe1bfcb7e"
+      },
+      "fingerprints.bin": {
+        "size": 7178112,
+        "sha256": "dac55fe37db6f297c296d460b695876ff4c8183a0ab796b93624caf4fcc1e04d"
+      },
+      "source-manifest.json": {
+        "size": 4002952,
+        "sha256": "a743e4aba0c796450fa908ca1f1dedbb41f6e7c46fde35a7b7ed289e830a288c"
+      }
+    },
+    "manifestSha256": "c77c45d127d5c3940fb86f920f0eadc77e9c89d789fc8192a1b688c04fcabf9e",
+    "offlineRebuildManifestSha256": "c77c45d127d5c3940fb86f920f0eadc77e9c89d789fc8192a1b688c04fcabf9e",
+    "offlineRebuildIdentical": true,
+    "acquisitionFailures": 0,
+    "documents": [
+      {
+        "url": "https://json.tarkov.dev/pve/items",
+        "sha256": "be06d73408e2ad49435d9e4d9875e1a010598a1c7846379cac811b424f1d9e16",
+        "size": 17232974
+      },
+      {
+        "url": "https://json.tarkov.dev/pve/items_en",
+        "sha256": "b109a2923f1c33caa8856e872f80afb6dd8916f5693cba2433aa61d7d2b9ed1d",
+        "size": 1702635
+      },
+      {
+        "url": "https://json.tarkov.dev/regular/items",
+        "sha256": "bb4a1ea923fe6eb9797165ca3b1add8fdebdf275908459175025ba93446c6825",
+        "size": 17302850
+      },
+      {
+        "url": "https://json.tarkov.dev/regular/items_en",
+        "sha256": "b109a2923f1c33caa8856e872f80afb6dd8916f5693cba2433aa61d7d2b9ed1d",
+        "size": 1702635
+      }
+    ],
+    "generatorSha256": "51d55b2b0e6e3402b7ef1b8016babc1149e6e03452274a5b0e6007dfabefce93",
+    "samplerSha256": "273574a970398e4471982e18773a4722824a2ef48b1bc0bf077a17e30991f045",
+    "priorOnlineOfflineComparisonSha256": "d6e9fa01e39a7bc4d740629335aa822b59ce076f41fe9d744b8bb5d33030fbba"
+  },
+  "ocr": {
+    "kind": "tarkov-companion-ocr-assets",
+    "version": 1,
+    "language": "eng",
+    "engine": {
+      "tesseract": "7.0.0",
+      "core": "7.0.0"
+    },
+    "model": {
+      "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int/eng.traineddata.gz",
+      "sha256": "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91"
+    },
+    "files": {
+      "worker.min.js": {
+        "size": 111307,
+        "sha256": "576b7df7e3393e137e51849357c9adb53fe7ac1bb69bfa06cf3d61520f182c6d"
+      },
+      "tesseract-core-lstm.wasm.js": {
+        "size": 3896484,
+        "sha256": "eef5f8b2f8e20e150680b20adaec4a60babafee3adbe8a94583c81fee46e8680"
+      },
+      "tesseract-core-simd-lstm.wasm.js": {
+        "size": 3899472,
+        "sha256": "c58b46a4c796c0b8afccf77591d5b875b6896b45d402bbce8caa6f5362447b38"
+      },
+      "tesseract-core-relaxedsimd-lstm.wasm.js": {
+        "size": 3905767,
+        "sha256": "861a536cf9ef8e63cb644d57bab39c388f37f7d6b6f60024b741c5f6b39a59b3"
+      },
+      "eng.traineddata.gz": {
+        "size": 2952873,
+        "sha256": "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91"
+      }
+    }
+  },
+  "buildOutputs": [
+    {
+      "directory": "dist",
+      "matchesSource": true,
+      "scannerManifestSha256": "c77c45d127d5c3940fb86f920f0eadc77e9c89d789fc8192a1b688c04fcabf9e",
+      "ocrManifestSha256": "2498ff97cfd8c773efef8a79cfe9108bd356f5b488cc5c6f51e4c3714fb7979b"
+    },
+    {
+      "directory": "dist-tauri",
+      "matchesSource": true,
+      "scannerManifestSha256": "c77c45d127d5c3940fb86f920f0eadc77e9c89d789fc8192a1b688c04fcabf9e",
+      "ocrManifestSha256": "2498ff97cfd8c773efef8a79cfe9108bd356f5b488cc5c6f51e4c3714fb7979b"
+    }
+  ],
+  "verification": [
+    "content tools typecheck",
+    "frontend/Electron typecheck",
+    "lint",
+    "Electron build",
+    "Tauri frontend build",
+    "built asset integrity",
+    "native custom-protocol development build",
+    "source design detector",
+    "read-only source review"
+  ]
+}

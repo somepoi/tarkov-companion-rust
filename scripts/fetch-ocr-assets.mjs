@@ -1,39 +1,39 @@
-// Puts the offline text reader (Tesseract, Apache-2.0) into public/ocr so it ships with the app:
-// the tesseract.js worker, the LSTM engine builds, and the English model.
-// Usage: npm run ocr:assets   (re-runs skip the model download when it is cached)
-import crypto from 'node:crypto'
+// Prepare the incumbent offline English engine/model without partial publication.
 import fs from 'node:fs'
 import path from 'node:path'
+import { atomicBytes, fetchBytes, fileEntries, generatedPath, newAssetStage, publishAssetStage, root, sha256 } from './lib/content-assets.mjs'
+import { MODEL_URL, MODEL_SHA256 } from './lib/ocr-model.mjs'
 
-const OUT = 'public/ocr'
-const CACHE = 'assets-src/ocr'
-const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int/eng.traineddata.gz'
-// The model ships inside the app: refuse anything but the exact file that was checked (2026-10-07).
-const MODEL_SHA256 = '45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91'
-const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
-
-fs.mkdirSync(OUT, { recursive: true })
-fs.mkdirSync(CACHE, { recursive: true })
-
-const copy = (from, to) => {
-  fs.copyFileSync(from, path.join(OUT, to))
-  console.log(`  ${to} (${(fs.statSync(from).size / 1e6).toFixed(1)} MB)`)
+const offline = process.argv.slice(2).includes('--offline')
+if (process.argv.slice(2).some((arg) => arg !== '--offline')) throw new Error('Usage: npm run ocr:assets -- [--offline]')
+const cached = generatedPath('assets-src/ocr/eng.traineddata.gz')
+let model
+if (fs.existsSync(cached)) {
+  if (fs.statSync(cached).size > 16 * 1024 * 1024) throw new Error('Cached OCR model exceeds its size limit')
+  model = fs.readFileSync(cached)
+  if (sha256(model) !== MODEL_SHA256) throw new Error('Cached OCR model checksum differs; retained for diagnosis. Move it aside before rebuilding.')
+} else {
+  if (offline) throw new Error('Offline OCR preparation requires a cached English model')
+  model = await fetchBytes(MODEL_URL, 16 * 1024 * 1024, ['cdn.jsdelivr.net'])
+  if (sha256(model) !== MODEL_SHA256) throw new Error('Downloaded OCR model checksum differs; refusing to publish it')
+  atomicBytes(cached, model)
 }
-copy('node_modules/tesseract.js/dist/worker.min.js', 'worker.min.js')
+const stage = newAssetStage('ocr')
+const names = ['worker.min.js']
+fs.copyFileSync(path.join(root, 'node_modules/tesseract.js/dist/worker.min.js'), path.join(stage, names[0]))
 for (const variant of ['lstm', 'simd-lstm', 'relaxedsimd-lstm']) {
-  copy(`node_modules/tesseract.js-core/tesseract-core-${variant}.wasm.js`, `tesseract-core-${variant}.wasm.js`)
+  const name = `tesseract-core-${variant}.wasm.js`
+  fs.copyFileSync(path.join(root, 'node_modules/tesseract.js-core', name), path.join(stage, name))
+  names.push(name)
 }
-
-const cached = path.join(CACHE, 'eng.traineddata.gz')
-if (!fs.existsSync(cached) || fs.statSync(cached).size < 1e6) {
-  console.log(`downloading ${MODEL_URL}`)
-  const res = await fetch(MODEL_URL)
-  if (!res.ok) throw new Error(`model download failed: HTTP ${res.status}`)
-  fs.writeFileSync(cached, Buffer.from(await res.arrayBuffer()))
+fs.writeFileSync(path.join(stage, 'eng.traineddata.gz'), model)
+names.push('eng.traineddata.gz')
+const installed = (name) => JSON.parse(fs.readFileSync(path.join(root, 'node_modules', name, 'package.json'), 'utf8')).version
+const manifest = {
+  kind: 'tarkov-companion-ocr-assets', version: 1, language: 'eng',
+  engine: { tesseract: installed('tesseract.js'), core: installed('tesseract.js-core') },
+  model: { url: MODEL_URL, sha256: MODEL_SHA256 }, files: fileEntries(stage, names),
 }
-if (sha256(cached) !== MODEL_SHA256) {
-  fs.rmSync(cached, { force: true })
-  throw new Error('eng.traineddata.gz does not match the expected checksum; refusing to ship it')
-}
-copy(cached, 'eng.traineddata.gz')
-console.log('OCR assets ready')
+fs.writeFileSync(path.join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+publishAssetStage(stage, 'ocr')
+console.log(`OCR assets ready: ${names.length} files; model ${MODEL_SHA256}`)

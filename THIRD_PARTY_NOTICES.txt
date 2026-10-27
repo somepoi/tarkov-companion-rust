@@ -11,7 +11,7 @@ Data and imagery (downloaded or bundled):
   the tiles are shared under the same licence, may not be used commercially, and are not part of
   the GPL program (the desktop app downloads them separately as a content pack).
 - Stash scanner data: small fingerprints of Battlestate Games item pictures (via tarkov.dev); not part
-  of the GPL program, downloaded separately as a content pack.
+  of the GPL program, bundled or supplied separately as a content pack.
 - Escape from Tarkov Wiki (escapefromtarkov.fandom.com): CC BY-SA 3.0. Quest guides and story chapters.
 - Tesseract English model (tessdata, via @tesseract.js-data/eng): Apache-2.0.
 

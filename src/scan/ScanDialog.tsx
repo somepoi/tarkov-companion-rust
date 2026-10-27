@@ -699,6 +699,7 @@ export function ScanDialog() {
           {/* Results */}
           <div className="flex w-full flex-col md:min-h-0 md:w-[400px] md:shrink-0">
             {error && <p className="m-3 rounded border border-danger/50 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</p>}
+            {status === 'done' && result?.assetWarnings?.map((warning) => <p key={warning} role="status" className="mx-3 my-2 text-xs text-warning">{warning}</p>)}
             <p className="border-b border-line px-3 py-2 text-xs text-ink-muted">Counts start at one per detected box. Verify stack amounts manually. FIR is unknown; this scan updates a checklist and cannot establish saleable surplus.</p>
             <div className="md:min-h-0 md:flex-1 md:overflow-y-auto">
               {rows.length === 0 && status !== 'scanning' && <p className="p-4 text-sm text-ink-muted">{status === 'done' ? 'No items recognised. Try "Select area" around a single stash grid.' : 'Detected items appear here.'}</p>}

@@ -422,7 +422,7 @@ function StashManager({ mode }: { mode: GameMode }) {
       : quantities?.eligible
         ? `Quantity OCR: ${quantities.suggested} suggested, ${quantities.attempted - quantities.suggested} unread/ambiguous and ${quantities.skipped} skipped by geometry/resource limits (${quantities.eligible} eligible stacks). All amounts require confirmation. `
         : 'No eligible stackable footprints; amounts remain unknown. '
-    setNotice(`${ocrFailed ? 'Name OCR was unavailable; image matching was used. ' : ''}${quantitySummary}Review each identity and amount. FIR remains unknown until confirmed. Verify the entire container before saving.`)
+    setNotice(`${result.assetWarnings?.join(' ') ?? ''} ${ocrFailed ? 'Name OCR was unavailable; image matching was used. ' : ''}${quantitySummary}Review each identity and amount. FIR remains unknown until confirmed. Verify the entire container before saving.`)
     return result.grid
   }
 
