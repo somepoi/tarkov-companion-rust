@@ -479,7 +479,7 @@ export function ItemDetails({ item }: { item: Item }) {
           </>
         )}
         <dt className="text-white/50">Needed</dt>
-        <dd>{remaining > 0 ? `${remaining} more${(need?.fir ?? 0) > 0 ? ' (found in raid)' : ''}` : need ? 'you have enough' : 'nothing open needs it'}</dd>
+        <dd>{need?.quantityUnknown || (need?.unknownFir ?? 0) > 0 ? 'Review unknown requirement details' : remaining > 0 ? `${remaining} more${(need?.fir ?? 0) > 0 ? ' (found in raid)' : ''}` : 'No additional tracked need'}</dd>
         {(need || have > 0) && (
           <>
             <dt className="text-white/50">You have</dt>
@@ -530,7 +530,7 @@ export function ItemDetails({ item }: { item: Item }) {
           <ul className="space-y-0.5">
             {need.sources.map((s, i) => (
               <li key={`${s.kind}:${s.id}:${i}`} className="flex items-center gap-1.5">
-                <span className="shrink-0 tabular-nums text-white/55">{s.count}×</span>
+                <span className="shrink-0 tabular-nums text-white/55">{s.count ?? '?'}×</span>
                 {s.kind === 'quest' && c.data.tasksById[s.id] ? (
                   <QuestLink task={c.data.tasksById[s.id]} />
                 ) : s.kind === 'hideout' ? (
@@ -540,7 +540,7 @@ export function ItemDetails({ item }: { item: Item }) {
                 ) : (
                   <span className="min-w-0 truncate">{s.name}</span>
                 )}
-                {'fir' in s && s.fir && <span className="shrink-0 text-[10px] text-amber-300">FIR</span>}
+                {'fir' in s && s.fir !== false && <span className="shrink-0 text-[10px] text-amber-300">{s.fir === true ? 'FIR' : 'FIR unknown'}</span>}
               </li>
             ))}
           </ul>

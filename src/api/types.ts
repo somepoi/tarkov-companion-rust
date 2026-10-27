@@ -381,6 +381,7 @@ export interface RawItem {
   width: number
   height: number
   weight: number
+  stackMaxSize?: number | null
   categories?: string[]
   sellToTrader?: { trader: string; priceRUB: number }[]
   buyFromTrader?: { trader: string; priceRUB: number; minTraderLevel?: number; buyLimit?: number; taskUnlock?: string | null }[]
@@ -553,6 +554,7 @@ export interface Item {
   width: number
   height: number
   types: string[]
+  stackMaxSize?: number | null
   categories: string[]
   /** Trader buy-back offers (what a trader pays you), best first. */
   sellToTrader: TraderPrice[]
@@ -687,7 +689,7 @@ export interface HideoutLevel {
   constructionTime: number
   traderRequirements: { traderId: string; level: number }[]
   stationLevelRequirements: { stationId: string; level: number }[]
-  itemRequirements: { itemId: string; count: number; foundInRaid: boolean }[]
+  itemRequirements: { itemId: string; count: number | null; foundInRaid: boolean | null }[]
   skillRequirements: { skill: string; level: number }[]
   bonuses: { type: string; name: string; value: number | null; skill: string | null }[]
   description: string

@@ -6,32 +6,62 @@ import 'leaflet/dist/leaflet.css'
 import './index.css'
 import { startAppearance } from './lib/appearance'
 
-// The search bar over the game (desktop) is its own small window: only the bar, no app, no game log.
-const isSearchBar = window.desktop?.windowKind === 'searchbar'
-// Each window loads only its own code: the search bar never loads the app's pages, stores and game-log bridge.
-const Root = isSearchBar ? lazy(() => import('./searchbar/SearchBarApp').then((m) => ({ default: m.SearchBarApp }))) : lazy(() => import('./App.tsx'))
+import { bootstrapDesktop } from './desktop/bootstrap'
 
-// The assistant was removed in 2.8.0: drop what it kept on this PC (settings, memory, the cached
-// speech model), once.
-if (!isSearchBar) {
-  try {
-    if (!localStorage.getItem('tc-assistant-removed')) {
-      for (const k of ['tarkov-companion-assistant', 'tarkov-companion-assistant-memory']) localStorage.removeItem(k)
-      void indexedDB.databases?.().then((dbs) => dbs.forEach((d) => d.name && /vosk/i.test(d.name) && indexedDB.deleteDatabase(d.name)))
-      localStorage.setItem('tc-assistant-removed', '1')
+async function start() {
+  await bootstrapDesktop()
+  // The search bar over the game (desktop) is its own small window: only the bar, no app, no game log.
+  const isSearchBar = window.desktop?.windowKind === 'searchbar'
+  // Each window loads only its own code: the search bar never loads the app's pages, stores and game-log bridge.
+  const Root = isSearchBar
+    ? lazy(() =>
+        import('./searchbar/SearchBarApp').then((m) => ({
+          default: m.SearchBarApp,
+        })),
+      )
+    : lazy(() => import('./App.tsx'))
+
+  // The assistant was removed in 2.8.0: drop what it kept on this PC (settings, memory, the cached
+  // speech model), once.
+  if (!isSearchBar) {
+    try {
+      if (!localStorage.getItem('tc-assistant-removed')) {
+        for (const k of [
+          'tarkov-companion-assistant',
+          'tarkov-companion-assistant-memory',
+        ])
+          localStorage.removeItem(k)
+        void indexedDB
+          .databases?.()
+          .then((dbs) =>
+            dbs.forEach(
+              (d) =>
+                d.name &&
+                /vosk/i.test(d.name) &&
+                indexedDB.deleteDatabase(d.name),
+            ),
+          )
+        localStorage.setItem('tc-assistant-removed', '1')
+      }
+    } catch {
+      // Only tidying up.
     }
-  } catch {
-    // Only tidying up.
   }
+
+  // Theme and text size before the first paint (no flash of the default theme).
+  if (!isSearchBar) startAppearance()
+
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <Suspense fallback={null}>
+        <Root />
+      </Suspense>
+    </StrictMode>,
+  )
 }
 
-// Theme and text size before the first paint (no flash of the default theme).
-if (!isSearchBar) startAppearance()
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Suspense fallback={null}>
-      <Root />
-    </Suspense>
-  </StrictMode>,
-)
+void start().catch((error: unknown) => {
+  const root = document.getElementById('root')
+  if (root)
+    root.textContent = `Could not start the desktop app: ${error instanceof Error ? error.message : String(error)}`
+})

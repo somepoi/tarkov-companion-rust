@@ -1,5 +1,5 @@
 {
-  "name": "tarkov-companion",
+  "name": "tarkov-companion-rust",
   "private": true,
   "version": "2.13.0",
   "type": "module",
@@ -20,7 +20,16 @@
     "scan:test": "tsx scripts/scan-test.ts",
     "ocr:assets": "node scripts/fetch-ocr-assets.mjs",
     "notices": "node scripts/build-notices.mjs",
-    "packs": "node scripts/build-packs.mjs"
+    "packs": "node scripts/build-packs.mjs",
+    "dev:tauri-ui": "vite --mode tauri --port 1420 --strictPort",
+    "build:tauri-ui": "tsc -b && vite build --mode tauri",
+    "dev:tauri": "tauri dev",
+    "build:tauri": "tauri build",
+    "check:rust": "cargo check --workspace",
+    "lint:rust": "cargo clippy --workspace -- -D warnings",
+    "bench:desktop": "node scripts/bench/desktop-baseline.mjs",
+    "bench:scan": "tsx scripts/bench/scan-baseline.ts",
+    "icons:windows": "node scripts/build-windows-icon.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
@@ -31,6 +40,8 @@
     "@tanstack/react-query": "^5.104.1",
     "@tanstack/react-query-persist-client": "^5.104.1",
     "@tanstack/react-virtual": "^3.14.13",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
@@ -60,13 +71,13 @@
     "esbuild@0.28.2": true,
     "electron-winstaller@5.4.0": true
   },
-  "productName": "Tarkov Companion",
-  "description": "Escape from Tarkov quest and map companion with built-in game log watching",
+  "productName": "Tarkov Companion Rust",
+  "description": "Local-first Escape from Tarkov PvE companion and stash manager",
   "author": "David",
   "main": "dist-electron/main.cjs",
   "build": {
-    "appId": "io.github.david04-09.tarkov-companion",
-    "productName": "Tarkov Companion",
+    "appId": "io.github.somepoi.tarkov-companion-rust",
+    "productName": "Tarkov Companion Rust",
     "copyright": "Copyright (C) 2026 David04-09. Free software under the GNU GPL v3 or later. Not affiliated with Battlestate Games.",
     "directories": {
       "output": "release",
@@ -85,19 +96,14 @@
     "asarUnpack": [
       "build/**"
     ],
-    "publish": {
-      "provider": "github",
-      "owner": "David04-09",
-      "repo": "tarkov-companion",
-      "releaseType": "release"
-    },
+    "publish": null,
     "win": {
       "target": [
         "nsis",
         "portable"
       ],
       "icon": "build/icon.png",
-      "artifactName": "TarkovCompanion-${version}-${arch}.${ext}",
+      "artifactName": "TarkovCompanionRust-${version}-${arch}.${ext}",
       "verifyUpdateCodeSignature": false
     },
     "nsis": {
@@ -107,14 +113,14 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Tarkov Companion",
+      "shortcutName": "Tarkov Companion Rust",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "TarkovCompanion-Setup-${version}.${ext}",
-      "guid": "0077fda7-d95b-5e13-bc16-23478dc4fd96"
+      "artifactName": "TarkovCompanionRust-Setup-${version}.${ext}",
+      "guid": "5492dde8-2462-4b54-9ddf-66e53df5cef3"
     },
     "portable": {
-      "artifactName": "TarkovCompanion-${version}-portable.exe"
+      "artifactName": "TarkovCompanionRust-${version}-portable.exe"
     },
     "electronFuses": {
       "runAsNode": false,
@@ -135,10 +141,18 @@
       }
     ]
   },
-  "homepage": "https://github.com/David04-09/tarkov-companion",
+  "homepage": "https://github.com/somepoi/tarkov-companion-rust",
   "repository": {
     "type": "git",
-    "url": "https://github.com/David04-09/tarkov-companion.git"
+    "url": "https://github.com/somepoi/tarkov-companion-rust.git"
   },
-  "license": "GPL-3.0-or-later"
+  "license": "GPL-3.0-or-later",
+  "companion": {
+    "dataDirectoryName": "Tarkov Companion Rust",
+    "artifactPrefix": "TarkovCompanionRust",
+    "updaterCacheDirectoryName": "tarkov-companion-rust-updater",
+    "updatesEnabled": false,
+    "automaticCleanupEnabled": false,
+    "contentPackRepository": "https://github.com/somepoi/tarkov-companion-rust"
+  }
 }

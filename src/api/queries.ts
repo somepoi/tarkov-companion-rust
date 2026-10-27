@@ -512,6 +512,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
       basePrice: raw.basePrice ?? 0,
       width: raw.width || 1,
       height: raw.height || 1,
+      stackMaxSize: typeof raw.stackMaxSize === 'number' && Number.isSafeInteger(raw.stackMaxSize) && raw.stackMaxSize > 0 ? raw.stackMaxSize : null,
       types: raw.types ?? [],
       categories: raw.categories ?? [],
       sellToTrader: (raw.sellToTrader ?? [])
@@ -572,7 +573,11 @@ export async function fetchHideout(gameMode: GameMode, signal?: AbortSignal): Pr
           stationLevelRequirements: (l.stationLevelRequirements ?? []).map((r) => ({ stationId: r.station, level: r.level })),
           itemRequirements: (l.itemRequirements ?? [])
             .filter((r) => r && r.item)
-            .map((r) => ({ itemId: r.item, count: r.count ?? 1, foundInRaid: Boolean(r.attributes?.foundInRaid) })),
+            .map((r) => ({
+              itemId: r.item,
+              count: Number.isSafeInteger(r.count) && r.count >= 0 ? r.count : null,
+              foundInRaid: typeof r.attributes?.foundInRaid === 'boolean' ? r.attributes.foundInRaid : null,
+            })),
           skillRequirements: (l.skillRequirements ?? []).map((r) => ({ skill: t(r.skill, r.skill), level: r.level })),
           bonuses: (l.bonuses ?? []).map((b) => ({
             type: b.type,

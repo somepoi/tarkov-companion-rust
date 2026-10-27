@@ -12,7 +12,11 @@ export interface ChangelogEntry {
 }
 
 /** Committed, waiting for the next update. */
-export const UNRELEASED: string[] = []
+export const UNRELEASED: string[] = [
+  'Fork isolation: separate Windows installer, application data, update cache and cleanup names. Upstream updates and automatic cleanup are disabled while the fork release channel is prepared.',
+  'Item guidance now distinguishes known needs from unknown quantities, FIR conditions and missing data. The legacy checklist no longer treats an empty requirement list as permission to sell.',
+  'Native preview: Rust/Tauri host and persistent Stash Manager with named containers, reviewed scan drafts, atomic snapshot replacement and undo. Unknown recognition facts remain visible for review. Electron remains available while native desktop integrations are migrated.',
+]
 
 export const RELEASES: ChangelogEntry[] = [
   {

@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { app, net } from 'electron'
 import type { PackName, PackProgress } from '../src/shared/desktop-api'
+import { APP_IDENTITY } from './appIdentity'
 
 interface PackInfo {
   file: string
@@ -24,7 +25,7 @@ interface PackManifest {
 /** Built in at compile time from electron/packs.generated.json (null in development). */
 declare const __TC_PACKS__: PackManifest | null
 
-const RELEASES = 'https://github.com/David04-09/tarkov-companion/releases/download'
+const RELEASES = `${APP_IDENTITY.contentPackRepository}/releases/download`
 const MAGIC = 'TCPK1\n'
 const MAX_PACK_BYTES = 300 * 1024 * 1024
 export const PACK_NAMES: PackName[] = ['lighthouse', 'scan']
@@ -77,7 +78,7 @@ async function install(name: PackName, onProgress: (p: PackProgress) => void) {
   const url = `${base}/${info.file}`
   onProgress({ name, label: info.label, received: 0, total: info.size, state: 'downloading' })
   const res = await net.fetch(url)
-  if (!res.ok || !res.body) throw new Error(`Download failed (HTTP ${res.status})`)
+  if (!res.ok || !res.body) throw new Error(`Content pack unavailable for this fork release (HTTP ${res.status}). Install the matching fork content pack or build the assets locally.`)
   const chunks: Buffer[] = []
   let received = 0
   let lastReport = 0

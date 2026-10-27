@@ -52,10 +52,10 @@ export function ItemCollectionPage() {
     const needle = search.trim().toLowerCase()
     const list = [...needs.values()].filter((n) => {
       const item = items.data?.items[n.itemId]
-      if (firOnly && n.fir === 0) return false
+      if (firOnly && n.fir === 0 && n.unknownFir === 0 && !n.quantityUnknown) return false
       if (trader !== 'all' && !n.sources.some((s) => s.kind === 'quest' && s.traderId === trader)) return false
       if (station !== 'all' && !n.sources.some((s) => (s.kind === 'hideout' || s.kind === 'craft') && s.stationId === station)) return false
-      if (hideDone && remainingFor(n, inventory.collected[n.itemId] ?? 0) === 0) return false
+      if (hideDone && !n.quantityUnknown && n.unknownFir === 0 && remainingFor(n, inventory.collected[n.itemId] ?? 0) === 0) return false
       if (needle && !(item?.name ?? n.itemId).toLowerCase().includes(needle)) return false
       return true
     })
@@ -169,13 +169,13 @@ export function ItemCollectionPage() {
                       {n.alternatives.length > 0 && <div className="text-xs text-ink-dim">or {n.alternatives.length} alternative item{n.alternatives.length === 1 ? '' : 's'}</div>}
                     </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">
-                      {n.total}
-                      <div className="text-[10px] text-ink-dim">{n.fir > 0 ? `${n.fir} FIR` : ''}{n.fir > 0 && n.nonFir > 0 ? ' · ' : ''}{n.nonFir > 0 ? `${n.nonFir} any` : ''}</div>
+                      {n.quantityUnknown ? `${n.total} + ?` : n.total}
+                      <div className="text-[10px] text-ink-dim">{[n.fir > 0 ? `${n.fir} FIR` : '', n.nonFir > 0 ? `${n.nonFir} any` : '', n.unknownFir > 0 ? `${n.unknownFir} FIR unknown` : ''].filter(Boolean).join(' · ')}</div>
                     </td>
                     <td className="px-3 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
                       <input type="number" min={0} value={collected} onChange={(e) => setCollected(gameMode, n.itemId, e.target.valueAsNumber)} aria-label={`Collected ${item?.name ?? ''}`} className="w-20 rounded border border-line bg-surface px-2 py-1 text-right text-sm focus:border-accent focus:outline-none" />
                     </td>
-                    <td className={`px-3 py-1.5 text-right tabular-nums ${remaining === 0 ? 'text-success' : ''}`}>{remaining}</td>
+                    <td className={`px-3 py-1.5 text-right tabular-nums ${remaining === 0 && !n.quantityUnknown && n.unknownFir === 0 ? 'text-success' : ''}`}>{n.quantityUnknown || n.unknownFir > 0 ? 'Review' : remaining}</td>
                     <td className="px-3 py-1.5 text-xs text-ink-muted">
                       {[quests ? `${quests} quest${quests > 1 ? 's' : ''}` : '', hide ? `${hide} hideout` : '', crafts ? `${crafts} craft${crafts > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}
                     </td>
@@ -189,7 +189,7 @@ export function ItemCollectionPage() {
                             <li key={i} className="flex gap-2">
                               <span className="w-14 shrink-0 uppercase tracking-wide text-ink-dim">{s.kind}</span>
                               <span className="flex-1">{s.name}{s.kind === 'quest' ? ` (${s.traderName})` : ''}</span>
-                              <span className="tabular-nums text-ink-muted">×{s.count}{'fir' in s && s.fir ? ' FIR' : ''}</span>
+                              <span className="tabular-nums text-ink-muted">×{s.count ?? '?'}{'fir' in s ? s.fir === true ? ' FIR' : s.fir === null ? ' · FIR unknown' : '' : ''}</span>
                             </li>
                           ))}
                         </ul>

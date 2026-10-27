@@ -38,6 +38,7 @@ function PageLoading() {
 }
 
 export function Layout() {
+  useEffect(() => { void window.desktop?.reportUiReady?.().catch(() => undefined) }, [])
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const landingPage = usePrefs((s) => s.landingPage)

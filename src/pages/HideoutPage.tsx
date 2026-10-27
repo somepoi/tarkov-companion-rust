@@ -36,7 +36,7 @@ function LevelRequirements({ level, stations, stationLevels, traderName, items, 
               <li key={r.itemId + r.count} className="flex items-center gap-2 rounded bg-surface px-2 py-1">
                 {item?.iconLink && <img src={item.iconLink} alt="" className="h-6 w-6 object-contain" loading="lazy" />}
                 <span className="min-w-0 flex-1 truncate">{item?.name ?? '…'}</span>
-                <span className={`tabular-nums ${have >= r.count ? 'text-success' : 'text-ink-muted'}`}>{Math.min(have, r.count)}/{r.count}{r.foundInRaid ? ' FIR' : ''}</span>
+                <span className={`tabular-nums ${r.count !== null && have >= r.count ? 'text-success' : 'text-ink-muted'}`}>{r.count === null ? `${have}/?` : `${Math.min(have, r.count)}/${r.count}`}{r.foundInRaid === true ? ' FIR' : r.foundInRaid === null ? ' · FIR unknown' : ''}</span>
               </li>
             )
           })}

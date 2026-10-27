@@ -1,0 +1,30 @@
+{
+  "logsPath": null,
+  "startWithWindows": false,
+  "startMinimized": false,
+  "minimizeToTray": true,
+  "openMapOnRaid": true,
+  "initialBackfillDone": false,
+  "paused": false,
+  "scanHotkey": "Alt+Shift+S",
+  "searchBar": false,
+  "searchBarHotkey": "Alt+Shift+H",
+  "searchBarSearchHotkey": "Alt+Shift+F",
+  "searchBarLockHotkey": "Alt+Shift+L",
+  "searchBarMapHotkey": "Alt+Shift+M",
+  "knownProfileId": null,
+  "knownGameVersion": null,
+  "setupDone": false,
+  "updateMode": "off",
+  "trackPosition": true,
+  "clearPositionShots": false,
+  "backupKeep": 7,
+  "cleanAfterUpdate": false,
+  "lastCleanedVersion": null,
+  "trayNoticeShown": false,
+  "searchBarPos": null,
+  "window": {
+    "width": 1360,
+    "height": 860
+  }
+}

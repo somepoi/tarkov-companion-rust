@@ -316,7 +316,7 @@ function PricesSection() {
   const [note, setNote] = useState<string | null>(null)
   return (
     <Section id="prices" title="Prices & game data" icon={Database} keywords="price flea trader sell buy value fee intelligence center refresh update data cache offline tarkov.dev new quests content patch check interval">
-      <Row label="Value items by" hint="Used for item worth everywhere: scanner keep/sell, the flea and ammo tabs. Best = whichever pays more (selling) or costs less (buying).">
+      <Row label="Value items by" hint="Used for estimated item values on the flea and ammo tabs. Best = whichever pays more (selling) or costs less (buying).">
         <Segmented value={source} onChange={setSource} label="Value items by" options={[{ value: 'best', label: 'Best of both' }, { value: 'trader', label: 'Traders' }, { value: 'flea', label: 'Flea market' }]} />
       </Row>
       <Row label="Lower flea fees (Intelligence Center 3)" hint="Automatic reads your Intelligence Center level from the Hideout tab.">
@@ -505,11 +505,11 @@ function ScannerSection() {
           ]}
         />
       </Row>
-      <Row label="Apply as" hint="Add counts on top of what you have, or replace your counts with what the screenshot shows.">
-        <Segmented value={applyMode} onChange={setApplyMode} label="Apply as" options={[{ value: 'add', label: 'Add' }, { value: 'replace', label: 'Replace' }]} />
+      <Row label="Apply as" hint="Add selected counts, or set only the selected item counts. Other items stay unchanged; this does not replace a container.">
+        <Segmented value={applyMode} onChange={setApplyMode} label="Apply as" options={[{ value: 'add', label: 'Add' }, { value: 'replace', label: 'Set selected' }]} />
       </Row>
-      <Row label="Keep / sell colours" hint="Green and red tints on the screenshot for items to keep or sell.">
-        <Switch checked={tint} onChange={setTint} label="Keep / sell colours" />
+      <Row label="Review highlight" hint="Highlight detected regions to verify identity, quantity and FIR. The checklist does not establish saleable surplus.">
+        <Switch checked={tint} onChange={setTint} label="Review highlight" />
       </Row>
     </Section>
   )

@@ -11,6 +11,7 @@ import { matchesSearch, rankMatch, searchWords } from '../lib/fleaSearch'
 import { useLinkParam } from '../lib/linkParam'
 import { formatNumber, formatRoubles, formatTimeAgo } from '../lib/format'
 import { remainingFor, type ItemNeed } from '../lib/needs'
+import { trackedItemAdvice, type TrackedNeedCoverage } from '../lib/recommendationSafety'
 import { useFleaStore, type FleaSortKey } from '../store/flea'
 
 const TEN_MINUTES = 10 * 60 * 1000
@@ -120,6 +121,7 @@ interface RowProps {
   open: boolean
   needed: ItemNeed | undefined
   collected: number
+  coverage: TrackedNeedCoverage
   traderName: (id: string | null) => string
   changes: Changes | undefined
   onChanges: (id: string, c: Changes) => void
@@ -130,7 +132,7 @@ interface RowProps {
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 
 /** One row; loads its price history when it has been on screen for a moment (or is expanded). */
-const FleaRow = memo(function FleaRow({ row, open, needed, collected, traderName, changes, onChanges, onToggle }: RowProps) {
+const FleaRow = memo(function FleaRow({ row, open, needed, collected, coverage, traderName, changes, onChanges, onToggle }: RowProps) {
   // Load history once the row has been on screen for a moment, or immediately when expanded.
   const [lingered, setLingered] = useState(false)
   useEffect(() => {
@@ -145,6 +147,7 @@ const FleaRow = memo(function FleaRow({ row, open, needed, collected, traderName
 
   const fir = needed?.fir ? needed.fir > 0 : false
   const remaining = needed ? remainingFor(needed, collected) : 0
+  const advice = trackedItemAdvice(needed, coverage)
   return (
     <div>
       <div role="button" tabIndex={0} onClick={() => onToggle(row.item.id)} onKeyDown={(e) => e.key === 'Enter' && onToggle(row.item.id)} className={`${GRID} h-11 cursor-pointer border-b border-line text-sm hover:bg-surface-3 ${open ? 'bg-surface-3' : ''}`}>
@@ -183,15 +186,14 @@ const FleaRow = memo(function FleaRow({ row, open, needed, collected, traderName
             {row.traderBuy != null && <div className="mt-1 text-ink-dim">Buy from {traderName(row.traderBuyId)}: {formatRoubles(row.traderBuy)}</div>}
           </div>
           <div>
-            <h4 className="mb-1 font-semibold uppercase tracking-wide text-ink-muted">Why keep it</h4>
-            {!needed ? (
-              <span className="text-ink-dim">Nothing you track needs this: sell it.</span>
-            ) : (
+            <h4 className="mb-1 font-semibold uppercase tracking-wide text-ink-muted">Tracked requirements</h4>
+            <div className={`mb-1 inline-flex rounded border px-1.5 py-0.5 font-semibold ${advice.kind === 'KEEP' ? 'border-accent/60 bg-accent/15 text-accent' : 'border-line bg-surface-3 text-ink-muted'}`}>{advice.label}</div>
+            <p className="mb-1 text-ink-muted">{advice.detail}</p>
+            {needed && (
               <>
-                <div className={`mb-1 inline-flex rounded border px-1.5 py-0.5 font-semibold ${remaining > 0 ? 'border-accent/60 bg-accent/15 text-accent' : 'border-success/60 bg-success/15 text-success'}`}>{remaining > 0 ? `Keep it (${remaining} more needed)` : 'Sell it (you have enough)'}</div>
                 <ul className="space-y-0.5">
                   {needed.sources.slice(0, 6).map((s, i) => (
-                    <li key={i} className="flex gap-2"><span className="w-12 shrink-0 uppercase text-ink-dim">{s.kind}</span><span className="min-w-0 flex-1 truncate">{s.name}</span><span className="tabular-nums text-ink-muted">×{s.count}{'fir' in s && s.fir ? ' FIR' : ''}</span></li>
+                    <li key={i} className="flex gap-2"><span className="w-12 shrink-0 uppercase text-ink-dim">{s.kind}</span><span className="min-w-0 flex-1 truncate">{s.name}</span><span className="tabular-nums text-ink-muted">×{s.count ?? '?'}{'fir' in s ? s.fir === true ? ' FIR' : s.fir === null ? ' FIR unknown' : '' : ''}</span></li>
                   ))}
                   {needed.sources.length > 6 && <li className="text-ink-dim">…and {needed.sources.length - 6} more</li>}
                 </ul>
@@ -207,7 +209,7 @@ const FleaRow = memo(function FleaRow({ row, open, needed, collected, traderName
 export function FleaMarketPage() {
   const items = useItems(true, TEN_MINUTES)
   const gameData = useGameData()
-  const { needs, inventory } = useNeeds()
+  const { needs, coverage, inventory } = useNeeds()
   const filters = useFleaStore((s) => s.filters)
   const setFilters = useFleaStore((s) => s.setFilters)
   const resetFilters = useFleaStore((s) => s.resetFilters)
@@ -449,6 +451,7 @@ export function FleaMarketPage() {
                     open={r.item.id === expandedId}
                     needed={needs.get(r.item.id)}
                     collected={inventory.collected[r.item.id] ?? 0}
+                    coverage={coverage}
                     traderName={traderName}
                     changes={changesRef.current.get(r.item.id)}
                     onChanges={onChanges}

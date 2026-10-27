@@ -1,0 +1,118 @@
+import { invoke, isTauri } from '@tauri-apps/api/core'
+import type { GameMode } from '../api/client'
+
+export interface LocalProfile {
+  id: string
+  mode: GameMode
+  name: string
+}
+export interface Container {
+  id: string
+  profileId: string
+  name: string
+  kind: string
+  columns: number
+  rows: number
+  revision: number
+  currentSnapshotId: string | null
+}
+export interface CellBox {
+  column: number
+  row: number
+  width: number
+  height: number
+  rotated: boolean
+}
+export type Fir = 'yes' | 'no' | 'unknown'
+export interface Stack {
+  id: string
+  itemId: string | null
+  quantity: number | null
+  fir: Fir
+  location: CellBox
+  provenance: {
+    identityConfirmed: boolean
+    quantityConfirmed: boolean
+    method: string
+    screenshotHash: string | null
+    observationId: string | null
+    corrected: boolean
+  }
+  neverSell: boolean
+}
+export interface Observation {
+  id: string
+  screenshotHash: string
+  location: CellBox
+  candidates: { itemId: string; error: number }[]
+  quantity: number | null
+  fir: Fir
+  reviewed: boolean
+}
+export interface ScanDraft {
+  fullCoverageConfirmed: boolean
+  reviewConfirmed: boolean
+  capturedAt: string
+  algorithmVersion: string
+  catalogVersion: string
+  stacks: Stack[]
+  observations: Observation[]
+}
+export interface ScanSession {
+  id: string
+  containerId: string
+  baseRevision: number
+  scope: 'full' | 'partial'
+  status: 'draft' | 'committed' | 'abandoned'
+  draft: ScanDraft | null
+}
+export interface Snapshot {
+  id: string
+  revision: number
+  capturedAt: string
+  algorithmVersion: string
+  catalogVersion: string
+  fullCoverageConfirmed: boolean
+  stacks: Stack[]
+}
+export interface Inventory {
+  profile: LocalProfile
+  containers: { container: Container; snapshot: Snapshot | null }[]
+  legacy: {
+    profileId: string
+    sourceHash: string
+    counts: Record<string, number>
+  } | null
+}
+export interface CommitResult {
+  containerId: string
+  snapshotId: string
+  revision: number
+  sessionId: string | null
+  previousSnapshotId: string | null
+}
+
+export const nativeInventoryAvailable = () => isTauri()
+
+export async function inventoryCall<T>(
+  operation: Record<string, unknown>,
+): Promise<T> {
+  if (!isTauri())
+    throw new Error(
+      'Persistent Stash Manager requires the native Rust build. Your existing Item Collection remains available.',
+    )
+  try {
+    return await invoke<T>('inventory_call', { operation })
+  } catch (error) {
+    throw new Error(typeof error === 'string' ? error : JSON.stringify(error), {
+      cause: error,
+    })
+  }
+}
+
+export async function archiveScreenshot(image: Blob): Promise<string> {
+  return invoke<string>(
+    'archive_screenshot',
+    new Uint8Array(await image.arrayBuffer()),
+  )
+}

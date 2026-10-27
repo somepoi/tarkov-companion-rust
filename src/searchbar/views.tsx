@@ -291,11 +291,11 @@ export function StationView({ id }: { id: string }) {
               const have = c.collected[r.itemId] ?? 0
               return (
                 <li key={r.itemId} className="flex items-center gap-1.5">
-                  <span className={`w-14 shrink-0 tabular-nums text-xs ${have >= r.count ? 'text-green-300' : 'text-white/60'}`}>
-                    {Math.min(have, r.count)}/{formatCount(r.count)}
+                  <span className={`w-14 shrink-0 tabular-nums text-xs ${r.count !== null && have >= r.count ? 'text-green-300' : 'text-white/60'}`}>
+                    {r.count === null ? `${have}/?` : `${Math.min(have, r.count)}/${formatCount(r.count)}`}
                   </span>
                   <ItemLink id={r.itemId} />
-                  {r.foundInRaid && <span className="shrink-0 text-[10px] text-amber-300">FIR</span>}
+                  {r.foundInRaid !== false && <span className="shrink-0 text-[10px] text-amber-300">{r.foundInRaid === true ? 'FIR' : 'FIR unknown'}</span>}
                 </li>
               )
             })}
@@ -334,7 +334,7 @@ export function HideoutView() {
           const level = c.stationLevels[s.id] ?? 0
           const next = s.levels.find((l) => l.level === level + 1)
           const missing = next
-            ? next.itemRequirements.filter((r) => (c.collected[r.itemId] ?? 0) < r.count).length +
+            ? next.itemRequirements.filter((r) => r.count === null || (c.collected[r.itemId] ?? 0) < r.count).length +
               next.stationLevelRequirements.filter((r) => (c.stationLevels[r.stationId] ?? 0) < r.level).length +
               next.traderRequirements.filter((r) => (c.traderLevels[r.traderId] ?? 1) < r.level).length
             : 0

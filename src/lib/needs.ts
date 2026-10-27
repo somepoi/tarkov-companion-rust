@@ -3,14 +3,18 @@ import type { Faction } from '../store/progress'
 import { isFactionEligible } from './taskStatus'
 
 export type NeedSource =
-  | { kind: 'quest'; id: string; name: string; traderId: string; traderName: string; count: number; fir: boolean }
-  | { kind: 'hideout'; id: string; name: string; stationId: string; level: number; count: number; fir: boolean }
+  | { kind: 'quest'; id: string; name: string; traderId: string; traderName: string; count: number | null; fir: boolean | null }
+  | { kind: 'hideout'; id: string; name: string; stationId: string; level: number; count: number | null; fir: boolean | null }
   | { kind: 'craft'; id: string; name: string; stationId: string; count: number }
 
 export interface ItemNeed {
   itemId: string
   fir: number
   nonFir: number
+  /** Quantities whose FIR requirement was not provided by the source. */
+  unknownFir: number
+  /** A requirement exists, but its quantity cannot be safely added to the total. */
+  quantityUnknown: boolean
   total: number
   sources: NeedSource[]
   /** Other item ids the quest would also accept (first id is the canonical one). */
@@ -43,17 +47,22 @@ export function computeNeeds(input: NeedsInput): Map<string, ItemNeed> {
   const get = (itemId: string): ItemNeed => {
     let n = needs.get(itemId)
     if (!n) {
-      n = { itemId, fir: 0, nonFir: 0, total: 0, sources: [], alternatives: [] }
+      n = { itemId, fir: 0, nonFir: 0, unknownFir: 0, quantityUnknown: false, total: 0, sources: [], alternatives: [] }
       needs.set(itemId, n)
     }
     return n
   }
-  const add = (itemId: string, count: number, fir: boolean, source: NeedSource, alternatives: string[] = []) => {
-    if (!itemId || count <= 0 || CURRENCY_ITEM_IDS.has(itemId)) return
+  const add = (itemId: string, count: number | null, fir: boolean | null, source: NeedSource, alternatives: string[] = []) => {
+    if (!itemId || count === 0 || CURRENCY_ITEM_IDS.has(itemId)) return
     const n = get(itemId)
-    if (fir) n.fir += count
-    else n.nonFir += count
-    n.total += count
+    // A missing/invalid amount is evidence of a requirement, not one assumed item.
+    if (count === null || !Number.isSafeInteger(count) || count < 0) n.quantityUnknown = true
+    else {
+      if (fir === true) n.fir += count
+      else if (fir === false) n.nonFir += count
+      else n.unknownFir += count
+      n.total += count
+    }
     n.sources.push(source)
     for (const a of alternatives) if (a !== itemId && !n.alternatives.includes(a)) n.alternatives.push(a)
   }
@@ -64,9 +73,9 @@ export function computeNeeds(input: NeedsInput): Map<string, ItemNeed> {
       if (!HAND_IN_TYPES.has(o.type) || o.itemIds.length === 0 || o.optional) continue
       add(
         o.itemIds[0],
-        o.count ?? 1,
-        Boolean(o.foundInRaid),
-        { kind: 'quest', id: task.id, name: task.name, traderId: task.trader.id, traderName: task.trader.name, count: o.count ?? 1, fir: Boolean(o.foundInRaid) },
+        o.count,
+        o.foundInRaid,
+        { kind: 'quest', id: task.id, name: task.name, traderId: task.trader.id, traderName: task.trader.name, count: o.count, fir: o.foundInRaid },
         o.itemIds.slice(1),
       )
     }

@@ -55,3 +55,8 @@ public/ocr/
 # Content packs (npm run packs): uploaded with each release, never committed
 /release-packs/
 /electron/packs.generated.json
+
+# Rust and Tauri build output
+/target/
+/src-tauri/gen/
+/dist-tauri/

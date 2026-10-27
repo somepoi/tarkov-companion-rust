@@ -24,9 +24,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { autoUpdater } from 'electron-updater'
 import type { UpdateMode, UpdateOutcome, UpdateStatus } from '../src/shared/desktop-api'
+import { APP_IDENTITY, RELEASES_URL, forkUpdaterCachePath, installerFileName } from './appIdentity'
 
 const SIX_HOURS = 6 * 60 * 60 * 1000
-const RELEASES_URL = 'https://github.com/David04-09/tarkov-companion/releases/latest'
 /** electron-builder sets this when the app runs as the single-file portable exe. */
 const IS_PORTABLE = Boolean(process.env.PORTABLE_EXECUTABLE_FILE)
 
@@ -70,7 +70,8 @@ const fileLogger = {
 
 /** The installer electron-updater downloaded for this version (its cache folder, see app-update.yml). */
 function downloadedInstaller(version: string): string | null {
-  const file = path.join(process.env.LOCALAPPDATA ?? '', 'tarkov-companion-updater', 'pending', `TarkovCompanion-Setup-${version}.exe`)
+  if (!process.env.LOCALAPPDATA) return null
+  const file = path.join(forkUpdaterCachePath(process.env.LOCALAPPDATA), 'pending', installerFileName(version))
   return fs.existsSync(file) ? file : null
 }
 
@@ -123,6 +124,10 @@ export function getUpdateStatus(): UpdateStatus {
 export function setupUpdater(broadcast: Broadcast, initialMode: UpdateMode = 'auto') {
   broadcastFn = broadcast
   mode = initialMode
+  if (!APP_IDENTITY.updatesEnabled) {
+    setStatus({ state: 'disabled', message: 'Fork updates are disabled until the release channel is verified. Install releases manually.' })
+    return
+  }
   if (!app.isPackaged) {
     setStatus({ state: 'disabled', message: 'Updates only work in the installed app.' })
     return
@@ -155,6 +160,7 @@ export function setupUpdater(broadcast: Broadcast, initialMode: UpdateMode = 'au
 }
 
 export async function checkForUpdates(): Promise<UpdateStatus> {
+  if (!APP_IDENTITY.updatesEnabled) return status
   if (!updater) return status
   if (status.state === 'ready' || status.state === 'downloading' || status.state === 'available' || status.state === 'installing') return status
   try {
@@ -167,6 +173,7 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
 
 /** Installed app: quits and runs the downloaded installer silently, then restarts. Portable: opens the download page. */
 export function installUpdate(): void {
+  if (!APP_IDENTITY.updatesEnabled) return
   if (status.state === 'available') {
     // Installed app with "only tell me": download now, then "Restart to update" as usual.
     if (!IS_PORTABLE && updater) {
@@ -189,7 +196,7 @@ export function installUpdate(): void {
   logLine('info', `Restart to update clicked for ${version}`)
   if (Notification.isSupported()) {
     new Notification({
-      title: `Updating Tarkov Companion to ${version}`,
+      title: `Updating ${APP_IDENTITY.name} to ${version}`,
       body: "It closes now and opens again by itself in about a minute. Please don't open it in the meantime.",
     }).show()
   }
@@ -202,6 +209,7 @@ export function installUpdate(): void {
  * (the visible setup, which closes the app itself), or the releases page if it is gone.
  */
 export function runInstallerManually(version: string): void {
+  if (!APP_IDENTITY.updatesEnabled) return
   const file = downloadedInstaller(version)
   logLine('info', `Run the installer by hand for ${version}: ${file ?? 'not downloaded, opening releases page'}`)
   if (!file) {

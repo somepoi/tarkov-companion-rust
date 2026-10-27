@@ -6,6 +6,7 @@ import { TAB_COLORS, usePrefs } from '../store/prefs'
 import { GAME_MODES } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { WatcherStatus } from '../desktop/WatcherStatus'
+import { APP_NAME } from '../lib/app-info'
 
 function GameModeToggle({ compact }: { compact: boolean }) {
   const gameMode = useProgressStore((s) => s.gameMode)
@@ -70,7 +71,7 @@ export function Sidebar() {
       <div className="flex h-14 items-center gap-2 border-b border-line px-3">
         <Shield className="h-6 w-6 shrink-0 text-accent" aria-hidden />
         <span className={`truncate text-sm font-semibold tracking-wide ${labelClass}`}>
-          Tarkov Companion
+          {APP_NAME}
         </span>
         <button
           type="button"

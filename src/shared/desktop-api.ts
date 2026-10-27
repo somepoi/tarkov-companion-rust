@@ -220,6 +220,8 @@ export interface PackProgress {
 }
 
 export interface DesktopApi {
+  /** Optional instrumentation: marks React layout mounted in an isolated benchmark run. */
+  reportUiReady?: () => Promise<void>
   platform: string
   appVersion: string
   /** 'main' for the app window, 'searchbar' for the search bar over the game. */

@@ -4,7 +4,7 @@ import { defineConfig, type Plugin } from 'vite'
 import electron from 'vite-plugin-electron/simple'
 import { existsSync, readFileSync } from 'node:fs'
 
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; repository?: { url?: string } }
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; productName: string; repository?: { url?: string } }
 const repoUrl = (pkg.repository?.url ?? '').replace(/^git+/, '').replace(/.git$/, '')
 // Content pack hashes (scripts/build-packs.mjs); null when packs were not built (development).
 const packsManifest = existsSync('electron/packs.generated.json') ? readFileSync('electron/packs.generated.json', 'utf8') : 'null'
@@ -43,16 +43,18 @@ function contentSecurityPolicy(): Plugin {
 // file://. Plain `vite` keeps producing the web app.
 export default defineConfig(({ mode }) => {
   const desktop = mode === 'desktop'
+  const tauri = mode === 'tauri'
   const cjs = { rollupOptions: { output: { format: 'cjs' as const, entryFileNames: '[name].cjs' } } }
   return {
-    base: desktop ? './' : '/',
+    base: desktop || tauri ? './' : '/',
+    ...(tauri ? { build: { outDir: 'dist-tauri' } } : {}),
     // Classic (non-module) workers also load from file:// in the packaged desktop app.
     worker: { format: 'iife' as const },
-    define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version), 'import.meta.env.VITE_REPO_URL': JSON.stringify(repoUrl) },
+    define: { 'import.meta.env.VITE_APP_NAME': JSON.stringify(pkg.productName), 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version), 'import.meta.env.VITE_REPO_URL': JSON.stringify(repoUrl) },
     plugins: [
       react(),
       tailwindcss(),
-      contentSecurityPolicy(),
+      ...(!tauri ? [contentSecurityPolicy()] : []),
       ...(desktop
         ? [
             electron({

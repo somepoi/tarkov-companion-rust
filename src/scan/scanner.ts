@@ -76,8 +76,7 @@ function ensureWorker(): Promise<number> {
         w.postMessage(msg, [pixels])
       })
       .catch((err: unknown) => {
-        ready = null
-        reject(err instanceof Error ? err : new Error(String(err)))
+        fail(err instanceof Error ? err.message : String(err))
       })
   })
   return ready

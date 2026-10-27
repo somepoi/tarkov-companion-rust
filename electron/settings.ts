@@ -1,6 +1,7 @@
 /** Tiny JSON settings store in Electron's userData folder. */
 import fs from 'node:fs'
 import path from 'node:path'
+import defaults from '../config/desktop-defaults.json' with { type: 'json' }
 import type { DesktopSettings } from '../src/shared/desktop-api'
 
 export interface WindowBounds {
@@ -21,33 +22,7 @@ export interface StoredSettings extends DesktopSettings {
   window: WindowBounds
 }
 
-export const DEFAULT_SETTINGS: StoredSettings = {
-  logsPath: null,
-  startWithWindows: false,
-  startMinimized: false,
-  minimizeToTray: true,
-  openMapOnRaid: true,
-  initialBackfillDone: false,
-  paused: false,
-  scanHotkey: 'Alt+Shift+S',
-  searchBar: false,
-  searchBarHotkey: 'Alt+Shift+H',
-  searchBarSearchHotkey: 'Alt+Shift+F',
-  searchBarLockHotkey: 'Alt+Shift+L',
-  searchBarMapHotkey: 'Alt+Shift+M',
-  knownProfileId: null,
-  knownGameVersion: null,
-  setupDone: false,
-  updateMode: 'auto',
-  trackPosition: true,
-  clearPositionShots: false,
-  backupKeep: 7,
-  cleanAfterUpdate: true,
-  lastCleanedVersion: null,
-  trayNoticeShown: false,
-  searchBarPos: null,
-  window: { width: 1360, height: 860 },
-}
+export const DEFAULT_SETTINGS: StoredSettings = defaults as StoredSettings
 
 export class SettingsStore {
   private file: string

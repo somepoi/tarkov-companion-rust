@@ -3,6 +3,7 @@ import { useGameData, useHideout, useItems } from '../api/hooks'
 import { computeNeeds, type ItemNeed } from '../lib/needs'
 import { useModeInventory } from '../store/inventory'
 import { useProfile } from '../store/progress'
+import type { TrackedNeedCoverage } from '../lib/recommendationSafety'
 
 /** Item needs for the active mode (quests and hideout), plus the queries they depend on. */
 export function useNeeds() {
@@ -27,5 +28,16 @@ export function useNeeds() {
     })
   }, [gameData.data, profile.completedTaskIds, profile.faction, hideout.data, inventory.stationLevels, items.data])
 
-  return { needs, gameData, hideout, items, inventory, loading: gameData.isPending || items.isPending }
+  const coverage = useMemo<TrackedNeedCoverage>(() => {
+    const unavailable = [
+      !gameData.data || gameData.isError ? 'quests' : null,
+      !hideout.data || hideout.isError ? 'hideout' : null,
+      !items.data || items.isError ? 'item catalog' : null,
+    ].filter((name): name is string => name !== null)
+    return unavailable.length
+      ? { loaded: false, detail: `Review needed: ${unavailable.join(', ')} data is loading or unavailable. Do not treat missing requirements as surplus.` }
+      : { loaded: true, detail: 'Known quest and hideout checklist data is loaded. Crafts, barters, personal reserves and unstructured quest requirements are not fully covered.' }
+  }, [gameData.data, gameData.isError, hideout.data, hideout.isError, items.data, items.isError])
+
+  return { needs, coverage, gameData, hideout, items, inventory, loading: gameData.isPending || hideout.isPending || items.isPending }
 }

@@ -11,9 +11,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CleanupResult } from '../src/shared/desktop-api'
-
-/** Release file names: TarkovCompanion-Setup-1.18.0.exe(.blockmap), TarkovCompanion-1.18.0-portable.exe. */
-const INSTALLER_NAME = /^TarkovCompanion-(?:Setup-(\d+\.\d+\.\d+)\.exe(?:\.blockmap)?|(\d+\.\d+\.\d+)-portable\.exe)$/i
+import { installerVersion } from './appIdentity'
 
 /** -1, 0 or 1 for dotted version numbers. */
 export function compareVersions(a: string, b: string): number {
@@ -29,8 +27,7 @@ export function compareVersions(a: string, b: string): number {
 /** Installer/portable file names of versions older than `current` (newer or equal ones stay). */
 export function oldInstallerNames(names: string[], current: string): string[] {
   return names.filter((n) => {
-    const m = INSTALLER_NAME.exec(n)
-    const v = m?.[1] ?? m?.[2]
+    const v = installerVersion(n)
     return Boolean(v && compareVersions(v, current) < 0)
   })
 }
@@ -63,7 +60,7 @@ function listDir(dir: string): string[] {
 
 export interface CleanupPlaces {
   currentVersion: string
-  /** electron-updater's cache (%LOCALAPPDATA%\tarkov-companion-updater); null = leave it (an update is waiting). */
+  /** The fork's updater cache; null = leave it (an update is waiting). */
   updaterCacheDir: string | null
   /** userData\packs and the folder names to keep; null = packs not in use (development, web). */
   packs: { root: string; keep: Set<string> } | null

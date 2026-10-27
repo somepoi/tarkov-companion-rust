@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tarkov Companion Rust",
+  "version": "2.13.0",
+  "identifier": "io.github.somepoi.tarkov-companion-rust",
+  "build": {
+    "beforeDevCommand": "npm run dev:tauri-ui",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build:tauri-ui",
+    "frontendDist": "../dist-tauri"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "Tarkov Companion Rust",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 600,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self' blob: 'wasm-unsafe-eval'",
+        "worker-src": "'self' blob:",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' asset: http://asset.localhost data: blob: https://assets.tarkov.dev https://static.wikia.nocookie.net",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost asset: http://asset.localhost blob: data: https://json.tarkov.dev https://assets.tarkov.dev https://escapefromtarkov.fandom.com",
+        "media-src": "'self' data:",
+        "object-src": "'none'",
+        "frame-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico", "../build/icon.png"],
+    "copyright": "Copyright (C) 2026 David04-09. GPL-3.0-or-later. Fork maintained by somepoi.",
+    "resources": { "../LICENSE": "LICENSE.txt", "../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt" },
+    "windows": { "webviewInstallMode": { "type": "downloadBootstrapper" }, "nsis": { "installMode": "currentUser" } }
+  }
+}

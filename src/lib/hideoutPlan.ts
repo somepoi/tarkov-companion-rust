@@ -29,6 +29,10 @@ export function nextHideoutLevels(
     let missingItems = 0
     for (const r of level.itemRequirements) {
       if (currencyIds.has(r.itemId)) continue
+      if (r.count === null) {
+        if (!blockedBy.includes('Verify unknown item quantities')) blockedBy.push('Verify unknown item quantities')
+        continue
+      }
       missingItems += Math.max(0, r.count - (collected[r.itemId] ?? 0))
     }
     out.push({ station, level, blockedBy, prereqsMet: blockedBy.length === 0, missingItems })

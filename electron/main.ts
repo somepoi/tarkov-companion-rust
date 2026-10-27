@@ -28,11 +28,16 @@ import { PACK_NAMES, currentPackDirNames, ensurePack, packsEnabled } from './pac
 import { cleanLeftovers, sizeOf } from './cleanup'
 import type { CleanupResult } from '../src/shared/desktop-api'
 import type { PackName } from '../src/shared/desktop-api'
+import { APP_IDENTITY, forkDataPath, forkUpdaterCachePath } from './appIdentity'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
-/** Same as build.appId in package.json (the installer gives the shortcuts this id). The installer
- *  itself keeps its original id (build.nsis.guid) so updates replace existing installs in place. */
-const APP_USER_MODEL_ID = 'io.github.david04-09.tarkov-companion'
+// Isolate browser storage and the instance lock before any startup side effect.
+// Explicit --user-data-dir remains available for development and isolated diagnostics.
+app.setName(APP_IDENTITY.name)
+const customUserData = app.commandLine.getSwitchValue('user-data-dir')
+const BENCHMARK_MODE = process.env.TC_BENCH_DISABLE_INTEGRATIONS === '1'
+if (BENCHMARK_MODE && !customUserData) throw new Error('Benchmark mode requires an explicit isolated --user-data-dir')
+app.setPath('userData', customUserData ? path.resolve(customUserData) : forkDataPath(app.getPath('appData')))
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -70,7 +75,7 @@ function broadcast(channel: string, payload: unknown) {
 
 function bootstrap() {
   // Same id as the installer's shortcuts, so Windows shows the app's notifications under its name.
-  if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID)
+  if (process.platform === 'win32') app.setAppUserModelId(APP_IDENTITY.appId)
   protocol.handle('tcres', (req) => resourceResponse(req.url, Boolean(DEV_URL)))
   lockPermissions(session.defaultSession)
   // The wiki's image server (Cloudflare) answers picture requests without a referrer with a bot
@@ -81,6 +86,7 @@ function bootstrap() {
   // Installed builds: no menu (it carries Reload and the developer tools).
   if (app.isPackaged) Menu.setApplicationMenu(null)
   settings = new SettingsStore(app.getPath('userData'))
+  if (BENCHMARK_MODE) settings.update({ paused: true, startMinimized: true, startWithWindows: false, trackPosition: false, clearPositionShots: false, searchBar: false, scanHotkey: '', updateMode: 'off', cleanAfterUpdate: false })
   const startHidden = settings.get().startMinimized || process.argv.includes('--minimized')
 
   createWindow(!startHidden)
@@ -90,7 +96,7 @@ function bootstrap() {
   setupUpdater(broadcast, settings.get().updateMode)
   applyWatcherSettings()
   scheduleCleanupAfterUpdate()
-  app.setLoginItemSettings({ openAtLogin: settings.get().startWithWindows, args: ['--minimized'] })
+  if (!BENCHMARK_MODE) app.setLoginItemSettings({ name: APP_IDENTITY.name, openAtLogin: settings.get().startWithWindows, args: ['--minimized'] })
 
   watcher.on('event', (e: GameEvent) => {
     broadcast('watcher:event', e)
@@ -123,6 +129,7 @@ function bootstrap() {
 
 /** "Where am I": positions from the names of new in-game screenshots (read-only), if switched on. */
 function applyPositionTracking() {
+  if (BENCHMARK_MODE) return
   const on = settings.get().trackPosition
   if (on && !stopScreenshots) {
     stopScreenshots = watchScreenshots((p) => {
@@ -165,7 +172,7 @@ async function clearPositionShot(name: string) {
 }
 
 /** The Recycle Bin's stand-in: a folder inside the Screenshots folder (an existing name is never overwritten). */
-const READ_SHOTS_FOLDER = 'Read by Tarkov Companion'
+const READ_SHOTS_FOLDER = `Read by ${APP_IDENTITY.name}`
 function moveAside(file: string) {
   const dir = path.join(path.dirname(file), READ_SHOTS_FOLDER)
   const target = path.join(dir, path.basename(file))
@@ -252,7 +259,7 @@ function createWindow(show: boolean) {
     minWidth: 900,
     minHeight: 600,
     show,
-    title: 'Tarkov Companion',
+    title: APP_IDENTITY.name,
     backgroundColor: '#0c0c0b',
     icon: appIcon(),
     autoHideMenuBar: true,
@@ -286,7 +293,7 @@ function createWindow(show: boolean) {
       // Tell people once where the window went, so closing never looks like a crash.
       if (!settings.get().trayNoticeShown && tray) {
         tray.displayBalloon({
-          title: 'Tarkov Companion is still running',
+          title: `${APP_IDENTITY.name} is still running`,
           content: 'It keeps tracking your quests from the tray. Right-click the tray icon to open it again or quit.',
           iconType: 'info',
         })
@@ -347,6 +354,7 @@ function placeSearchBar() {
  * parts of the window let clicks through to the game. Nothing about the game is read or touched.
  */
 function applySearchBar() {
+  if (BENCHMARK_MODE) return
   const on = settings.get().searchBar
   if (!on) {
     if (searchBar && !searchBar.isDestroyed()) searchBar.destroy()
@@ -374,7 +382,7 @@ function applySearchBar() {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    title: 'Tarkov Companion search',
+    title: `${APP_IDENTITY.name} search`,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -481,7 +489,7 @@ async function cleanUp(dry: boolean): Promise<CleanupResult> {
   const codeBytes = sizeOf(codeCache)
   const result = await cleanLeftovers({
     currentVersion: app.getVersion(),
-    updaterCacheDir: !app.isPackaged || updateWaiting || !process.env.LOCALAPPDATA ? null : path.join(process.env.LOCALAPPDATA, 'tarkov-companion-updater'),
+    updaterCacheDir: !app.isPackaged || updateWaiting || !process.env.LOCALAPPDATA ? null : forkUpdaterCachePath(process.env.LOCALAPPDATA),
     packs: packsEnabled() ? { root: path.join(userData, 'packs'), keep: currentPackDirNames() } : null,
     crashReportsDir: path.join(userData, 'Crashpad', 'reports'),
     downloadsDir: app.isPackaged ? app.getPath('downloads') : null,
@@ -500,7 +508,7 @@ async function cleanUp(dry: boolean): Promise<CleanupResult> {
 /** Once per new version, a minute after start (the update has finished by then). */
 function scheduleCleanupAfterUpdate() {
   const s = settings.get()
-  if (!s.cleanAfterUpdate || !app.isPackaged || s.lastCleanedVersion === app.getVersion()) return
+  if (!APP_IDENTITY.automaticCleanupEnabled || !s.cleanAfterUpdate || !app.isPackaged || s.lastCleanedVersion === app.getVersion()) return
   setTimeout(() => {
     void cleanUp(false)
       .then((r) => {
@@ -520,6 +528,7 @@ function showWindow() {
 
 function registerHotkey() {
   globalShortcut.unregisterAll()
+  if (BENCHMARK_MODE) return
   const tryRegister = (key: string, fn: () => void) => {
     if (!key) return
     try {
@@ -557,7 +566,7 @@ async function captureForScan() {
 function createTray() {
   const img = nativeImage.createFromPath(resourcePath('build', 'tray.png'))
   tray = new Tray(img.isEmpty() ? appIcon().resize({ width: 16, height: 16 }) : img)
-  tray.setToolTip('Tarkov Companion')
+  tray.setToolTip(APP_IDENTITY.name)
   tray.on('double-click', showWindow)
   refreshTrayMenu()
 }
@@ -567,7 +576,7 @@ function refreshTrayMenu() {
   const paused = settings.get().paused
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Open Tarkov Companion', click: showWindow },
+      { label: `Open ${APP_IDENTITY.name}`, click: showWindow },
       { label: paused ? 'Resume log watching' : 'Pause log watching', click: () => updateSettings({ paused: !settings.get().paused }) },
       ...(searchBar && !searchBar.isDestroyed()
         ? ([
@@ -590,6 +599,11 @@ function refreshTrayMenu() {
 }
 
 function applyWatcherSettings() {
+  if (BENCHMARK_MODE) {
+    watcher.configure({ logsPath: null, detectedPath: null, paused: true })
+    refreshTrayMenu()
+    return
+  }
   const s = settings.get()
   const detected = detectLogsFolder()
   // A saved folder that is gone (or was never a folder) falls back to the detected one.
@@ -603,7 +617,7 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
   settings.update(patch)
   const after = settings.get()
   if (patch.startWithWindows !== undefined && patch.startWithWindows !== before.startWithWindows) {
-    app.setLoginItemSettings({ openAtLogin: after.startWithWindows, args: ['--minimized'] })
+    app.setLoginItemSettings({ name: APP_IDENTITY.name, openAtLogin: after.startWithWindows, args: ['--minimized'] })
   }
   if (patch.logsPath !== undefined || patch.paused !== undefined) applyWatcherSettings()
   if (patch.scanHotkey !== undefined) registerHotkey()
@@ -623,6 +637,13 @@ function registerIpc() {
       if (!isTrustedSender(e.sender, isOwnUrl)) throw new Error('Refused')
       return fn(e, ...args)
     })
+  handle('ui:ready', () => {
+    const readyFile = process.env.TC_BENCH_READY_FILE
+    if (!BENCHMARK_MODE || !readyFile || !path.isAbsolute(readyFile)) return
+    const relative = path.relative(path.dirname(app.getPath('userData')), readyFile)
+    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Benchmark output must be inside its isolated measurement directory')
+    if (!fs.existsSync(readyFile)) fs.writeFileSync(readyFile, JSON.stringify({ milestone: 'react-layout-mounted', at: Date.now() }), { flag: 'wx' })
+  })
   handle('searchbar:size', (e, width: unknown, height: unknown) => {
     // Only the search bar itself says how big it is.
     if (!searchBar || searchBar.isDestroyed() || e.sender !== searchBar.webContents) return

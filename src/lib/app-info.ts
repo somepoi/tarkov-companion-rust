@@ -3,7 +3,7 @@
  * from package.json through vite.config.ts `define`, so there is a single
  * source of truth for the version and the GitHub repository.
  */
-export const APP_NAME = 'Tarkov Companion'
+export const APP_NAME: string = import.meta.env.VITE_APP_NAME ?? 'Tarkov Companion Rust'
 export const APP_VERSION: string = import.meta.env.VITE_APP_VERSION ?? '0.0.0'
 /** e.g. https://github.com/owner/repo (no trailing slash). */
 export const REPO_URL: string = (import.meta.env.VITE_REPO_URL ?? '').replace(/\/$/, '')

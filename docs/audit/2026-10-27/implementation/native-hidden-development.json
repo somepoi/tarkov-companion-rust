@@ -1,0 +1,473 @@
+{
+    "samples":  [
+                    {
+                        "processes":  [
+                                          {
+                                              "processId":  25192,
+                                              "workingSetBytes":  22814720,
+                                              "privateBytes":  4165632,
+                                              "cpuSeconds":  0.046875,
+                                              "parentProcessId":  23464
+                                          },
+                                          {
+                                              "processId":  10252,
+                                              "workingSetBytes":  13938688,
+                                              "privateBytes":  7110656,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  25192
+                                          }
+                                      ],
+                        "aggregateWorkingSetBytes":  36753408,
+                        "cumulativeObservedCpuSeconds":  0.078125,
+                        "elapsedMs":  243.5286,
+                        "logicalProcessorNormalizedCpuPercent":  null,
+                        "privateBytes":  11276288,
+                        "observationMs":  177.1845,
+                        "phase":  "settling"
+                    },
+                    {
+                        "processes":  [
+                                          {
+                                              "processId":  25192,
+                                              "workingSetBytes":  30855168,
+                                              "privateBytes":  6860800,
+                                              "cpuSeconds":  0.125,
+                                              "parentProcessId":  23464
+                                          },
+                                          {
+                                              "processId":  10252,
+                                              "workingSetBytes":  13938688,
+                                              "privateBytes":  7061504,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24996,
+                                              "workingSetBytes":  106987520,
+                                              "privateBytes":  45322240,
+                                              "cpuSeconds":  0.40625,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24048,
+                                              "workingSetBytes":  8032256,
+                                              "privateBytes":  2383872,
+                                              "cpuSeconds":  0,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  12380,
+                                              "workingSetBytes":  73736192,
+                                              "privateBytes":  106168320,
+                                              "cpuSeconds":  0.375,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  5272,
+                                              "workingSetBytes":  58355712,
+                                              "privateBytes":  37613568,
+                                              "cpuSeconds":  0.1875,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  3924,
+                                              "workingSetBytes":  18714624,
+                                              "privateBytes":  7565312,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  26992,
+                                              "workingSetBytes":  86089728,
+                                              "privateBytes":  48730112,
+                                              "cpuSeconds":  0.25,
+                                              "parentProcessId":  24996
+                                          }
+                                      ],
+                        "aggregateWorkingSetBytes":  396709888,
+                        "cumulativeObservedCpuSeconds":  1.40625,
+                        "elapsedMs":  1183.1788000000001,
+                        "logicalProcessorNormalizedCpuPercent":  8.8339056917137881,
+                        "privateBytes":  261705728,
+                        "observationMs":  95.782699999999977,
+                        "phase":  "settling"
+                    },
+                    {
+                        "processes":  [
+                                          {
+                                              "processId":  25192,
+                                              "workingSetBytes":  30875648,
+                                              "privateBytes":  6860800,
+                                              "cpuSeconds":  0.125,
+                                              "parentProcessId":  23464
+                                          },
+                                          {
+                                              "processId":  10252,
+                                              "workingSetBytes":  13938688,
+                                              "privateBytes":  7061504,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24996,
+                                              "workingSetBytes":  107626496,
+                                              "privateBytes":  45912064,
+                                              "cpuSeconds":  0.4375,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24048,
+                                              "workingSetBytes":  8032256,
+                                              "privateBytes":  2383872,
+                                              "cpuSeconds":  0,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  12380,
+                                              "workingSetBytes":  77938688,
+                                              "privateBytes":  123162624,
+                                              "cpuSeconds":  0.515625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  5272,
+                                              "workingSetBytes":  57507840,
+                                              "privateBytes":  34336768,
+                                              "cpuSeconds":  0.265625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  3924,
+                                              "workingSetBytes":  18714624,
+                                              "privateBytes":  7565312,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  26992,
+                                              "workingSetBytes":  178515968,
+                                              "privateBytes":  138072064,
+                                              "cpuSeconds":  0.65625,
+                                              "parentProcessId":  24996
+                                          }
+                                      ],
+                        "aggregateWorkingSetBytes":  493150208,
+                        "cumulativeObservedCpuSeconds":  2.0625,
+                        "elapsedMs":  2224.9852,
+                        "logicalProcessorNormalizedCpuPercent":  3.9369718788442842,
+                        "privateBytes":  365355008,
+                        "observationMs":  127.22409999999991,
+                        "phase":  "sampling"
+                    },
+                    {
+                        "processes":  [
+                                          {
+                                              "processId":  25192,
+                                              "workingSetBytes":  30875648,
+                                              "privateBytes":  6860800,
+                                              "cpuSeconds":  0.125,
+                                              "parentProcessId":  23464
+                                          },
+                                          {
+                                              "processId":  10252,
+                                              "workingSetBytes":  13938688,
+                                              "privateBytes":  7061504,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24996,
+                                              "workingSetBytes":  108134400,
+                                              "privateBytes":  45936640,
+                                              "cpuSeconds":  0.4375,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24048,
+                                              "workingSetBytes":  8032256,
+                                              "privateBytes":  2383872,
+                                              "cpuSeconds":  0,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  12380,
+                                              "workingSetBytes":  77639680,
+                                              "privateBytes":  122785792,
+                                              "cpuSeconds":  0.515625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  5272,
+                                              "workingSetBytes":  57536512,
+                                              "privateBytes":  34353152,
+                                              "cpuSeconds":  0.265625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  3924,
+                                              "workingSetBytes":  18714624,
+                                              "privateBytes":  7565312,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  26992,
+                                              "workingSetBytes":  178544640,
+                                              "privateBytes":  138088448,
+                                              "cpuSeconds":  0.671875,
+                                              "parentProcessId":  24996
+                                          }
+                                      ],
+                        "aggregateWorkingSetBytes":  493416448,
+                        "cumulativeObservedCpuSeconds":  2.078125,
+                        "elapsedMs":  3199.694,
+                        "logicalProcessorNormalizedCpuPercent":  0.1001901798773131,
+                        "privateBytes":  365035520,
+                        "observationMs":  90.653799999999592,
+                        "phase":  "sampling"
+                    },
+                    {
+                        "processes":  [
+                                          {
+                                              "processId":  25192,
+                                              "workingSetBytes":  30875648,
+                                              "privateBytes":  6860800,
+                                              "cpuSeconds":  0.125,
+                                              "parentProcessId":  23464
+                                          },
+                                          {
+                                              "processId":  10252,
+                                              "workingSetBytes":  13938688,
+                                              "privateBytes":  7061504,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24996,
+                                              "workingSetBytes":  118095872,
+                                              "privateBytes":  50360320,
+                                              "cpuSeconds":  0.546875,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24048,
+                                              "workingSetBytes":  8044544,
+                                              "privateBytes":  2383872,
+                                              "cpuSeconds":  0,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  12380,
+                                              "workingSetBytes":  77168640,
+                                              "privateBytes":  122130432,
+                                              "cpuSeconds":  0.515625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  5272,
+                                              "workingSetBytes":  57593856,
+                                              "privateBytes":  34353152,
+                                              "cpuSeconds":  0.265625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  3924,
+                                              "workingSetBytes":  18714624,
+                                              "privateBytes":  7565312,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  26992,
+                                              "workingSetBytes":  178520064,
+                                              "privateBytes":  138108928,
+                                              "cpuSeconds":  0.671875,
+                                              "parentProcessId":  24996
+                                          }
+                                      ],
+                        "aggregateWorkingSetBytes":  502951936,
+                        "cumulativeObservedCpuSeconds":  2.1875,
+                        "elapsedMs":  4214.3921,
+                        "logicalProcessorNormalizedCpuPercent":  0.67369176112579687,
+                        "privateBytes":  368824320,
+                        "observationMs":  92.737199999999575,
+                        "phase":  "sampling"
+                    },
+                    {
+                        "processes":  [
+                                          {
+                                              "processId":  25192,
+                                              "workingSetBytes":  30875648,
+                                              "privateBytes":  6860800,
+                                              "cpuSeconds":  0.125,
+                                              "parentProcessId":  23464
+                                          },
+                                          {
+                                              "processId":  10252,
+                                              "workingSetBytes":  13938688,
+                                              "privateBytes":  7061504,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24996,
+                                              "workingSetBytes":  118190080,
+                                              "privateBytes":  50425856,
+                                              "cpuSeconds":  0.5625,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24048,
+                                              "workingSetBytes":  8044544,
+                                              "privateBytes":  2383872,
+                                              "cpuSeconds":  0,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  12380,
+                                              "workingSetBytes":  77168640,
+                                              "privateBytes":  122130432,
+                                              "cpuSeconds":  0.515625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  5272,
+                                              "workingSetBytes":  57593856,
+                                              "privateBytes":  34353152,
+                                              "cpuSeconds":  0.265625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  3924,
+                                              "workingSetBytes":  18714624,
+                                              "privateBytes":  7565312,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  26992,
+                                              "workingSetBytes":  178520064,
+                                              "privateBytes":  138108928,
+                                              "cpuSeconds":  0.671875,
+                                              "parentProcessId":  24996
+                                          }
+                                      ],
+                        "aggregateWorkingSetBytes":  503046144,
+                        "cumulativeObservedCpuSeconds":  2.203125,
+                        "elapsedMs":  5227.2612,
+                        "logicalProcessorNormalizedCpuPercent":  0.096415469679152044,
+                        "privateBytes":  368889856,
+                        "observationMs":  89.880900000000111,
+                        "phase":  "sampling"
+                    },
+                    {
+                        "processes":  [
+                                          {
+                                              "processId":  25192,
+                                              "workingSetBytes":  30875648,
+                                              "privateBytes":  6860800,
+                                              "cpuSeconds":  0.125,
+                                              "parentProcessId":  23464
+                                          },
+                                          {
+                                              "processId":  10252,
+                                              "workingSetBytes":  13938688,
+                                              "privateBytes":  7061504,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24996,
+                                              "workingSetBytes":  118190080,
+                                              "privateBytes":  50425856,
+                                              "cpuSeconds":  0.578125,
+                                              "parentProcessId":  25192
+                                          },
+                                          {
+                                              "processId":  24048,
+                                              "workingSetBytes":  8044544,
+                                              "privateBytes":  2383872,
+                                              "cpuSeconds":  0,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  12380,
+                                              "workingSetBytes":  77168640,
+                                              "privateBytes":  122130432,
+                                              "cpuSeconds":  0.515625,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  5272,
+                                              "workingSetBytes":  59330560,
+                                              "privateBytes":  35471360,
+                                              "cpuSeconds":  0.28125,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  3924,
+                                              "workingSetBytes":  18792448,
+                                              "privateBytes":  7565312,
+                                              "cpuSeconds":  0.03125,
+                                              "parentProcessId":  24996
+                                          },
+                                          {
+                                              "processId":  26992,
+                                              "workingSetBytes":  178552832,
+                                              "privateBytes":  138108928,
+                                              "cpuSeconds":  0.671875,
+                                              "parentProcessId":  24996
+                                          }
+                                      ],
+                        "aggregateWorkingSetBytes":  504893440,
+                        "cumulativeObservedCpuSeconds":  2.234375,
+                        "elapsedMs":  6242.8696,
+                        "logicalProcessorNormalizedCpuPercent":  0.19231083555433373,
+                        "privateBytes":  370008064,
+                        "observationMs":  89.273799999999937,
+                        "phase":  "sampling"
+                    }
+                ],
+    "readySignal":  {
+                        "observedAtMs":  1087.3961000000002,
+                        "hostPayload":  "{\"at\":1793108963346,\"milestone\":\"react-layout-mounted\"}"
+                    },
+    "unavailableObservations":  [
+
+                                ],
+    "launchRequestToProcessHandleMs":  55.108900000000006,
+    "recordedAtUtc":  "2026-10-27T13:49:29.6839542Z",
+    "limitations":  [
+                        "Executable isolation contract is declared by the operator, not verified by the sampler.",
+                        "Launch-to-process-handle is not startup-to-visible-UI.",
+                        "Ready signal semantics, if present, are defined by the measured host.",
+                        "Very short-lived children and children reparented before discovery can be missed.",
+                        "CPU includes observed descendants; terminated process totals retain the last observed value.",
+                        "Working sets may double-count shared pages.",
+                        "Peak memory is a sampled maximum, not an allocation high-water mark.",
+                        "GPU and input latency are not measured.",
+                        "The sampler and CIM queries add overhead.",
+                        "Window visibility/workload is labeled by the operator, not enforced.",
+                        "The launched app is left running; no process or profile cleanup is performed."
+                    ],
+    "schema":  1,
+    "logicalProcessors":  16,
+    "launch":  {
+                   "schema":  1,
+                   "executable":  "D:\\GITHUB\\.codex-worktrees\\tarkov-companion-rust-migration\\target\\debug\\tarkov-companion-rust.exe",
+                   "executableSha256":  "908449e27a672f8b1edf7d59a440810b0609ed1f5d5763abb9ea997cb9f10cde",
+                   "profile":  "D:\\TEMP\\tc-desktop-baseline-L08EOi\\profile",
+                   "profileEnv":  null,
+                   "isolationContract":  "Embedded native application with a fresh isolated profile and no game integrations, updater, cleanup or autostart",
+                   "readyFile":  "D:\\TEMP\\tc-desktop-baseline-L08EOi\\ready.json",
+                   "arguments":  [
+                                     "--profile-dir=D:\\TEMP\\tc-desktop-baseline-L08EOi\\profile"
+                                 ],
+                   "durationSeconds":  5,
+                   "settleSeconds":  2,
+                   "sampleMs":  1000,
+                   "workloadLabel":  "hidden",
+                   "output":  "D:\\TEMP\\tc-desktop-baseline-L08EOi\\desktop.json"
+               },
+    "rootProcessId":  25192
+}

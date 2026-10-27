@@ -4,6 +4,7 @@ import type { Item } from '../api/types'
 import { useNeeds } from '../hooks/useNeeds'
 import { formatRoubles } from '../lib/format'
 import { remainingFor } from '../lib/needs'
+import { trackedItemAdvice } from '../lib/recommendationSafety'
 import { useLookupStore } from '../store/lookup'
 
 function rankMatches(items: Item[], query: string): Item[] {
@@ -51,7 +52,7 @@ export function ItemLookup() {
 
 function ItemLookupDialog() {
   const setOpen = useLookupStore((s) => s.setOpen)
-  const { needs, gameData, items, inventory } = useNeeds()
+  const { needs, coverage, gameData, items, inventory } = useNeeds()
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [cursor, setCursor] = useState(0)
@@ -69,6 +70,7 @@ function ItemLookupDialog() {
   const need = selected ? needs.get(selected.id) : undefined
   const collected = selected ? (inventory.collected[selected.id] ?? 0) : 0
   const remaining = need ? remainingFor(need, collected) : 0
+  const advice = trackedItemAdvice(need, coverage)
   const bestTrader = selected?.sellToTrader[0]
   const bestPrice = selected ? Math.max(selected.avg24hPrice ?? 0, bestTrader?.priceRUB ?? 0) : 0
   const slots = selected ? selected.width * selected.height : 1
@@ -134,7 +136,7 @@ function ItemLookupDialog() {
 
           <div className="overflow-y-auto p-4 text-sm">
             {!selected ? (
-              <p className="text-xs text-ink-dim">Pick an item to see prices and whether to keep it.</p>
+              <p className="text-xs text-ink-dim">Pick an item to see prices and tracked requirements.</p>
             ) : (
               <>
                 <div className="flex items-start gap-3">
@@ -142,9 +144,10 @@ function ItemLookupDialog() {
                   <div className="min-w-0">
                     <h2 className="text-base font-semibold">{selected.name}</h2>
                     <p className="text-xs text-ink-muted">{selected.shortName} · {selected.width}×{selected.height} slots{selected.types.includes('noFlea') ? ' · not on flea' : ''}</p>
-                    <div className={`mt-2 inline-flex items-center rounded border px-2 py-0.5 text-xs font-semibold ${remaining > 0 ? 'border-accent/60 bg-accent/15 text-accent' : 'border-success/60 bg-success/15 text-success'}`}>
-                      {remaining > 0 ? `Keep it (${remaining} more needed)` : need ? 'Sell it (you have enough)' : 'Sell it (nothing needs it)'}
+                    <div className={`mt-2 inline-flex items-center rounded border px-2 py-0.5 text-xs font-semibold ${advice.kind === 'KEEP' ? 'border-accent/60 bg-accent/15 text-accent' : 'border-line bg-surface-3 text-ink-muted'}`}>
+                      {advice.label}
                     </div>
+                    <p className="mt-1 text-xs text-ink-muted">{advice.detail}</p>
                   </div>
                 </div>
 
@@ -157,19 +160,19 @@ function ItemLookupDialog() {
                   <dt className="text-ink-muted">Base price</dt><dd className="tabular-nums">{formatRoubles(selected.basePrice)}</dd>
                 </dl>
 
-                <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink-muted">Why keep it</h3>
+                <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink-muted">Tracked requirements</h3>
                 {!need ? (
-                  <p className="mt-1 text-xs text-ink-dim">No remaining quest, hideout level or favourite craft needs this item.</p>
+                  <p className="mt-1 text-xs text-ink-dim">No requirement for this item was found in the loaded quest and hideout checklist.</p>
                 ) : (
                   <ul className="mt-1 space-y-0.5 text-xs">
                     {need.sources.map((s, i) => (
                       <li key={i} className="flex gap-2">
                         <span className="w-14 shrink-0 uppercase tracking-wide text-ink-dim">{s.kind}</span>
                         <span className="flex-1">{s.name}</span>
-                        <span className="tabular-nums text-ink-muted">×{s.count}{'fir' in s && s.fir ? ' FIR' : ''}</span>
+                        <span className="tabular-nums text-ink-muted">×{s.count ?? '?'}{'fir' in s ? s.fir === true ? ' FIR' : s.fir === null ? ' FIR unknown' : '' : ''}</span>
                       </li>
                     ))}
-                    <li className="pt-1 text-ink-muted">Total {need.total} needed · {collected} collected · {remaining} remaining</li>
+                    <li className="pt-1 text-ink-muted">{need.quantityUnknown ? 'Known subtotal' : 'Total'} {need.total} needed · {collected} collected · {remaining} more in checklist</li>
                   </ul>
                 )}
                 {selected.wikiLink && (

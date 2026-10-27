@@ -42,6 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/keys', group: 'raid', label: 'Keys', icon: KeyRound, component: page(() => import('../pages/KeysPage'), 'KeysPage') },
   { path: '/ammo', group: 'gear', label: 'Ammo', icon: Crosshair, component: page(() => import('../pages/AmmoPage'), 'AmmoPage') },
   { path: '/items', group: 'gear', label: 'Item Collection', icon: Package, component: page(() => import('../pages/ItemCollectionPage'), 'ItemCollectionPage') },
+  { path: '/stash', group: 'gear', label: 'Stash Manager', icon: Package, component: page(() => import('../pages/StashManagerPage'), 'StashManagerPage') },
   { path: '/hideout', group: 'gear', label: 'Hideout', icon: House, component: page(() => import('../pages/HideoutPage'), 'HideoutPage') },
   { path: '/flea', group: 'trading', label: 'Flea Market', icon: Store, component: page(() => import('../pages/FleaMarketPage'), 'FleaMarketPage'), fullBleed: true },
 ]

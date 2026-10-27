@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "Local companion UI; filesystem, capture and settings are validated by native commands.",
+  "windows": ["main", "searchbar"],
+  "permissions": ["core:default"]
+}
