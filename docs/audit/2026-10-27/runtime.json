@@ -1,0 +1,318 @@
+{
+  "date": "2026-10-27",
+  "kind": "isolated-unpackaged-hidden-first-run-smoke",
+  "limitations": [
+    "not a packaged release",
+    "hidden window, first-run screen over dashboard",
+    "watcher paused; tracking/hotkeys/searchbar/updater off",
+    "startup measures require-main-to-React-main, not launch-to-first-paint",
+    "no screenshot OCR or matcher assets",
+    "network/cache state not controlled",
+    "sum working sets double-counts shared pages",
+    "Electron CPU percentages retained without normalization"
+  ],
+  "readyMs": 524.8064,
+  "dom": {
+    "ready": true,
+    "text": "Welcome to Tarkov Companion\n\nThree quick things, then you are set. Everything can be changed later under Settings.\n\n1\nEscape from Tarkov log files\n\nQuest completions are picked up from the game's own log files while you play. The app only reads them; it never touches the game, its memory or its network traffic.\n\nLogs folder found\nD:\\TEMP\\tarkov-companion-audit-20261027\\empty-game-data\nChange\n2\nHow"
+  },
+  "state": {
+    "status": "paused",
+    "logsPath": "D:\\TEMP\\tarkov-companion-audit-20261027\\empty-game-data"
+  },
+  "versions": {
+    "node": "24.21.0",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.8",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "149",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.7",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.4",
+    "tz": "2025c",
+    "undici": "7.29.1",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "15.2.124.28-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "44.5.1",
+    "chrome": "152.0.7977.130"
+  },
+  "samples": [
+    {
+      "elapsedMs": 9544.461800000001,
+      "processCount": 4,
+      "workingSetKiB": 432676,
+      "privateBytesKiB": 305904,
+      "cpuPercentSum": 0.006740776003768451,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 10553.005000000001,
+      "processCount": 4,
+      "workingSetKiB": 433136,
+      "privateBytesKiB": 306432,
+      "cpuPercentSum": 0.02607782657289758,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 11564.685800000001,
+      "processCount": 4,
+      "workingSetKiB": 433144,
+      "privateBytesKiB": 306432,
+      "cpuPercentSum": 0.007586137059245236,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 12579.3474,
+      "processCount": 4,
+      "workingSetKiB": 433156,
+      "privateBytesKiB": 306436,
+      "cpuPercentSum": 0.005901003400163675,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 13590.8112,
+      "processCount": 4,
+      "workingSetKiB": 433156,
+      "privateBytesKiB": 306436,
+      "cpuPercentSum": 0.006074138305029675,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 14595.7929,
+      "processCount": 4,
+      "workingSetKiB": 433164,
+      "privateBytesKiB": 306436,
+      "cpuPercentSum": 0.00792297243990934,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 15604.5954,
+      "processCount": 4,
+      "workingSetKiB": 433168,
+      "privateBytesKiB": 306436,
+      "cpuPercentSum": 0.006337991842044335,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 16613.0079,
+      "processCount": 4,
+      "workingSetKiB": 433184,
+      "privateBytesKiB": 306436,
+      "cpuPercentSum": 0.010400194974945683,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 17627.309999999998,
+      "processCount": 4,
+      "workingSetKiB": 433192,
+      "privateBytesKiB": 306436,
+      "cpuPercentSum": 0.00763440338938099,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 18635.395399999998,
+      "processCount": 4,
+      "workingSetKiB": 433196,
+      "privateBytesKiB": 306440,
+      "cpuPercentSum": 0.007632037346020081,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 19650.0388,
+      "processCount": 4,
+      "workingSetKiB": 433200,
+      "privateBytesKiB": 306440,
+      "cpuPercentSum": 0.006855836025394289,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 20663.0988,
+      "processCount": 4,
+      "workingSetKiB": 434068,
+      "privateBytesKiB": 306768,
+      "cpuPercentSum": 0.02575123289268988,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 21676.5107,
+      "processCount": 4,
+      "workingSetKiB": 434072,
+      "privateBytesKiB": 306768,
+      "cpuPercentSum": 0.00674084408718959,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 22688.814,
+      "processCount": 4,
+      "workingSetKiB": 434076,
+      "privateBytesKiB": 306768,
+      "cpuPercentSum": 0.0064642488093544,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 23701.145099999998,
+      "processCount": 4,
+      "workingSetKiB": 434076,
+      "privateBytesKiB": 306768,
+      "cpuPercentSum": 0.006303477423916382,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 24713.545299999998,
+      "processCount": 4,
+      "workingSetKiB": 434080,
+      "privateBytesKiB": 306772,
+      "cpuPercentSum": 0.0070253947968516115,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 25728.011599999998,
+      "processCount": 4,
+      "workingSetKiB": 434088,
+      "privateBytesKiB": 306772,
+      "cpuPercentSum": 0.006296387842568826,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 26732.3202,
+      "processCount": 4,
+      "workingSetKiB": 434088,
+      "privateBytesKiB": 306772,
+      "cpuPercentSum": 0.007113185990614819,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 27738.836,
+      "processCount": 4,
+      "workingSetKiB": 434092,
+      "privateBytesKiB": 306772,
+      "cpuPercentSum": 0.00698568383121492,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    },
+    {
+      "elapsedMs": 28747.7662,
+      "processCount": 4,
+      "workingSetKiB": 434092,
+      "privateBytesKiB": 306772,
+      "cpuPercentSum": 0.005723962198464922,
+      "types": [
+        "Browser",
+        "GPU",
+        "Utility",
+        "Tab"
+      ]
+    }
+  ]
+}

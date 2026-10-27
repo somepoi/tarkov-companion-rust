@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://json.tarkov.dev/pve/maps",
+    "error": "TimeoutError: The operation was aborted due to timeout"
+  },
+  {
+    "url": "https://json.tarkov.dev/pve/traders",
+    "status": 200,
+    "bytes": 57450,
+    "dataKind": "object",
+    "dataKeys": [
+      "54cb50c76803fa8b248b4571",
+      "54cb57776803fa99248b456e",
+      "579dc571d53a0658a154fbec",
+      "58330581ace78e27b8b10cee",
+      "5935c25fb3acc3127c3d8cd9",
+      "5a7c2eca46aef81a7ca2145d"
+    ],
+    "count": 16,
+    "sampleKeys": [
+      "id",
+      "name",
+      "description",
+      "normalizedName",
+      "currency",
+      "resetTime",
+      "discount",
+      "levels",
+      "reputationLevels",
+      "imageLink",
+      "buyAllowed",
+      "buyProhibited"
+    ]
+  },
+  {
+    "url": "https://json.tarkov.dev/pve/tasks_en",
+    "status": 200,
+    "bytes": 259873,
+    "dataKind": "object",
+    "dataKeys": [
+      "597a19ff86f774792c2e36f2",
+      "597a1a0486f774779c70e8a6",
+      "597a16e386f77477531d39d5",
+      "597a1a3186f77475b4612032",
+      "597a198586f77405ba6887d5",
+      "597a199486f774799e5cd156"
+    ],
+    "count": 3829,
+    "sampleKeys": null
+  },
+  {
+    "url": "https://json.tarkov.dev/pve/hideout_en",
+    "status": 200,
+    "bytes": 14543,
+    "dataKind": "object",
+    "dataKeys": [
+      "hideout_area_13_name",
+      "hideout_area_9_name",
+      "hideout_area_23_name",
+      "hideout_area_22_name",
+      "hideout_area_15_name",
+      "hideout_area_0_name"
+    ],
+    "count": 123,
+    "sampleKeys": null
+  },
+  {
+    "url": "https://json.tarkov.dev/pve/prices/57347c5b245977448d35f6e1",
+    "status": 200,
+    "bytes": 93257,
+    "dataKind": "array",
+    "dataKeys": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ],
+    "count": 1100,
+    "sampleKeys": [
+      "priceMin",
+      "price",
+      "timestamp"
+    ],
+    "sample": {
+      "priceMin": 37777,
+      "price": 49140,
+      "timestamp": 1721347200000
+    }
+  }
+]

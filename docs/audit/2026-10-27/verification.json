@@ -1,0 +1,99 @@
+{
+  "dateMoscow": "2026-10-27",
+  "commit": "29006730e750cb40ad714da4abd0cdd13e37962c",
+  "host": {
+    "os": "Windows 10 Enterprise 10.0.19045",
+    "cpu": "AMD Ryzen 7 7800X3D",
+    "logicalProcessors": 16,
+    "physicalMemoryBytes": 33946128384,
+    "gpu": "NVIDIA GeForce RTX 5080",
+    "shellNode": "24.15.0",
+    "npm": "12.0.2",
+    "rustAndCargoInPath": false
+  },
+  "versions": {
+    "react": "19.3.0",
+    "typescript": "6.0.3",
+    "vite": "8.3.2",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "electron-updater": "6.8.9",
+    "vitest": "5.0.3",
+    "oxlint": "1.86.0",
+    "tesseract.js": "7.0.0",
+    "zustand": "5.0.15",
+    "@tanstack/react-query": "5.104.1",
+    "@tanstack/react-virtual": "3.14.13"
+  },
+  "commands": [
+    {
+      "command": "npm ci",
+      "exitCode": 0,
+      "packagesAdded": 416
+    },
+    {
+      "command": "node node_modules/electron/install.js",
+      "exitCode": 0
+    },
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "testFiles": 29,
+      "tests": 186,
+      "vitestReportedDurationMs": 701
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build:desktop",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm audit --json",
+      "exitCode": 1,
+      "vulnerablePackageEntries": 5,
+      "high": 4,
+      "moderate": 1
+    },
+    {
+      "command": "npm run scan:check",
+      "exitCode": 0,
+      "correctionFixtures": 0,
+      "message": "No corrections to check"
+    }
+  ],
+  "smokeOnly": {
+    "readyMs": 524.8064,
+    "samples": 20,
+    "meanPrivateMiB": 299.3748046875,
+    "meanAggregateWorkingSetMiB": 423.39375,
+    "meanElectronCpuPercentSum": 0.008878386761583233,
+    "limitations": [
+      "not a packaged release",
+      "hidden window, first-run screen over dashboard",
+      "watcher paused; tracking/hotkeys/searchbar/updater off",
+      "startup measures require-main-to-React-main, not launch-to-first-paint",
+      "no screenshot OCR or matcher assets",
+      "network/cache state not controlled",
+      "sum working sets double-counts shared pages",
+      "Electron CPU percentages retained without normalization"
+    ]
+  },
+  "notMeasured": [
+    "packaged startup and idle",
+    "scan accuracy on real junk boxes",
+    "screenshot/OCR/matcher end-to-end p50/p95",
+    "scan peak memory",
+    "GPU utilization",
+    "UI responsiveness",
+    "game-running performance",
+    "Tauri comparison",
+    "Windows 11 parity"
+  ]
+}
