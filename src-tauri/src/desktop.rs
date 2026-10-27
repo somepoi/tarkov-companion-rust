@@ -777,3 +777,56 @@ pub async fn archive_screenshot(
     .await
     .map_err(|e| error("archive_job", e.to_string()))?
 }
+
+#[tauri::command]
+pub async fn read_archived_screenshot(
+    state: tauri::State<'_, Arc<HostState>>,
+    window: tauri::WebviewWindow,
+    hash: String,
+) -> Result<tauri::ipc::Response, NativeError> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    if window.label() != "main" {
+        return Err(error(
+            "screenshot_scope",
+            "Only the main window can review inventory evidence",
+        ));
+    }
+    if hash.len() != 64
+        || !hash
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(error("screenshot_hash", "Invalid archived screenshot hash"));
+    }
+    let dir = state.data_dir.join("screenshots");
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = dir.canonicalize()?;
+        let path = root.join(&hash).canonicalize()?;
+        if !path.starts_with(&root) {
+            return Err(error(
+                "screenshot_scope",
+                "Screenshot is outside the evidence archive",
+            ));
+        }
+        let mut bytes = Vec::new();
+        fs::File::open(path)?
+            .take(64 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > 64 * 1024 * 1024 {
+            return Err(error(
+                "screenshot_size",
+                "Archived screenshot exceeds 64 MiB",
+            ));
+        }
+        if format!("{:x}", Sha256::digest(&bytes)) != hash {
+            return Err(error(
+                "screenshot_corrupt",
+                "Archived screenshot failed its checksum",
+            ));
+        }
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
+    .map_err(|e| error("screenshot_job", e.to_string()))?
+}

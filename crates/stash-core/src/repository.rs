@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, path::Path, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -130,6 +130,11 @@ impl Repository {
         if version < 2 {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             tx.execute_batch(include_str!("../migrations/0002_planning.sql"))?;
+            tx.commit()?;
+        }
+        if version < 3 {
+            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            tx.execute_batch(include_str!("../migrations/0003_scan_evidence.sql"))?;
             tx.commit()?;
         }
         Ok(Self { connection })
@@ -649,6 +654,20 @@ fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(), StorageErr
         text(&observation.id, "observation ID")?;
         digest(&observation.screenshot_hash)?;
         validate_box(observation.location, owner)?;
+        if let Some(grid) = &observation.source_grid
+            && (!grid.pitch.is_finite()
+                || !(1.0..=8192.0).contains(&grid.pitch)
+                || !grid.ox.is_finite()
+                || !grid.oy.is_finite()
+                || grid.ox.abs() > 65_536.0
+                || grid.oy.abs() > 65_536.0
+                || !(1..=256).contains(&grid.cols)
+                || !(1..=256).contains(&grid.rows))
+        {
+            return Err(StorageError::Invalid(
+                "invalid screenshot grid registration".into(),
+            ));
+        }
         if observation.quantity == Some(0) || !observations.insert(&observation.id) {
             return Err(StorageError::Invalid(
                 "observation IDs must be unique and quantities positive or unknown".into(),

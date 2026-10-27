@@ -102,6 +102,19 @@ pub struct Observation {
     pub quantity: Option<u32>,
     pub fir: Fir,
     pub reviewed: bool,
+    /// Pixel registration in the archived screenshot, never an item identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_grid: Option<SourceGrid>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceGrid {
+    pub pitch: f64,
+    pub ox: f64,
+    pub oy: f64,
+    pub cols: u32,
+    pub rows: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

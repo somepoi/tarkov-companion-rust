@@ -32,6 +32,7 @@ pub fn run() {
             desktop::read_game_screenshot,
             desktop::capture_screen,
             desktop::archive_screenshot,
+            desktop::read_archived_screenshot,
             inventory::inventory_call,
             backup::native_backup,
             integrations::take_scan_capture,

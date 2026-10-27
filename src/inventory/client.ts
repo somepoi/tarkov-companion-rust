@@ -1,5 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import type { GameMode } from '../api/client'
+import type { Grid } from '../scan/core'
 
 export interface LocalProfile {
   id: string
@@ -48,6 +49,7 @@ export interface Observation {
   quantity: number | null
   fir: Fir
   reviewed: boolean
+  sourceGrid?: Grid
 }
 export interface ScanDraft {
   fullCoverageConfirmed: boolean
@@ -186,4 +188,9 @@ export async function archiveScreenshot(image: Blob): Promise<string> {
     'archive_screenshot',
     new Uint8Array(await image.arrayBuffer()),
   )
+}
+
+export async function readArchivedScreenshot(hash: string): Promise<Blob> {
+  const bytes = await invoke<ArrayBuffer>('read_archived_screenshot', { hash })
+  return new Blob([bytes])
 }

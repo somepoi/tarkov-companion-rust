@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Boxes, ImageUp, Plus, Save, Trash2, Undo2 } from 'lucide-react'
 import { useItems } from '../api/hooks'
 import type { GameMode } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { PlanningPanel } from '../inventory/PlanningPanel'
 import { BackupPanel } from '../inventory/BackupPanel'
+import { StackIdentityReview } from '../inventory/StackIdentityReview'
 import { subscribe } from '../desktop/adapters/tauriEvents'
 import {
   archiveScreenshot,
@@ -56,6 +57,7 @@ function StashManager({ mode }: { mode: GameMode }) {
   const [containerName, setContainerName] = useState('')
   const [dimensions, setDimensions] = useState({ columns: 14, rows: 14 })
   const [query, setQuery] = useState('')
+  const [reviewStackId, setReviewStackId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
@@ -81,6 +83,7 @@ function StashManager({ mode }: { mode: GameMode }) {
       })
     return () => {
       active = false
+      generation.current = token + 1
     }
   }, [mode, available])
 
@@ -183,12 +186,28 @@ function StashManager({ mode }: { mode: GameMode }) {
     if (draft)
       changeDraft({
         ...draft,
-        stacks: draft.stacks.map((stack) =>
-          stack.id === id ? { ...stack, ...patch } : stack,
-        ),
+        stacks: draft.stacks.map((stack) => {
+          if (stack.id !== id) return stack
+          const moved = patch.location &&
+            (Object.keys(patch.location) as (keyof Stack['location'])[])
+              .some((field) => patch.location?.[field] !== stack.location[field])
+          const next = { ...stack, ...patch }
+          if (moved) {
+            // Different source pixels need new, independent review facts.
+            next.provenance = {
+              ...next.provenance,
+              identityConfirmed: false,
+              quantityConfirmed: false,
+              corrected: true,
+            }
+            next.fir = 'unknown'
+          }
+          return next
+        }),
       })
   }
   async function begin(container: Container) {
+    setReviewStackId(null)
     if (session?.status === 'draft')
       await inventoryCall({ operation: 'abandonScan', sessionId: session.id })
     const next = await inventoryCall<ScanSession>({
@@ -213,6 +232,7 @@ function StashManager({ mode }: { mode: GameMode }) {
     commitKey.current = crypto.randomUUID()
   }
   async function resume(container: Container) {
+    setReviewStackId(null)
     const scans = await inventoryCall<ScanSession[]>({
       operation: 'listScans',
       containerId: container.id,
@@ -255,6 +275,7 @@ function StashManager({ mode }: { mode: GameMode }) {
       words,
     )
     if (generation.current !== token) return
+    setReviewStackId(null)
     const observations = result.detections.map((det) => ({
       id: crypto.randomUUID(),
       screenshotHash: hash,
@@ -272,6 +293,7 @@ function StashManager({ mode }: { mode: GameMode }) {
       quantity: null,
       fir: 'unknown' as const,
       reviewed: false,
+      sourceGrid: result.grid,
     }))
     changeDraft({
       ...draft,
@@ -559,13 +581,21 @@ function StashManager({ mode }: { mode: GameMode }) {
                   </thead>
                   <tbody className="divide-y divide-line">
                     {draft.stacks.map((stack) => (
-                      <tr key={stack.id}>
+                      <Fragment key={stack.id}>
+                      <tr>
                         <td className="py-3 pr-3">
                           <span>
                             {catalog.data?.items[stack.itemId ?? '']?.name ??
                               stack.itemId ??
                               'Unknown item'}
                           </span>
+                          <button
+                            className="mt-1 block text-xs text-accent underline underline-offset-2"
+                            aria-expanded={reviewStackId === stack.id}
+                            onClick={() => setReviewStackId(reviewStackId === stack.id ? null : stack.id)}
+                          >
+                            {reviewStackId === stack.id ? 'Hide item review' : 'Review or correct item'}
+                          </button>
                           <label className="mt-1 flex gap-1 text-xs text-ink-muted">
                             <input
                               type="checkbox"
@@ -711,6 +741,20 @@ function StashManager({ mode }: { mode: GameMode }) {
                           </button>
                         </td>
                       </tr>
+                      {reviewStackId === stack.id && (
+                        <tr>
+                          <td colSpan={7}>
+                            <StackIdentityReview
+                              stack={stack}
+                              observation={draft.observations.find((observation) => observation.id === stack.provenance.observationId)}
+                              items={catalog.data?.items}
+                              onChange={(patch) => updateStack(stack.id, patch)}
+                              onClose={() => setReviewStackId(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

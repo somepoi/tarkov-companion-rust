@@ -57,6 +57,8 @@ interface LearnedState {
   records: LearnedRecord[]
   load: () => Promise<void>
   add: (r: LearnedRecord) => Promise<void>
+  /** Reject on durable-write failure; used by explicit stash learning. */
+  addPersisted: (r: LearnedRecord) => Promise<void>
   remove: (id: string) => Promise<void>
   clear: () => Promise<void>
   importFile: (data: unknown) => Promise<number>
@@ -79,10 +81,25 @@ function prune(records: LearnedRecord[]): LearnedRecord[] {
 }
 
 export const useLearnedStore = create<LearnedState>()((setState, getState) => {
-  const save = async (records: LearnedRecord[]) => {
-    const pruned = prune(records)
-    setState({ records: pruned })
-    await set(KEY, pruned).catch(() => undefined)
+  let writes = Promise.resolve()
+  const save = (update: (records: LearnedRecord[]) => LearnedRecord[], strict = false, requiredId?: string) => {
+    const write = writes.then(async () => {
+      // Explicit learning must not replace older records after a failed load.
+      const stored = strict ? await get<LearnedRecord[]>(KEY) : undefined
+      if (strict && stored !== undefined && !Array.isArray(stored))
+        throw new Error('Stored scanner corrections could not be read')
+      const pruned = prune(update(strict ? stored ?? [] : getState().records))
+      if (requiredId && !pruned.some((record) => record.id === requiredId))
+        throw new Error('Reference retention limits prevented this appearance from being saved')
+      try {
+        await set(KEY, pruned)
+      } catch (error) {
+        if (strict) throw error
+      }
+      setState({ records: pruned })
+    })
+    writes = write.catch(() => undefined)
+    return write
   }
   return {
     loaded: false,
@@ -94,10 +111,14 @@ export const useLearnedStore = create<LearnedState>()((setState, getState) => {
     },
     add: async (r) => {
       await getState().load()
-      await save([r, ...getState().records])
+      await save((records) => [r, ...records])
     },
-    remove: async (id) => save(getState().records.filter((r) => r.id !== id)),
-    clear: async () => save([]),
+    addPersisted: async (r) => {
+      await getState().load()
+      await save((records) => [r, ...records.filter((record) => record.id !== r.id)], true, r.id)
+    },
+    remove: async (id) => save((records) => records.filter((r) => r.id !== id)),
+    clear: async () => save(() => []),
     importFile: async (data) => {
       const file = data as Partial<CorrectionsFile>
       if (file?.kind !== 'tarkov-companion-scan-corrections' || !Array.isArray(file.records)) throw new Error('Not a scanner corrections file')
@@ -105,7 +126,7 @@ export const useLearnedStore = create<LearnedState>()((setState, getState) => {
       await getState().load()
       const known = new Set(getState().records.map((r) => r.id))
       const fresh = file.records.filter((r) => r && typeof r.fp === 'string' && !known.has(r.id))
-      await save([...fresh, ...getState().records])
+      await save((records) => [...fresh, ...records])
       return fresh.length
     },
   }
@@ -146,18 +167,36 @@ export async function recordFromCorrection(
 
 /** Saves the patch at a detection's cell with the given footprint, labelled itemId with the given kind. */
 export async function recordFromSpot(image: Blob, grid: Grid, det: Detection, w: number, h: number, itemId: string, kind: LearnedKind): Promise<LearnedRecord | null> {
+  if (![grid.pitch, grid.ox, grid.oy].every(Number.isFinite) || grid.pitch <= 0
+    || ![det.col, det.row, w, h].every(Number.isSafeInteger)
+    || det.col < 0 || det.row < 0 || w < 1 || h < 1 || w * h > 256
+    || det.col + w > grid.cols || det.row + h > grid.rows) return null
   const x0 = Math.max(0, Math.floor(grid.ox + det.col * grid.pitch))
   const y0 = Math.max(0, Math.floor(grid.oy + det.row * grid.pitch))
   const wpx = Math.ceil(w * grid.pitch + 1)
   const hpx = Math.ceil(h * grid.pitch + 1)
-  const bitmap = await createImageBitmap(image, x0, y0, wpx, hpx)
+  const source = await createImageBitmap(image)
+  const inside = grid.ox + det.col * grid.pitch >= 0
+    && grid.oy + det.row * grid.pitch >= 0
+    && x0 + wpx <= source.width && y0 + hpx <= source.height
+    && wpx * hpx <= 40_000_000
+  if (!inside) {
+    source.close()
+    return null
+  }
   const canvas = document.createElement('canvas')
   canvas.width = wpx
   canvas.height = hpx
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) return null
-  ctx.drawImage(bitmap, 0, 0)
-  bitmap.close()
+  if (!ctx) {
+    source.close()
+    return null
+  }
+  try {
+    ctx.drawImage(source, x0, y0, wpx, hpx, 0, 0, wpx, hpx)
+  } finally {
+    source.close()
+  }
   const pixels = ctx.getImageData(0, 0, wpx, hpx)
   // Same sampling as the bundled fingerprints, relative to the fractional grid position.
   const fx = grid.ox + det.col * grid.pitch - x0
@@ -168,7 +207,11 @@ export async function recordFromSpot(image: Blob, grid: Grid, det: Detection, w:
   const thumb = document.createElement('canvas')
   thumb.height = thumbH
   thumb.width = Math.round((wpx / hpx) * thumbH)
-  thumb.getContext('2d')?.drawImage(canvas, 0, 0, thumb.width, thumb.height)
+  const thumbContext = thumb.getContext('2d')
+  if (!thumbContext) return null
+  thumbContext.drawImage(canvas, 0, 0, thumb.width, thumb.height)
+  const thumbnail = thumb.toDataURL('image/jpeg', 0.82)
+  if (thumbnail.length > 512 * 1024) return null
   return {
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     itemId,
@@ -177,7 +220,7 @@ export async function recordFromSpot(image: Blob, grid: Grid, det: Detection, w:
     w,
     h,
     fp: toBase64(fp),
-    thumb: thumb.toDataURL('image/jpeg', 0.82),
+    thumb: thumbnail,
     pitch: grid.pitch,
     createdAt: Date.now(),
   }
