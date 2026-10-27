@@ -39,6 +39,7 @@ export interface BackfillSummary {
 interface DesktopUiState {
   state: WatcherState | null
   settings: DesktopSettings | null
+  settingsError: string | null
   backfill: { running: boolean; progress: BackfillProgress | null; last: BackfillSummary | null; error: string | null }
   /** Location of the last matched raid (nameId), used when the raid starts. */
   lastRaidLocation: string | null
@@ -56,6 +57,7 @@ interface DesktopUiState {
 export const useDesktopStore = create<DesktopUiState>()((set) => ({
   state: null,
   settings: null,
+  settingsError: null,
   backfill: { running: false, progress: null, last: null, error: null },
   lastRaidLocation: null,
   updateStatus: null,
@@ -70,8 +72,13 @@ export const useDesktopStore = create<DesktopUiState>()((set) => ({
 
 export async function updateDesktopSettings(patch: Partial<DesktopSettings>): Promise<void> {
   if (!window.desktop) return
-  const next = await window.desktop.setSettings(patch)
-  useDesktopStore.getState().setSettings(next)
+  try {
+    const next = await window.desktop.setSettings(patch)
+    useDesktopStore.setState({ settings: next, settingsError: null })
+  } catch (error) {
+    useDesktopStore.setState({ settingsError: error instanceof Error ? error.message : String(error) })
+    throw error
+  }
 }
 
 /** Quest exists in the loaded game data for this mode (filters dailies/weeklies and stray ids). */

@@ -1,6 +1,8 @@
+mod autostart;
 mod backup;
 mod capture;
 mod desktop;
+mod integrations;
 mod inventory;
 
 use desktop::HostState;
@@ -29,10 +31,23 @@ pub fn run() {
             desktop::capture_screen,
             desktop::archive_screenshot,
             inventory::inventory_call,
-            backup::native_backup
+            backup::native_backup,
+            integrations::take_scan_capture,
+            integrations::pending_scan_capture_id
         ])
         .setup(|app| {
-            let state = Arc::new(HostState::open(app.handle())?);
+            app.handle()
+                .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+            let mut state = HostState::open(app.handle())?;
+            if state.startup_issues.is_empty()
+                && let Err(message) =
+                    state
+                        .integrations
+                        .apply(app.handle(), &state.settings()?, &state.profile_root)
+            {
+                state.startup_issues.push(message);
+            }
+            let state = Arc::new(state);
             let minimized = state
                 .settings()?
                 .get("startMinimized")

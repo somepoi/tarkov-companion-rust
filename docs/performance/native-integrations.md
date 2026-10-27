@@ -1,0 +1,11 @@
+# Native integration checkpoint
+
+The Windows native host implements monitor-under-cursor GDI capture, a configurable global capture shortcut and per-user autostart. The existing Electron host remains available while logs, overlay/searchbar, pack installation and other parity requirements are migrated. Compiler/build success is not evidence of hands-on parity.
+
+The global shortcut uses `tauri-plugin-global-shortcut` 2.4.1. Its Windows implementation registers with `MOD_NOREPEAT`. The host permits one capture job, obtains screen pixels before restoring the main window, stores at most one unread PNG and transfers it through a binary IPC response. A readiness event carries only a sequence ID. The adapter reads a pending ID after listener registration to recover an early event, ignores older results after disposal/replacement and reports capture errors visibly. Unread data expires after 60 seconds using an async deadline rather than a polling loop.
+
+Autostart is intentionally a small Windows-specific module. Inspection of `auto-launch` 0.6.0, as used by `tauri-plugin-autostart` 2.7.0, showed arguments joined without quoting, and disable logic considering both machine/user locations. That plugin is not a dependency of this host. The implementation writes only its distinct native fork value in HKCU Run and quotes Windows arguments including trailing backslashes. Windows StartupApproved overrides are respected because this app does not alter them. The original application and Electron fork registration names are distinct.
+
+Shortcut/registry changes are coordinated with persisted settings and rolled back on write failure; errors remain visible. This does not make Windows registration and filesystem writes a single OS transaction. Shutdown/crash and permission failures still require runtime review. Benchmark mode returns before shortcut registration or registry reads/writes. None of these OS mutations were exercised during the compiler/build checkpoint.
+
+Primary references: [Tauri global shortcut plugin](https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/plugin/global-shortcut.mdx), [Tauri autostart plugin](https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/plugin/autostart.mdx), and the downloaded exact crate sources represented in `Cargo.lock`. No tests were created or run.

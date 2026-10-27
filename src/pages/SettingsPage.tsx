@@ -154,7 +154,7 @@ function usePref<K extends keyof Prefs>(key: K): [Prefs[K], (v: Prefs[K]) => voi
 
 function useDesktopSetting<K extends keyof DesktopSettings>(key: K, fallback: DesktopSettings[K]): [DesktopSettings[K], (v: DesktopSettings[K]) => void] {
   const value = useDesktopStore((s) => s.settings?.[key]) ?? fallback
-  return [value, (v) => void updateDesktopSettings({ [key]: v } as Partial<DesktopSettings>)]
+  return [value, (v) => void updateDesktopSettings({ [key]: v } as Partial<DesktopSettings>).catch(() => undefined)]
 }
 
 // ---------------------------------------------------------------------------
@@ -536,7 +536,7 @@ function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | '
       }
       setError(null)
       setRecording(false)
-      void updateDesktopSettings({ [setting]: [...mods, key].join('+') })
+      void updateDesktopSettings({ [setting]: [...mods, key].join('+') }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
@@ -549,7 +549,7 @@ function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | '
           <Keyboard className="h-3.5 w-3.5" /> Change
         </button>
         {current && (
-          <button type="button" className="btn !py-1 text-xs" onClick={() => void updateDesktopSettings({ [setting]: '' })}>
+          <button type="button" className="btn !py-1 text-xs" onClick={() => void updateDesktopSettings({ [setting]: '' }).catch((cause: unknown) => setError(String(cause)))}>
             Turn off
           </button>
         )}
@@ -560,6 +560,7 @@ function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | '
 }
 
 function DesktopAppSection() {
+  const settingsError = useDesktopStore((s) => s.settingsError)
   const [tray, setTray] = useDesktopSetting('minimizeToTray', true)
   const [startWin, setStartWin] = useDesktopSetting('startWithWindows', false)
   const [startMin, setStartMin] = useDesktopSetting('startMinimized', false)
@@ -574,6 +575,7 @@ function DesktopAppSection() {
   const setScavMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
   return (
     <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut search bar overlay update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot recycle bin clear delete scav cooldown timer">
+      {settingsError && <p role="alert" className="text-sm text-danger">Could not save desktop setting: {settingsError}</p>}
       <Row label="Close to tray" hint="The X button hides the window and keeps quest tracking running. Use the tray icon to reopen or quit.">
         <Switch checked={tray} onChange={setTray} label="Close to tray" />
       </Row>

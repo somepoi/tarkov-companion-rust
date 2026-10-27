@@ -58,6 +58,7 @@ pub struct HostState {
     pub inventory: Result<crate::inventory::InventoryService, String>,
     pub startup_issues: Vec<String>,
     settings_read_error: bool,
+    pub integrations: crate::integrations::Integrations,
 }
 
 impl HostState {
@@ -136,12 +137,7 @@ impl HostState {
             }
         }
         // A saved file must not bypass the same migration gates as settings IPC.
-        for key in [
-            "startWithWindows",
-            "searchBar",
-            "clearPositionShots",
-            "cleanAfterUpdate",
-        ] {
+        for key in ["searchBar", "clearPositionShots", "cleanAfterUpdate"] {
             settings[key] = Value::Bool(false);
         }
         settings["updateMode"] = Value::String("off".into());
@@ -162,6 +158,7 @@ impl HostState {
             inventory,
             startup_issues,
             settings_read_error,
+            integrations: crate::integrations::Integrations::default(),
         })
     }
 
@@ -185,7 +182,7 @@ impl HostState {
         Ok(value)
     }
 
-    fn update_settings(&self, patch: &Value) -> Result<Value, NativeError> {
+    fn update_settings(&self, app: &tauri::AppHandle, patch: &Value) -> Result<Value, NativeError> {
         if self.settings_read_error {
             return Err(error(
                 "settings_recovery",
@@ -211,9 +208,7 @@ impl HostState {
                     format!("Invalid value for {key}"),
                 ));
             }
-            if matches!(key.as_str(), "searchBar" | "startWithWindows")
-                && value.as_bool() == Some(true)
-            {
+            if key == "searchBar" && value.as_bool() == Some(true) {
                 return Err(error(
                     "migration_pending",
                     "This native integration is still being migrated. Use the Electron build for this feature.",
@@ -241,10 +236,28 @@ impl HostState {
             }
             next[key] = value.clone();
         }
-        atomic_write(
+        let integration_changed = next["scanHotkey"] != guard["scanHotkey"]
+            || next["startWithWindows"] != guard["startWithWindows"];
+        if integration_changed {
+            self.integrations
+                .apply(app, &next, &self.profile_root)
+                .map_err(|e| error("desktop_integration", e))?;
+        }
+        let saved = atomic_write(
             &self.data_dir.join("settings.json"),
             &serde_json::to_vec_pretty(&next).map_err(|e| error("settings_json", e.to_string()))?,
-        )?;
+        );
+        if let Err(cause) = saved {
+            if integration_changed
+                && let Err(rollback) = self.integrations.apply(app, &guard, &self.profile_root)
+            {
+                return Err(error(
+                    "settings_rollback",
+                    format!("{cause}; could not restore previous desktop integration: {rollback}"),
+                ));
+            }
+            return Err(cause);
+        }
         *guard = next;
         drop(guard);
         self.public_settings()
@@ -413,7 +426,7 @@ fn dispatch(
         }
         "settings:get" => state.public_settings(),
         "settings:set" => {
-            let value = state.update_settings(first)?;
+            let value = state.update_settings(app, first)?;
             app.emit("settings-changed", &value)
                 .map_err(|e| error("event", e.to_string()))?;
             Ok(value)
@@ -431,7 +444,7 @@ fn dispatch(
                         .into_path()
                         .map_err(|e| error("directory", e.to_string()))?;
                     let path = safe_directory(&path.to_string_lossy())?;
-                    state.update_settings(&json!({"logsPath":path.to_string_lossy()}))?;
+                    state.update_settings(app, &json!({"logsPath":path.to_string_lossy()}))?;
                     Ok(json!(path.to_string_lossy()))
                 }
             }

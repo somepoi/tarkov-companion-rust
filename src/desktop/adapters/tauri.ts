@@ -26,6 +26,7 @@ async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
 }
 
 export async function createTauriDesktop(): Promise<DesktopApi> {
+  let captureErrorHandler: ((message: string) => void) | undefined
   const metadata = await invoke<{
     platform: string
     appVersion: string
@@ -104,7 +105,42 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
       new Uint8Array(
         await invoke<ArrayBuffer>('read_game_screenshot', { name }),
       ),
-    onScanCapture: (cb) => subscribe<Uint8Array>('scan:captured', cb),
+    onScanCapture: (cb) => {
+      let disposed = false
+      let latest = -1
+      const consume = (id: number) => {
+        if (disposed || id <= latest) return
+        latest = id
+        void invoke<ArrayBuffer>('take_scan_capture', { id })
+          .then((bytes) => {
+            if (!disposed && latest === id) cb(new Uint8Array(bytes))
+          })
+          .catch((error: unknown) => {
+            if (!disposed && latest === id) captureErrorHandler?.(String(error))
+          })
+      }
+      const stop = subscribe<number>('scan-capture-ready', consume, () => {
+        void invoke<number | null>('pending_scan_capture_id')
+          .then((id) => {
+            if (id !== null) consume(id)
+          })
+          .catch((error: unknown) => {
+            if (!disposed) captureErrorHandler?.(String(error))
+          })
+      })
+      return () => {
+        disposed = true
+        stop()
+      }
+    },
+    onScanCaptureError: (cb) => {
+      captureErrorHandler = cb
+      const stop = subscribe<string>('scan-capture-error', cb)
+      return () => {
+        if (captureErrorHandler === cb) captureErrorHandler = undefined
+        stop()
+      }
+    },
     onOpenInApp: (cb) => subscribe<string>('app:open', cb),
     getUpdateStatus: () => call('update:status'),
     checkForUpdates: () => call('update:check'),

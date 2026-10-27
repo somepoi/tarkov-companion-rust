@@ -38,6 +38,8 @@ function PageLoading() {
 }
 
 export function Layout() {
+  const [captureError, setCaptureError] = useState('')
+  useEffect(() => window.desktop?.onScanCaptureError?.(setCaptureError), [])
   useEffect(() => { void window.desktop?.reportUiReady?.().catch(() => undefined) }, [])
   const { pathname } = useLocation()
   const navigate = useNavigate()
@@ -103,6 +105,7 @@ export function Layout() {
       <Sidebar />
       <main className={`min-w-0 flex-1 ${fullBleed ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}`}>
         <UpdateBanner />
+        {captureError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Screenshot capture failed: {captureError}</span><button className="btn" onClick={() => setCaptureError('')}>Dismiss</button></div>}
         <WipeBanner />
         {fullBleed ? (
           <ErrorBoundary key={`${pathname}|${formatKey}`} area={areaName(pathname)}>

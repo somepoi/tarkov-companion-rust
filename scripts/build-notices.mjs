@@ -10,6 +10,7 @@ const SHIPPED = [
   'react', 'react-dom', 'scheduler', 'react-router', 'react-router-dom', 'cookie', 'set-cookie-parser',
   '@tanstack/react-query', '@tanstack/query-core', '@tanstack/react-query-persist-client', '@tanstack/query-persist-client-core',
   '@tanstack/react-virtual', '@tanstack/virtual-core', 'zustand', 'use-sync-external-store',
+  '@tauri-apps/api',
   'leaflet', 'react-leaflet', '@react-leaflet/core', '@geoman-io/leaflet-geoman-free', 'lucide-react', 'idb-keyval',
   'tesseract.js', 'tesseract.js-core', 'tailwindcss',
   'electron', 'electron-updater', 'builder-util-runtime', 'debug', 'ms', 'sax', 'fs-extra', 'graceful-fs', 'jsonfile', 'universalify',

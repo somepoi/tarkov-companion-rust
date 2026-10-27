@@ -18,6 +18,7 @@ export const UNRELEASED: string[] = [
   'Native preview: Rust/Tauri host and persistent Stash Manager with named containers, reviewed scan drafts, atomic snapshot replacement and undo. Unknown recognition facts remain visible for review. Electron remains available while native desktop integrations are migrated.',
   'Native stash planning: saved hideout targets, craft/barter batches, personal buffers, minimum reserves and never-sell rules. Global allocation explains physical KEEP / SELL / REVIEW portions and blocks sale advice when evidence or requirement coverage is incomplete.',
   'Native full backup and recovery: checksummed database, screenshot evidence, saved preferences and recognition corrections. Restore prepares a separate profile and retains the original for rollback. Daily progress JSON backups remain separate from full stash backups.',
+  'Native desktop: configurable screenshot capture shortcut with conflict errors, binary image transfer and bounded capture lifetime; separate current-user Windows autostart entry. Settings now show desktop-operation failures instead of silently ignoring them.',
 ]
 
 export const RELEASES: ChangelogEntry[] = [
