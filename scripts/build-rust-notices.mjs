@@ -3,10 +3,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFileSync } from 'node:child_process'
+import { nativeToolchain } from './lib/native-toolchain.mjs'
 
-const metadata = JSON.parse(execFileSync(process.env.CARGO || 'cargo', [
+const toolchain = nativeToolchain()
+const metadata = JSON.parse(execFileSync(toolchain.cargo, [
   'metadata', '--locked', '--offline', '--format-version', '1', '--filter-platform', 'x86_64-pc-windows-msvc',
-], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true }))
+], { env: toolchain.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true }))
 const nodes = new Map(metadata.resolve.nodes.map((node) => [node.id, node]))
 const reachable = new Set()
 function visit(id) {
