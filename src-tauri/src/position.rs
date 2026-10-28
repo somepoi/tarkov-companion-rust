@@ -471,7 +471,7 @@ fn report_error(app: &tauri::AppHandle, inner: &Inner, config: &Config, message:
         && state.error.as_ref() != Some(&message)
     {
         state.error = Some(message.clone());
-        let _ = app.emit("position:error", message);
+        let _ = app.emit("position-error", message);
     }
 }
 
@@ -793,7 +793,7 @@ fn run(
                             && record.position.at >= state.position_after
                         {
                             state.latest = Some(record.position.clone());
-                            let _ = app.emit("position:new", &record.position);
+                            let _ = app.emit("position-new", &record.position);
                         }
                         if !recovered
                             && pending.len() < MAX_PENDING

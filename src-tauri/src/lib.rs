@@ -9,6 +9,7 @@ mod logs;
 mod packs;
 mod position;
 mod resources;
+mod searchbar;
 
 use desktop::HostState;
 use std::sync::Arc;
@@ -64,7 +65,7 @@ pub fn run() {
                 || std::env::args().any(|arg| arg == "--minimized")
                 || desktop::benchmark_mode();
             let data_dir = state.data_dir.clone();
-            app.manage(state);
+            app.manage(Arc::clone(&state));
             let window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
                     .data_directory(data_dir.join("webview"))
@@ -80,6 +81,16 @@ pub fn run() {
             if !minimized {
                 window.show()?;
             }
+            if state.startup_issues.is_empty() {
+                let state = Arc::clone(&state);
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(message) = state.apply_overlay_settings(&handle) {
+                        state.report_overlay_error(&handle, message);
+                    }
+                });
+            }
+
             let show = MenuItem::with_id(
                 app,
                 "show",
@@ -88,7 +99,21 @@ pub fn run() {
                 None::<&str>,
             )?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
+            let overlay_show = MenuItem::with_id(
+                app,
+                "overlay-show",
+                "Show/hide searchbar",
+                true,
+                None::<&str>,
+            )?;
+            let overlay_lock = MenuItem::with_id(
+                app,
+                "overlay-lock",
+                "Lock/unlock searchbar",
+                true,
+                None::<&str>,
+            )?;
+            let menu = Menu::with_items(app, &[&show, &overlay_show, &overlay_lock, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .tooltip("Tarkov Companion Rust")
@@ -99,6 +124,22 @@ pub fn run() {
                             let _ = w.unminimize();
                             let _ = w.set_focus();
                         }
+                    }
+                    "overlay-show" | "overlay-lock" => {
+                        let handle = app.clone();
+                        let action = if event.id.as_ref() == "overlay-show" {
+                            "show"
+                        } else {
+                            "lock"
+                        };
+                        tauri::async_runtime::spawn_blocking(move || {
+                            let state = handle.state::<Arc<HostState>>();
+                            if state.searchbar.is_enabled()
+                                && let Err(message) = state.searchbar.hotkey(&handle, action)
+                            {
+                                state.report_overlay_error(&handle, message);
+                            }
+                        });
                     }
                     "quit" => app.exit(0),
                     _ => {}
@@ -111,14 +152,21 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "searchbar"
+            {
+                api.prevent_close();
+                let handle = window.app_handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let state = handle.state::<Arc<HostState>>();
+                    if let Err(message) = state.searchbar.command(&handle, "searchbar:hide", &[]) {
+                        state.report_overlay_error(&handle, message);
+                    }
+                });
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
                 && window.label() == "main"
             {
-                let minimize = window
-                    .state::<Arc<HostState>>()
-                    .settings()
-                    .ok()
-                    .and_then(|s| s.get("minimizeToTray").and_then(|v| v.as_bool()))
-                    .unwrap_or(false);
+                let minimize = window.state::<Arc<HostState>>().minimize_to_tray();
                 if minimize {
                     api.prevent_close();
                     let _ = window.hide();

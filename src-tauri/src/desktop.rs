@@ -1,6 +1,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
+    collections::VecDeque,
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
@@ -51,6 +52,14 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
+#[derive(Default)]
+struct OverlayState {
+    epoch: u64,
+    state: Option<Value>,
+    events: VecDeque<Value>,
+    error: Option<String>,
+}
+
 pub struct HostState {
     pub profile_root: PathBuf,
     pub data_dir: PathBuf,
@@ -61,6 +70,8 @@ pub struct HostState {
     pub integrations: crate::integrations::Integrations,
     pub logs: crate::logs::Logs,
     pub positions: crate::position::Positions,
+    pub searchbar: crate::searchbar::SearchBar,
+    overlay: Mutex<OverlayState>,
     pub packs: Result<crate::packs::Packs, String>,
 }
 
@@ -141,9 +152,7 @@ impl HostState {
             }
         }
         // A saved file must not bypass the same migration gates as settings IPC.
-        for key in ["searchBar", "cleanAfterUpdate"] {
-            settings[key] = Value::Bool(false);
-        }
+        settings["cleanAfterUpdate"] = Value::Bool(false);
         settings["updateMode"] = Value::String("off".into());
         if !settings["backupKeep"]
             .as_u64()
@@ -165,6 +174,7 @@ impl HostState {
         }
         if !startup_issues.is_empty() {
             settings["clearPositionShots"] = json!(false);
+            settings["searchBar"] = json!(false);
         }
         Ok(Self {
             profile_root,
@@ -177,6 +187,8 @@ impl HostState {
             logs: crate::logs::Logs::default(),
             packs,
             positions: crate::position::Positions::default(),
+            searchbar: crate::searchbar::SearchBar::default(),
+            overlay: Mutex::new(OverlayState::default()),
         })
     }
 
@@ -242,12 +254,6 @@ impl HostState {
                     format!("Invalid value for {key}"),
                 ));
             }
-            if key == "searchBar" && value.as_bool() == Some(true) {
-                return Err(error(
-                    "migration_pending",
-                    "This native integration is still being migrated. Use the Electron build for this feature.",
-                ));
-            }
             if key == "updateMode" && value != "off" {
                 return Err(error(
                     "updates_disabled",
@@ -270,8 +276,18 @@ impl HostState {
             }
             next[key] = value.clone();
         }
-        let integration_changed = next["scanHotkey"] != guard["scanHotkey"]
-            || next["startWithWindows"] != guard["startWithWindows"];
+        let integration_changed = [
+            "scanHotkey",
+            "startWithWindows",
+            "searchBar",
+            "searchBarHotkey",
+            "searchBarSearchHotkey",
+            "searchBarLockHotkey",
+            "searchBarMapHotkey",
+        ]
+        .iter()
+        .any(|key| next[*key] != guard[*key]);
+        let overlay_changed = next["searchBar"] != guard["searchBar"];
         if integration_changed {
             self.integrations
                 .apply(app, &next, &self.profile_root)
@@ -286,6 +302,11 @@ impl HostState {
             Ok(())
         };
         let saved = position_applied.and_then(|_| {
+            if overlay_changed {
+                self.searchbar
+                    .apply(app, &next, &self.data_dir)
+                    .map_err(|e| error("searchbar", e))?;
+            }
             atomic_write(
                 &self.data_dir.join("settings.json"),
                 &serde_json::to_vec_pretty(&next)
@@ -294,6 +315,11 @@ impl HostState {
         });
         if let Err(cause) = saved {
             let mut failures = Vec::new();
+            if overlay_changed
+                && let Err(rollback) = self.searchbar.apply(app, &guard, &self.data_dir)
+            {
+                failures.push(format!("Searchbar rollback failed: {rollback}"));
+            }
             if position_changed && let Err(rollback) = self.configure_positions(app, &guard) {
                 let mut disabled = guard.clone();
                 disabled["trackPosition"] = json!(false);
@@ -328,6 +354,46 @@ impl HostState {
         self.public_settings()
     }
 
+    pub fn apply_overlay_settings(&self, app: &tauri::AppHandle) -> Result<(), String> {
+        let settings = self
+            .settings
+            .lock()
+            .map_err(|_| "Settings lock unavailable")?;
+        self.searchbar.apply(app, &settings, &self.data_dir)
+    }
+    pub fn minimize_to_tray(&self) -> bool {
+        self.settings
+            .try_lock()
+            .ok()
+            .and_then(|settings| settings["minimizeToTray"].as_bool())
+            .unwrap_or(true)
+    }
+    pub fn report_overlay_error(&self, app: &tauri::AppHandle, message: String) {
+        if let Ok(mut overlay) = self.overlay.lock() {
+            overlay.error = Some(message.clone());
+        }
+        let _ = app.emit("searchbar-error", message);
+    }
+    fn save_overlay_anchor(&self, value: Value) -> Result<(), NativeError> {
+        if self.settings_read_error {
+            return Err(error(
+                "settings_recovery",
+                "Settings require recovery before saving position",
+            ));
+        }
+        let mut settings = self
+            .settings
+            .lock()
+            .map_err(|_| error("settings_lock", "Settings lock unavailable"))?;
+        let mut next = settings.clone();
+        next["searchBarPos"] = value;
+        atomic_write(
+            &self.data_dir.join("settings.json"),
+            &serde_json::to_vec_pretty(&next).map_err(|e| error("settings_json", e.to_string()))?,
+        )?;
+        *settings = next;
+        Ok(())
+    }
     fn log_identity(&self, app: &tauri::AppHandle, event: &Value) -> Result<Value, NativeError> {
         if self.settings_read_error {
             return Err(error(
@@ -527,6 +593,21 @@ pub async fn desktop_call(
         .map_err(|e| error("native_job", e.to_string()))?
 }
 
+fn safe_app_route(to: &str) -> bool {
+    if to.len() > 300 || !to.starts_with('/') {
+        return false;
+    }
+    let (path, query) = to
+        .split_once('?')
+        .map_or((to, ""), |(path, query)| (path, query));
+    [
+        "/", "/flea", "/keys", "/quests", "/items", "/ammo", "/hideout", "/maps", "/story",
+    ]
+    .contains(&path)
+        && query
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_%=&.+-".contains(&byte))
+}
 fn dispatch(
     app: &tauri::AppHandle,
     _window: &tauri::WebviewWindow,
@@ -537,13 +618,70 @@ fn dispatch(
     let first = args.first().unwrap_or(&Value::Null);
     if matches!(
         channel,
-        "settings:set" | "position:connect" | "position:event" | "position:reset"
+        "settings:set"
+            | "position:connect"
+            | "position:event"
+            | "position:reset"
+            | "watcher:relay"
+            | "watcher:relayState"
     ) && _window.label() != "main"
     {
         return Err(error(
             "window",
             "Only the main window can configure native tracking",
         ));
+    }
+    if channel.starts_with("searchbar:") {
+        if channel == "searchbar:lastError" {
+            return Ok(json!(
+                state
+                    .overlay
+                    .lock()
+                    .map_err(|_| error("overlay_lock", "Overlay state unavailable"))?
+                    .error
+            ));
+        }
+        if channel == "searchbar:reportError" {
+            let message = first
+                .as_str()
+                .filter(|text| text.len() <= 2048)
+                .ok_or_else(|| error("searchbar", "Invalid error message"))?;
+            state.report_overlay_error(app, message.to_owned());
+            return Ok(Value::Null);
+        }
+        if _window.label() != "searchbar" {
+            return Err(error("window", "Only the searchbar can control its window"));
+        }
+        if channel == "searchbar:open" {
+            let to = first
+                .as_str()
+                .filter(|to| safe_app_route(to))
+                .ok_or_else(|| error("app_route", "Invalid application route"))?;
+            if let Some(main) = app.get_webview_window("main") {
+                main.show().map_err(|e| error("window", e.to_string()))?;
+                main.unminimize()
+                    .map_err(|e| error("window", e.to_string()))?;
+                main.set_focus()
+                    .map_err(|e| error("window", e.to_string()))?;
+                main.emit("app-open", to)
+                    .map_err(|e| error("event", e.to_string()))?;
+            }
+            return Ok(Value::Null);
+        }
+        let value = state
+            .searchbar
+            .command(app, channel, args)
+            .map_err(|message| {
+                state.report_overlay_error(app, message.clone());
+                error("searchbar", message)
+            })?;
+        if matches!(
+            channel,
+            "searchbar:moved" | "searchbar:home" | "searchbar:corner"
+        ) {
+            state.save_overlay_anchor(value.clone())?;
+        }
+        return Ok(value);
     }
     match channel {
         "position:connect" => {
@@ -576,10 +714,10 @@ fn dispatch(
             Ok(Value::Null)
         }
         "packs:ensure" => {
-            if _window.label() != "main" || benchmark_mode() {
+            if benchmark_mode() {
                 return Err(error(
                     "packs",
-                    "Pack installation requires the main application outside benchmark mode",
+                    "Pack installation is unavailable in benchmark mode",
                 ));
             }
             let name = first
@@ -598,7 +736,7 @@ fn dispatch(
             }
             packs
                 .ensure(name, |progress| {
-                    let _ = app.emit("pack:progress", progress);
+                    let _ = app.emit("pack-progress", progress);
                 })
                 .map_err(|e| error("packs", e))?;
             Ok(Value::Null)
@@ -638,7 +776,21 @@ fn dispatch(
                 .map_err(|e| error("event", e.to_string()))?;
             Ok(value)
         }
-        "watcher:getState" => state.logs.status().map_err(|e| error("logs", e)),
+        "watcher:getState" => {
+            let native = state.logs.status().map_err(|e| error("logs", e))?;
+            if _window.label() == "searchbar" {
+                let overlay = state
+                    .overlay
+                    .lock()
+                    .map_err(|_| error("overlay_lock", "Overlay state unavailable"))?;
+                if overlay.epoch == native["epoch"].as_u64().unwrap_or(0)
+                    && let Some(value) = &overlay.state
+                {
+                    return Ok(value.clone());
+                }
+            }
+            Ok(native)
+        }
         "watcher:identity" => {
             if _window.label() != "main" {
                 return Err(error(
@@ -679,7 +831,57 @@ fn dispatch(
                     .ok_or_else(|| error("logs_job", "Expected historical job ID"))?,
             )
             .map_err(|e| error("logs", e)),
-        "watcher:recent" => Ok(json!([])),
+        "watcher:recent" => {
+            let epoch = state.logs.status().map_err(|e| error("logs", e))?["epoch"]
+                .as_u64()
+                .unwrap_or(0);
+            let overlay = state
+                .overlay
+                .lock()
+                .map_err(|_| error("overlay_lock", "Overlay state unavailable"))?;
+            Ok(if overlay.epoch == epoch {
+                json!(overlay.events)
+            } else {
+                json!([])
+            })
+        }
+        "watcher:relay" | "watcher:relayState" => {
+            if first.to_string().len() > 16 * 1024 {
+                return Err(error("relay", "Overlay payload too large"));
+            }
+            let native = state.logs.status().map_err(|e| error("logs", e))?;
+            let epoch = native["epoch"].as_u64().unwrap_or(0);
+            let sent = if channel == "watcher:relayState" {
+                first["epoch"].as_u64()
+            } else {
+                args.get(1).and_then(Value::as_u64)
+            };
+            if sent != Some(epoch) {
+                return Ok(Value::Null);
+            }
+            let mut overlay = state
+                .overlay
+                .lock()
+                .map_err(|_| error("overlay_lock", "Overlay state unavailable"))?;
+            if overlay.epoch != epoch {
+                overlay.events.clear();
+                overlay.state = None;
+                overlay.epoch = epoch;
+            }
+            if channel == "watcher:relay" {
+                overlay.events.push_front(first.clone());
+                if overlay.events.len() > 50 {
+                    overlay.events.pop_back();
+                }
+                app.emit_to("searchbar", "watcher-event", first)
+                    .map_err(|e| error("event", e.to_string()))?;
+            } else {
+                overlay.state = Some(first.clone());
+                app.emit_to("searchbar", "watcher-state", first)
+                    .map_err(|e| error("event", e.to_string()))?;
+            }
+            Ok(Value::Null)
+        }
         "watcher:pickFolder" => {
             let selected = app.dialog().file().blocking_pick_folder();
             match selected {

@@ -1,6 +1,7 @@
 //! Host-owned global capture shortcut and fork-scoped Windows autostart.
 use crate::desktop::{HostState, benchmark_mode};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -10,7 +11,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[derive(Default)]
 pub struct Integrations {
-    shortcut: Mutex<Option<Shortcut>>,
+    shortcut: Mutex<BTreeMap<String, Shortcut>>,
     capturing: AtomicBool,
     next_capture: AtomicU64,
     pending_capture: Mutex<Option<(u64, Vec<u8>)>>,
@@ -26,23 +27,33 @@ impl Integrations {
         if benchmark_mode() {
             return Ok(());
         }
-        let key = settings["scanHotkey"]
-            .as_str()
-            .ok_or("Capture shortcut must be text")?;
-        let desired: Option<Shortcut> = if key.is_empty() {
-            None
-        } else {
-            Some(
-                key.parse()
-                    .map_err(|e| format!("Invalid capture shortcut: {e}"))?,
-            )
-        };
+        let mut desired = BTreeMap::new();
+        let mut fields = vec![("scan", "scanHotkey")];
+        if settings["searchBar"] == true {
+            fields.extend([
+                ("show", "searchBarHotkey"),
+                ("search", "searchBarSearchHotkey"),
+                ("lock", "searchBarLockHotkey"),
+                ("map", "searchBarMapHotkey"),
+            ]);
+        }
+        for (name, field) in fields {
+            let key = settings[field].as_str().ok_or("Shortcut must be text")?;
+            if key.is_empty() {
+                continue;
+            }
+            let key: Shortcut = key
+                .parse()
+                .map_err(|e| format!("Invalid {name} shortcut: {e}"))?;
+            if desired.values().any(|old| *old == key) {
+                return Err("Capture and searchbar shortcuts must be distinct".into());
+            }
+            desired.insert(name.to_owned(), key);
+        }
         let mut guard = self
             .shortcut
             .lock()
             .map_err(|_| "Shortcut state is unavailable")?;
-        let old = *guard;
-        let changed = old != desired;
         let previous_autostart = crate::autostart::read()?;
         let desired_autostart = settings["startWithWindows"]
             .as_bool()
@@ -52,47 +63,87 @@ impl Integrations {
         } else {
             None
         };
-        // Reserve a replacement before releasing the current key. Conflicts
-        // therefore keep the previously working shortcut available.
-        if changed && let Some(shortcut) = desired {
-            app.global_shortcut()
-                .on_shortcut(shortcut, |app, _, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        capture(app);
-                    }
-                })
-                .map_err(|e| {
-                    format!("Capture shortcut is unavailable: {e}. Choose a different combination.")
-                })?;
-        }
-        let update_autostart = || -> Result<(), String> {
-            if previous_autostart != desired_autostart {
-                crate::autostart::write(desired_autostart.as_deref())?;
-            }
-            Ok(())
-        };
-        if let Err(error) = update_autostart() {
-            if changed && let Some(shortcut) = desired {
-                let _ = app.global_shortcut().unregister(shortcut);
-            }
-            let rollback = crate::autostart::write(previous_autostart.as_deref());
-            return Err(format!("{error}; autostart rollback: {rollback:?}"));
-        }
-        if changed
-            && let Some(shortcut) = old
-            && let Err(error) = app.global_shortcut().unregister(shortcut)
+        let mut added = Vec::new();
+        for key in desired
+            .values()
+            .filter(|key| !guard.values().any(|old| old == *key))
         {
-            if let Some(replacement) = desired {
-                let _ = app.global_shortcut().unregister(replacement);
+            if let Err(cause) = register(app, *key) {
+                let rollback: Vec<_> = added
+                    .iter()
+                    .filter_map(|key| app.global_shortcut().unregister(*key).err())
+                    .collect();
+                return Err(format!(
+                    "Shortcut unavailable: {cause}; reservation rollback: {rollback:?}. Choose another combination."
+                ));
             }
+            added.push(*key);
+        }
+        if previous_autostart != desired_autostart
+            && let Err(cause) = crate::autostart::write(desired_autostart.as_deref())
+        {
+            let keys: Vec<_> = added
+                .iter()
+                .filter_map(|key| app.global_shortcut().unregister(*key).err())
+                .collect();
             let rollback = crate::autostart::write(previous_autostart.as_deref());
             return Err(format!(
-                "Could not release the previous shortcut: {error}; autostart rollback: {rollback:?}"
+                "{cause}; shortcut rollback: {keys:?}; autostart rollback: {rollback:?}"
             ));
+        }
+        let mut removed = Vec::new();
+        for key in guard
+            .values()
+            .filter(|key| !desired.values().any(|next| next == *key))
+        {
+            if let Err(cause) = app.global_shortcut().unregister(*key) {
+                let restored: Vec<_> = removed
+                    .iter()
+                    .filter_map(|key| register(app, *key).err())
+                    .collect();
+                let keys: Vec<_> = added
+                    .iter()
+                    .filter_map(|key| app.global_shortcut().unregister(*key).err())
+                    .collect();
+                let rollback = crate::autostart::write(previous_autostart.as_deref());
+                return Err(format!(
+                    "Could not release shortcut: {cause}; previous keys rollback: {restored:?}; replacement keys rollback: {keys:?}; autostart rollback: {rollback:?}"
+                ));
+            }
+            removed.push(*key);
         }
         *guard = desired;
         Ok(())
     }
+}
+
+fn register(app: &tauri::AppHandle, key: Shortcut) -> Result<(), String> {
+    app.global_shortcut()
+        .on_shortcut(key, |app, key, event| {
+            if event.state() != ShortcutState::Pressed {
+                return;
+            }
+            let app = app.clone();
+            let key = *key;
+            tauri::async_runtime::spawn_blocking(move || {
+                let Some(state) = app.try_state::<Arc<HostState>>() else {
+                    return;
+                };
+                let action = state.integrations.shortcut.lock().ok().and_then(|keys| {
+                    keys.iter()
+                        .find(|(_, value)| **value == key)
+                        .map(|(name, _)| name.clone())
+                });
+                if let Some(action) = action {
+                    if action == "scan" {
+                        capture(&app);
+                    } else if let Err(message) = state.searchbar.hotkey(&app, &action) {
+                        let _ = app.emit("searchbar-error", message);
+                    }
+                }
+            });
+        })
+        .map_err(|e| e.to_string())
 }
 
 fn capture(app: &tauri::AppHandle) {

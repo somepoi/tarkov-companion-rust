@@ -34,27 +34,84 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     windowKind: 'main' | 'searchbar'
   }>('desktop_metadata')
   const logs = metadata.windowKind === 'main' ? nativeLogBridge() : null
+  const overlaySubscriptions: Promise<void>[] = []
+  const overlaySubscribe = <T>(channel: string, cb: (value: T) => void) => {
+    let stop = () => {}
+    let complete = () => {}
+    const ready = new Promise<void>((resolve, reject) => { complete = resolve; stop = subscribe(channel, cb, resolve, reject) })
+    overlaySubscriptions.push(ready)
+    void ready.catch(() => undefined)
+    return () => { stop(); complete() }
+  }
+  type OverlayJob = { channel: string; args: unknown[]; promise: Promise<unknown>; resolve: (value: unknown) => void; reject: (error: unknown) => void }
+  const overlayQueue: OverlayJob[] = []
+  let overlayRunning = false
+  const drainOverlay = async () => {
+    if (overlayRunning) return
+    overlayRunning = true
+    try {
+      while (overlayQueue.length) {
+        const next = overlayQueue.shift()!
+        try {
+          if (next.channel === 'searchbar:move') {
+            let dx = Number(next.args[0]), dy = Number(next.args[1])
+            while (dx || dy) {
+              const x = Math.max(-9999, Math.min(9999, dx)), y = Math.max(-9999, Math.min(9999, dy))
+              await call('searchbar:move', x, y); dx -= x; dy -= y
+            }
+            next.resolve(null)
+          } else next.resolve(await call(next.channel, ...next.args))
+        } catch (error) { next.reject(error) }
+      }
+    } finally { overlayRunning = false }
+  }
+  const overlayCall = <T>(channel: string, ...args: unknown[]): Promise<T> => {
+    const pending = overlayQueue.at(-1)
+    if (channel === 'searchbar:move') {
+      if (!args.every((value) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 10000)) return Promise.reject(new Error('Invalid movement'))
+      if (pending?.channel === channel) {
+        const x = Number(pending.args[0]) + Number(args[0]), y = Number(pending.args[1]) + Number(args[1])
+        if (Math.abs(x) > 1_000_000 || Math.abs(y) > 1_000_000) return Promise.reject(new Error('Searchbar movement queue exceeds its limit'))
+        pending.args = [x, y]
+        return pending.promise as Promise<T>
+      }
+    }
+    if (pending?.channel === channel && ['searchbar:size', 'searchbar:regions'].includes(channel)) { pending.args = args; return pending.promise as Promise<T> }
+    if (overlayQueue.length >= 32) return Promise.reject(new Error('Searchbar is busy; retry shortly'))
+    let resolve!: (value: unknown) => void, reject!: (error: unknown) => void
+    const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no })
+    overlayQueue.push({ channel, args, promise, resolve, reject })
+    void drainOverlay()
+    return promise as Promise<T>
+  }
   const api: DesktopApi = {
     reportUiReady: () => call('ui:ready'),
     platform: metadata.platform,
     appVersion: metadata.appVersion,
     windowKind: metadata.windowKind,
-    setSearchBarSize: (width, height) => call('searchbar:size', width, height),
-    openInApp: (to) => call('searchbar:open', to),
-    moveSearchBar: (dx, dy) => call('searchbar:move', dx, dy),
-    searchBarMoved: () => call('searchbar:moved'),
-    searchBarHome: () => call('searchbar:home'),
-    setSearchBarPassthrough: (on) => call('searchbar:passthrough', on),
+    setSearchBarSize: (width, height) => overlayCall('searchbar:size', width, height),
+    setSearchBarRegions: (regions) => overlayCall('searchbar:regions', regions),
+    searchBarReady: async () => { await Promise.all(overlaySubscriptions); await overlayCall('searchbar:ready') },
+    onSearchBarGeometry: (cb) => overlaySubscribe('searchbar:geometry', cb),
+    onSearchBarError: (cb) => subscribe<string>('searchbar:error', cb, () => {
+      void overlayCall<string | null>('searchbar:lastError').then((message) => { if (message) cb(message) }).catch(() => undefined)
+    }),
+    reportSearchBarError: (message) => overlayCall('searchbar:reportError', message),
+    openInApp: (to) => overlayCall('searchbar:open', to),
+    moveSearchBar: (dx, dy) => overlayCall('searchbar:move', dx, dy),
+    searchBarMoved: () => overlayCall('searchbar:moved'),
+    searchBarHome: () => overlayCall('searchbar:home'),
+    setSearchBarPassthrough: (on) => overlayCall('searchbar:passthrough', on),
     onSearchBarLayout: (cb) =>
-      subscribe<{ left: boolean; up: boolean }>('searchbar:layout', cb),
-    setSearchBarLocked: (on) => call('searchbar:lock', on),
-    isSearchBarLocked: () => call('searchbar:locked'),
-    onSearchBarLocked: (cb) => subscribe<boolean>('searchbar:locked', cb),
-    hideSearchBar: () => call('searchbar:hide'),
-    releaseSearchBar: () => call('searchbar:release'),
-    onSearchBarFocus: (cb) => subscribe<void>('searchbar:focus', () => cb()),
-    onSearchBarMap: (cb) => subscribe<void>('searchbar:map', () => cb()),
-    searchBarCorner: (corner) => call('searchbar:corner', corner),
+      overlaySubscribe<{ left: boolean; up: boolean }>('searchbar:layout', cb),
+    setSearchBarLocked: (on) => overlayCall('searchbar:lock', on),
+    isSearchBarLocked: () => overlayCall('searchbar:locked'),
+    onSearchBarLocked: (cb) => overlaySubscribe<boolean>('searchbar:locked', cb),
+    hideSearchBar: () => overlayCall('searchbar:hide'),
+    releaseSearchBar: () => overlayCall('searchbar:release'),
+    onSearchBarFocus: (cb) => overlaySubscribe<void>('searchbar:focus', () => cb()),
+    onSearchBarMap: (cb) => overlaySubscribe<void>('searchbar:map', () => cb()),
+    searchBarCorner: (corner) => overlayCall('searchbar:corner', corner),
     getState: logs?.getState ?? (() => call('watcher:getState')),
     ensurePack: async (name: PackName) => {
       const rel =

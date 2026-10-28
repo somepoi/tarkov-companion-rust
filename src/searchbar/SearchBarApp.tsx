@@ -5,6 +5,7 @@ import { raidMap, raidOverAt, reduceRaid, type MapRow, type RaidState, type Rest
 import { useOverlayPrefs } from './overlayPrefs'
 import { Pills } from './pills'
 import { columnClass, useDrag, type Flip } from './shell'
+import { useNativeRegions } from './useNativeRegions'
 
 // Everything past the magnifying glass (game data, search, cards, maps) loads on the first click.
 const SearchBarBody = lazy(() => import('./SearchBarBody'))
@@ -88,6 +89,12 @@ export function SearchBarApp() {
   const [request, setRequest] = useState<Request | null>(() => (wantsRestore() ? { nonce: 1, kind: 'restore' } : null))
   const p = useOverlayPrefs()
   const box = useRef<HTMLDivElement>(null)
+  const [nativeError, setNativeError] = useState('')
+  const reportNativeError = useCallback((message: string) => {
+    setNativeError(message)
+    void window.desktop?.reportSearchBarError?.(message).catch(() => undefined)
+  }, [])
+  useNativeRegions(box, reportNativeError)
   const through = useRef<boolean | null>(null)
 
   useEffect(() => {
@@ -124,7 +131,7 @@ export function SearchBarApp() {
       through.current = on
       void api?.setSearchBarPassthrough(on)
     }
-    window.addEventListener('mousemove', move)
+    if (!api?.setSearchBarRegions) window.addEventListener('mousemove', move)
     // The app window keeps the scav timer and the map table; follow their changes.
     const storage = (e: StorageEvent) => {
       if (e.key === 'tarkov-companion-timers') setScavEnd(readScavEnd())
@@ -138,6 +145,7 @@ export function SearchBarApp() {
       setRestocks(readRestocks())
     }
     window.addEventListener(MAP_ROWS_EVENT, rowsChanged)
+    void api?.searchBarReady?.().catch(reportNativeError)
     return () => {
       window.removeEventListener(MAP_ROWS_EVENT, rowsChanged)
       offs.forEach((off) => off?.())
@@ -145,7 +153,7 @@ export function SearchBarApp() {
       window.removeEventListener('mousemove', move)
       window.removeEventListener('storage', storage)
     }
-  }, [])
+  }, [reportNativeError])
 
   // The raid you are in, from the game log: what happened recently, then live events.
   const autoRaidMap = p.autoRaidMap
@@ -192,6 +200,7 @@ export function SearchBarApp() {
   useLayoutEffect(() => {
     const el = box.current
     if (!el) return
+    if (window.desktop?.setSearchBarRegions) return
     const send = () => {
       const r = el.getBoundingClientRect()
       void window.desktop?.setSearchBarSize(Math.ceil(r.width) + 8, Math.ceil(r.height) + 8)
@@ -267,6 +276,7 @@ export function SearchBarApp() {
         ) : (
           <div className={columnClass(flip)}>{glass}</div>
         )}
+        {nativeError && <button data-solid type="button" className="max-w-xs rounded border border-red-400/40 bg-black/85 p-2 text-xs text-red-200" onClick={() => setNativeError('')}>Searchbar: {nativeError} · Dismiss</button>}
       </div>
     </div>
   )

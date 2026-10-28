@@ -11,7 +11,7 @@ This implements the content-pack service seam from migration phase 3. It preserv
 - `ensure(name, progress) -> Result<(), String>` is **blocking**; invoke it from a bounded blocking host job, never an async/UI runtime thread. One installation runs at a time. Duplicate requests wait and recheck the completed result; at most four active/waiting requests are admitted. A missing compiled descriptor is a no-op so the caller can use bundled/dev assets.
 - `read_resource(relative) -> Result<Option<Vec<u8>>, String>` reads only a described, completed pack entry, with its expected size/hash. `None` means the caller should try its separately scoped bundled/dev resolver. It does not start a download. Missing/corrupt requested files invalidate the in-process installed cache; a subsequent `ensure` installs a fresh directory and retains the old one.
 
-The progress callback receives serializable `name`, `label`, `received`, `total`, and `state` (`downloading`, `installing`, `done`), matching the current frontend `PackProgress` shape. The host should emit `pack:progress` and return a binary IPC/protocol body for resource reads.
+The progress callback receives serializable `name`, `label`, `received`, `total`, and `state` (`downloading`, `installing`, `done`), matching the current frontend `PackProgress` shape. The host should emit native `pack-progress` (logical desktop channel `pack:progress`) and return a binary IPC/protocol body for resource reads.
 
 Use the already locked reqwest 0.13.5 through a direct native dependency:
 
@@ -41,7 +41,7 @@ The previous `electron/packs.generated.json` remains until every pack is flushed
 
 ## Remaining integration and verification
 
-The host now embeds the trusted optional descriptor at build time, owns the fallible service without blocking recovery, installs through main-window-only IPC, emits progress and reads pack bytes over bounded binary IPC. Benchmark installation is rejected. Binary reads admit at most two jobs and 64 MiB per resource. The adapter prefers bundled assets and falls back to installed packs, including missing/HTML dev-server fallbacks.
+The host now embeds the trusted optional descriptor at build time, owns the fallible service without blocking recovery, installs through trusted main/searchbar-window IPC, emits progress and reads pack bytes over bounded binary IPC. Benchmark installation is rejected. Binary reads admit at most two jobs and 64 MiB per resource. The adapter prefers bundled assets and falls back to installed packs, including missing/HTML dev-server fallbacks.
 
 `resources.rs` registers the asynchronous `tcres` protocol using the locked [Tauri API](https://docs.rs/tauri/2.12.5/tauri/struct.Builder.html#method.register_asynchronous_uri_scheme_protocol). It accepts GET/HEAD from main/searchbar, decodes UTF-8 paths and serves only raster files under `tiles/lighthouse-re3mr/`. Installed bytes are capped at 8 MiB before allocation; embedded assets use exact-key membership to avoid the SPA fallback. Development files are scoped to the repository's canonical public directory. Scripts/private profile files are excluded. Eight blocking readers execute behind a bounded 128-request admission queue; ordinary viewport bursts wait asynchronously instead of losing tiles at the eight-reader boundary. Exhaustion beyond the total bound returns 503. CSP grants the protocol only image/connect access; map templates append placeholders after native URL conversion.
 

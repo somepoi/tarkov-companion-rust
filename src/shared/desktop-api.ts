@@ -229,6 +229,11 @@ export interface DesktopApi {
   windowKind: 'main' | 'searchbar'
   /** Search bar only: its size once drawn (the window follows it). */
   setSearchBarSize: (width: number, height: number) => Promise<void>
+  setSearchBarRegions?: (regions: { x: number; y: number; width: number; height: number }[]) => Promise<void>
+  searchBarReady?: () => Promise<void>
+  onSearchBarGeometry?: (cb: () => void) => () => void
+  onSearchBarError?: (cb: (message: string) => void) => () => void
+  reportSearchBarError?: (message: string) => Promise<void>
   /** Search bar only: drag the glass by this many pixels; `searchBarMoved` saves where it ended. */
   moveSearchBar: (dx: number, dy: number) => Promise<void>
   searchBarMoved: () => Promise<void>

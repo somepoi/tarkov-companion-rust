@@ -5,6 +5,7 @@ export function subscribe<T>(
   channel: string,
   cb: (payload: T) => void,
   onReady?: () => void,
+  onError?: (error: unknown) => void,
 ): () => void {
   let disposed = false
   let stop: (() => void) | undefined
@@ -18,9 +19,10 @@ export function subscribe<T>(
         onReady?.()
       }
     })
-    .catch((error: unknown) =>
-      console.error(`Desktop subscription failed: ${channel}`, error),
-    )
+    .catch((error: unknown) => {
+      console.error(`Desktop subscription failed: ${channel}`, error)
+      onError?.(error)
+    })
   return () => {
     disposed = true
     stop?.()

@@ -79,8 +79,21 @@ export function nativeLogBridge() {
     failWorker(event.message || 'Native log parser stopped')
   worker.onmessageerror = () =>
     failWorker('The native log parser could not read its message')
+  let relayState: State | null = null
+  let relaying = false
+  const relay = async () => {
+    if (relaying) return
+    relaying = true
+    try {
+      while (relayState) { const next = relayState; relayState = null; await call('watcher:relayState', next) }
+    } catch (error) {
+      console.error('Overlay state relay failed', error)
+    } finally { relaying = false }
+  }
   const publish = () => {
     for (const listener of stateListeners) listener(state)
+    relayState = { ...state }
+    void relay()
   }
   let dirty = true
   let draining = false
@@ -182,6 +195,9 @@ export function nativeLogBridge() {
           state.lastEventAt = Date.now()
           recent.unshift(event)
           if (recent.length > 50) recent.pop()
+          await call('watcher:relay', event, state.epoch).catch((error: unknown) => {
+            state.message = `Overlay event relay failed: ${String(error)}`
+          })
           for (const listener of eventListeners) listener(event)
         }
         if (!state.message && warning) state.message = warning

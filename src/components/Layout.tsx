@@ -40,6 +40,8 @@ function PageLoading() {
 
 export function Layout() {
   const [captureError, setCaptureError] = useState('')
+  const [searchbarError, setSearchbarError] = useState('')
+  useEffect(() => window.desktop?.onSearchBarError?.(setSearchbarError), [])
   const positionError = usePositionStore((s) => s.error)
   useEffect(() => window.desktop?.onScanCaptureError?.(setCaptureError), [])
   useEffect(() => { void window.desktop?.reportUiReady?.().catch(() => undefined) }, [])
@@ -112,6 +114,7 @@ export function Layout() {
       <Sidebar />
       <main className={`min-w-0 flex-1 ${fullBleed ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}`}>
         <UpdateBanner />
+        {searchbarError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Searchbar: {searchbarError}</span><button className="btn" onClick={() => setSearchbarError('')}>Dismiss</button></div>}
         {captureError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Screenshot capture failed: {captureError}</span><button className="btn" onClick={() => setCaptureError('')}>Dismiss</button></div>}
         <WipeBanner />
         {positionError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Position tracking: {positionError}</span><button className="btn" onClick={() => usePositionStore.getState().setError(null)}>Dismiss</button></div>}
