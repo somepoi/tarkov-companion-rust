@@ -1,6 +1,7 @@
 import type { Craft, HideoutStation, ItemsById, Task } from '../api/types'
 import type { Faction } from '../store/progress'
 import { isFactionEligible } from './taskStatus'
+import { remainingObjective, type ObjectiveProgress } from './objectiveProgress'
 
 export type NeedSource =
   | { kind: 'quest'; id: string; name: string; traderId: string; traderName: string; count: number | null; fir: boolean | null }
@@ -30,6 +31,9 @@ export interface NeedsInput {
   crafts: Craft[]
   favoriteCraftIds: string[]
   items?: ItemsById
+  objectiveProgress?: ObjectiveProgress
+  activeTaskIds?: ReadonlySet<string>
+  failedTaskIds?: ReadonlySet<string>
 }
 
 /** Objective types where the item leaves your stash. */
@@ -71,11 +75,15 @@ export function computeNeeds(input: NeedsInput): Map<string, ItemNeed> {
     if (input.completedTaskIds.has(task.id) || !isFactionEligible(task, input.faction)) continue
     for (const o of task.objectives) {
       if (!HAND_IN_TYPES.has(o.type) || o.itemIds.length === 0 || o.optional) continue
+      const remaining = remainingObjective({
+        completedTaskIds: input.completedTaskIds, activeTaskIds: input.activeTaskIds ?? new Set(),
+        failedTaskIds: input.failedTaskIds ?? new Set(), objectiveProgress: input.objectiveProgress,
+      }, task, o).quantity
       add(
         o.itemIds[0],
-        o.count,
+        remaining,
         o.foundInRaid,
-        { kind: 'quest', id: task.id, name: task.name, traderId: task.trader.id, traderName: task.trader.name, count: o.count, fir: o.foundInRaid },
+        { kind: 'quest', id: task.id, name: task.name, traderId: task.trader.id, traderName: task.trader.name, count: remaining, fir: o.foundInRaid },
         o.itemIds.slice(1),
       )
     }

@@ -744,6 +744,8 @@ export interface ObjectiveLocation {
 }
 
 export interface TaskObjective {
+  /** Canonical raw definition, preserving state restrictions for manual progress review. */
+  planningDefinition?: string
   /** Raw item state restrictions unsupported by physical stack facts. */
   planningGaps?: string[]
   id: string

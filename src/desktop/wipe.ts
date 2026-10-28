@@ -24,7 +24,8 @@ export function archiveAndReset(label: string) {
   useArchivesStore.getState().add(label, progress.exportProgress())
   const fresh = progress.exportProgress()
   for (const mode of ['regular', 'pve'] as const) {
-    fresh.profiles[mode] = { ...fresh.profiles[mode], completedTaskIds: [], activeTaskIds: [], failedTaskIds: [], playerLevel: 1 }
+    fresh.profiles[mode] = { ...fresh.profiles[mode], completedTaskIds: [], activeTaskIds: [], failedTaskIds: [], playerLevel: 1,
+      objectiveProgress: {}, objectiveProgressReview: undefined }
   }
   progress.importProgress(fresh)
   const inv = useInventoryStore.getState()

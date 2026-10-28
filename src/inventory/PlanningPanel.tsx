@@ -18,6 +18,7 @@ import { fetchRecipeCatalog } from './recipeCatalog'
 import { buildRequirements } from './requirements'
 import { PlanResults } from './PlanResults'
 import { quantityFitsCatalog } from '../scan/quantity'
+import { QuestObjectiveProgress } from './QuestObjectiveProgress'
 
 const inputClass =
   'rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink'
@@ -151,6 +152,10 @@ function PlannerEditor({
     progression.playerLevel,
     progression.faction,
     [...progression.completedTaskIds].sort(),
+    [...progression.activeTaskIds].sort(),
+    [...progression.failedTaskIds].sort(),
+    progression.objectiveProgress ?? {},
+    progression.objectiveProgressReview !== undefined,
     stationLevels,
   ])
   const revisions = Object.fromEntries(
@@ -355,6 +360,8 @@ function PlannerEditor({
         </p>
       )}
       <fieldset disabled={busy || conflict} className="space-y-4">
+        <QuestObjectiveProgress mode={mode} tasks={game.data?.tasks ?? []} profile={progression} catalogReady={!!game.data}
+          onRefresh={() => { void game.refetch() }} />
         <details className="border-b border-line pb-3">
           <summary className="cursor-pointer text-sm font-medium">
             Hideout targets

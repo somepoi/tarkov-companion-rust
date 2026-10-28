@@ -3,6 +3,7 @@ import type { Profile } from '../store/progress'
 import { isFactionEligible } from '../lib/taskStatus'
 import type { PlanningPreferences, Requirement } from './client'
 import { count, type RecipeCatalog } from './recipeCatalog'
+import { consumesItems, orphanObjectiveProgress, remainingObjective } from '../lib/objectiveProgress'
 
 interface Input {
   tasks: Task[]
@@ -28,6 +29,10 @@ export function buildRequirements(input: Input) {
   }
   const consume = { kind: 'consume' } as const
   const reusable = (group: string) => ({ kind: 'reusable', group }) as const
+  if (input.profile.objectiveProgressReview !== undefined)
+    gaps.push('Saved partial objective data needs review; unrecognized source data is retained in progress exports')
+  for (const entry of orphanObjectiveProgress(input.tasks, input.profile))
+    gaps.push(`Saved objective ${entry.taskId}/${entry.objectiveId} is missing or no longer consumes items; review its counter`)
   for (const task of input.tasks) {
     if (
       input.profile.completedTaskIds.has(task.id) ||
@@ -39,7 +44,10 @@ export function buildRequirements(input: Input) {
         `${task.name}: wiki requirements contain unstructured conditions`,
       )
     for (const objective of task.objectives) {
-      const source = `Quest: ${task.name} · ${objective.description}`
+      const progress = consumesItems(objective) ? remainingObjective(input.profile, task, objective) : undefined
+      const source = `Quest: ${task.name} · ${objective.description}${progress?.completed ? ` (${progress.completed} already completed; ${progress.quantity} remaining)` : ''}`
+      if (progress?.gap) gaps.push(`${source}: ${progress.gap}`)
+      if (progress?.quantity === 0 && !progress.gap) continue
       if (objective.planningGaps?.length)
         gaps.push(...objective.planningGaps.map((g) => `${source}: ${g}`))
       if (['giveItem', 'plantItem', 'sellItem'].includes(objective.type)) {
@@ -48,7 +56,7 @@ export function buildRequirements(input: Input) {
           source,
           kind: consume,
           alternatives: objective.itemIds,
-          quantity: count(objective.count),
+          quantity: progress?.quantity ?? count(objective.count),
           fir:
             objective.foundInRaid === true
               ? 'required'
@@ -62,7 +70,7 @@ export function buildRequirements(input: Input) {
           source,
           kind: consume,
           alternatives: objective.markerItemId ? [objective.markerItemId] : [],
-          quantity: count(objective.count),
+          quantity: progress?.quantity ?? count(objective.count),
           fir: 'any',
         })
       } else if (objective.type === 'buildWeapon') {

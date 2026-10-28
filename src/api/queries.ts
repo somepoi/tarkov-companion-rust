@@ -1,4 +1,5 @@
 import { friendlySwitchName } from './switchNames'
+import { canonicalObjectiveDefinition, consumesItems } from '../lib/objectiveProgress'
 import { assertCatalogSupports, getEndpointCatalog } from './catalog'
 import { fetchJson, type GameMode } from './client'
 import { fetchTranslated, type Translator } from './translate'
@@ -187,6 +188,7 @@ function adaptObjective(
   return {
     id: raw.id,
     type: raw.type,
+    planningDefinition: consumesItems(raw) ? canonicalObjectiveDefinition(raw) : undefined,
     description: t(raw.description, raw.type),
     optional: Boolean(raw.optional),
     maps: (raw.maps ?? []).map((id) => mapsById[id]).filter((m): m is GameMap => Boolean(m)),

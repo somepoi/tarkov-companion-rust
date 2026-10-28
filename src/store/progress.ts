@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type { GameMode } from '../api/client'
+import { invalidateObjectiveProgress, objectiveFactToken, parseObjectiveProgress, progressKey,
+  type ObjectiveProgress, type ObjectiveProgressFact } from '../lib/objectiveProgress'
 
 export type Faction = 'USEC' | 'BEAR'
 
@@ -13,6 +15,9 @@ export interface Profile {
   activeTaskIds: Set<string>
   /** Tasks the game log reported as failed. */
   failedTaskIds: Set<string>
+  objectiveProgress?: ObjectiveProgress
+  /** Invalid persisted input retained for export/recovery; never used as a counter. */
+  objectiveProgressReview?: unknown
 }
 
 export const MIN_LEVEL = 1
@@ -24,6 +29,8 @@ interface SerializedProfile {
   completedTaskIds: string[]
   activeTaskIds?: string[]
   failedTaskIds?: string[]
+  objectiveProgress?: ObjectiveProgress
+  objectiveProgressReview?: unknown
 }
 
 export interface ProgressExport {
@@ -49,6 +56,9 @@ export interface ProgressState {
   markTaskFailedFor: (mode: GameMode, taskId: string) => void
   /** "I have this quest" (the game gave it to you) on or off, set by hand. */
   setTaskActiveFor: (mode: GameMode, taskId: string, active: boolean) => void
+  setObjectiveProgressFor: (mode: GameMode, taskId: string, objectiveId: string,
+    fact: ObjectiveProgressFact | null, expectedToken: string) => void
+  clearObjectiveProgressFor: (mode: GameMode) => void
   /** Adds many completed tasks at once (backfill); returns how many were new. */
   addCompletedFor: (mode: GameMode, taskIds: string[]) => number
   /** Moves done/started/failed marks from one id to another (a wiki quest that the game data now has under its real id). */
@@ -65,6 +75,7 @@ const emptyProfile = (): Profile => ({
   completedTaskIds: new Set(),
   activeTaskIds: new Set(),
   failedTaskIds: new Set(),
+  objectiveProgress: {},
 })
 
 const clampLevel = (n: number) =>
@@ -107,6 +118,8 @@ function parseProfile(raw: unknown, label: string): Profile {
     completedTaskIds: new Set(p.completedTaskIds),
     activeTaskIds: new Set(isStringArray(p.activeTaskIds) ? p.activeTaskIds : []),
     failedTaskIds: new Set(isStringArray(p.failedTaskIds) ? p.failedTaskIds : []),
+    objectiveProgress: parseObjectiveProgress(p.objectiveProgress),
+    objectiveProgressReview: p.objectiveProgressReview,
   }
 }
 
@@ -151,12 +164,27 @@ export function withRenamed(p: Profile, ids: Record<string, string>): Profile {
   const completedTaskIds = move(p.completedTaskIds)
   const activeTaskIds = move(p.activeTaskIds)
   const failedTaskIds = move(p.failedTaskIds)
-  if (completedTaskIds === p.completedTaskIds && activeTaskIds === p.activeTaskIds && failedTaskIds === p.failedTaskIds) return p
-  for (const id of completedTaskIds) {
-    activeTaskIds.delete(id)
-    failedTaskIds.delete(id)
+  let objectiveProgress = p.objectiveProgress
+  let objectiveProgressReview = p.objectiveProgressReview
+  for (const [from, to] of Object.entries(ids)) {
+    if (from === to || !progressKey(to) || !objectiveProgress?.[from]) continue
+    const next = { ...objectiveProgress }
+    if (Object.keys(next[from]).some((id) => next[to]?.[id]))
+      objectiveProgressReview = { reason: 'Renamed objective counters conflict', sourceTaskId: from,
+        targetTaskId: to, source: next[from], previous: objectiveProgressReview }
+    // Keep both distinct objective IDs; any collision retains the target's fact.
+    next[to] = { ...next[from], ...next[to] }
+    delete next[from]
+    objectiveProgress = invalidateObjectiveProgress(next, to)
   }
-  return { ...p, completedTaskIds, activeTaskIds, failedTaskIds }
+  if (completedTaskIds === p.completedTaskIds && activeTaskIds === p.activeTaskIds && failedTaskIds === p.failedTaskIds && objectiveProgress === p.objectiveProgress) return p
+  const cleanActive = new Set(activeTaskIds)
+  const cleanFailed = new Set(failedTaskIds)
+  for (const id of completedTaskIds) {
+    cleanActive.delete(id)
+    cleanFailed.delete(id)
+  }
+  return { ...p, completedTaskIds, activeTaskIds: cleanActive, failedTaskIds: cleanFailed, objectiveProgress, objectiveProgressReview }
 }
 
 export const useProgressStore = create<ProgressState>()(
@@ -190,15 +218,18 @@ export const useProgressStore = create<ProgressState>()(
             const failed = new Set(p.failedTaskIds)
             active.add(taskId)
             failed.delete(taskId)
-            return { ...p, activeTaskIds: active, failedTaskIds: failed }
+            return { ...p, activeTaskIds: active, failedTaskIds: failed,
+              objectiveProgress: invalidateObjectiveProgress(p.objectiveProgress, taskId) }
           }),
         setTaskActiveFor: (mode, taskId, on) =>
           updateProfileFor(mode, (p) => {
-            if (p.activeTaskIds.has(taskId) === on) return p
+            if (p.activeTaskIds.has(taskId) === on && !(on && p.failedTaskIds.has(taskId))) return p
             const active = new Set(p.activeTaskIds)
-            if (on) active.add(taskId)
+            const failed = new Set(p.failedTaskIds)
+            if (on) { active.add(taskId); failed.delete(taskId) }
             else active.delete(taskId)
-            return { ...p, activeTaskIds: active }
+            return { ...p, activeTaskIds: active, failedTaskIds: failed,
+              objectiveProgress: invalidateObjectiveProgress(p.objectiveProgress, taskId) }
           }),
         markTaskFailedFor: (mode, taskId) =>
           updateProfileFor(mode, (p) => {
@@ -207,8 +238,27 @@ export const useProgressStore = create<ProgressState>()(
             const failed = new Set(p.failedTaskIds)
             active.delete(taskId)
             failed.add(taskId)
-            return { ...p, activeTaskIds: active, failedTaskIds: failed }
+            return { ...p, activeTaskIds: active, failedTaskIds: failed,
+              objectiveProgress: invalidateObjectiveProgress(p.objectiveProgress, taskId) }
           }),
+        setObjectiveProgressFor: (mode, taskId, objectiveId, fact, expectedToken) =>
+          updateProfileFor(mode, (p) => {
+            if (!progressKey(taskId) || !progressKey(objectiveId)) throw new Error('Invalid objective identity')
+            const existing = p.objectiveProgress?.[taskId]?.[objectiveId]
+            if (objectiveFactToken(existing) !== expectedToken) throw new Error('Saved objective progress changed. Reload it before saving.')
+            if (fact && (!p.activeTaskIds.has(taskId) || p.failedTaskIds.has(taskId) || p.completedTaskIds.has(taskId)))
+              throw new Error('Only an active, unfinished quest can receive current partial progress')
+            const objectives = { ...p.objectiveProgress?.[taskId] }
+            if (fact) objectives[objectiveId] = fact
+            else delete objectives[objectiveId]
+            const facts = { ...p.objectiveProgress }
+            if (Object.keys(objectives).length) facts[taskId] = objectives
+            else delete facts[taskId]
+            return { ...p, objectiveProgress: parseObjectiveProgress(facts) }
+          }),
+        clearObjectiveProgressFor: (mode) => updateProfileFor(mode, (p) => ({
+          ...p, objectiveProgress: {}, objectiveProgressReview: undefined,
+        })),
         addCompletedFor: (mode, taskIds) => {
           let added = 0
           updateProfileFor(mode, (p) => {
@@ -238,6 +288,8 @@ export const useProgressStore = create<ProgressState>()(
             completedTaskIds: Array.from(p.completedTaskIds),
             activeTaskIds: Array.from(p.activeTaskIds),
             failedTaskIds: Array.from(p.failedTaskIds),
+            objectiveProgress: parseObjectiveProgress(p.objectiveProgress),
+            objectiveProgressReview: p.objectiveProgressReview,
           })
           return {
             app: 'tarkov-companion',
@@ -255,20 +307,29 @@ export const useProgressStore = create<ProgressState>()(
     },
     {
       name: 'tarkov-companion-progress',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage, { replacer, reviver }),
-      // v1 -> v2 only added activeTaskIds/failedTaskIds, which `merge` fills in.
+      // Older optional fields are filled by merge; never discard the old profile.
       // Without a migrate function zustand would throw the old state away.
       migrate: (persisted) => persisted as ProgressState,
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<ProgressState>
-        const mergeProfile = (base: Profile, stored?: Partial<Profile>): Profile => ({
+        const mergeProfile = (base: Profile, stored?: Partial<Profile>): Profile => {
+          let objectiveProgress: ObjectiveProgress = {}
+          let objectiveProgressReview = stored?.objectiveProgressReview
+          try { objectiveProgress = parseObjectiveProgress(stored?.objectiveProgress) } catch {
+            objectiveProgressReview = { unparsed: stored?.objectiveProgress, previous: objectiveProgressReview }
+          }
+          return {
           ...base,
           ...(stored ?? {}),
           completedTaskIds: stored?.completedTaskIds instanceof Set ? stored.completedTaskIds : base.completedTaskIds,
           activeTaskIds: stored?.activeTaskIds instanceof Set ? stored.activeTaskIds : new Set(),
           failedTaskIds: stored?.failedTaskIds instanceof Set ? stored.failedTaskIds : new Set(),
-        })
+          objectiveProgress,
+          objectiveProgressReview,
+          }
+        }
         return {
           ...current,
           gameMode: isGameMode(p.gameMode) ? p.gameMode : current.gameMode,
