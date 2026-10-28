@@ -6,6 +6,8 @@ mod integrations;
 mod inventory;
 mod log_locator;
 mod logs;
+mod packs;
+mod resources;
 
 use desktop::HostState;
 use std::sync::Arc;
@@ -17,6 +19,7 @@ use tauri::{
 
 pub fn run() {
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("tcres", resources::serve)
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -30,6 +33,7 @@ pub fn run() {
             desktop::desktop_metadata,
             desktop::desktop_call,
             desktop::read_game_screenshot,
+            desktop::read_pack_resource,
             desktop::capture_screen,
             desktop::archive_screenshot,
             desktop::read_archived_screenshot,

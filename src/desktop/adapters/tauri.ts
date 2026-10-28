@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { subscribe } from './tauriEvents'
 import { nativeLogBridge } from '../logs/nativeBridge'
 import type {
@@ -63,15 +63,14 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
           : 'tiles/lighthouse-re3mr/0/0/0.png'
       const response = await fetch(
         new URL(import.meta.env.BASE_URL + rel, location.href),
-      )
+      ).catch(() => null)
       if (
-        !response.ok ||
+        !response?.ok ||
+        response.headers.get('content-type')?.includes('text/html') ||
         (name === 'scan' &&
           !response.headers.get('content-type')?.includes('json'))
       )
-        throw new Error(
-          'Bundled content is unavailable. Build the matching scanner/map assets first.',
-        )
+        await call('packs:ensure', name)
     },
     onPackProgress: (cb) => subscribe<PackProgress>('pack:progress', cb),
     getSettings: () => call('settings:get'),
@@ -91,15 +90,12 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
         throw new Error('Invalid resource path')
       const response = await fetch(
         new URL(import.meta.env.BASE_URL + rel, location.href),
-      )
-      if (!response.ok)
-        throw new Error(
-          'Resource unavailable: ' +
-            rel +
-            '. Build scanner/OCR/map assets first.',
-        )
+      ).catch(() => null)
+      if (!response?.ok || response.headers.get('content-type')?.includes('text/html'))
+        return invoke<ArrayBuffer>('read_pack_resource', { relative: rel })
       return response.arrayBuffer()
     },
+    appResourceUrl: (relative) => convertFileSrc(relative, 'tcres'),
     captureScreen: async () =>
       new Uint8Array(await invoke<ArrayBuffer>('capture_screen')),
     listGameScreenshots: () => call('scan:listShots'),

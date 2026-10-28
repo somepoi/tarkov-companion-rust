@@ -218,7 +218,7 @@ export const EXTRA_BASE_LAYERS: Record<string, ExtraLayers> = {
         kind: 'tiles',
         // Web: served with the site. Desktop: the app's own file server (a content pack that is
         // downloaded the first time this map is opened; see electron/packs.ts).
-        tilePath: typeof window !== 'undefined' && window.desktop ? 'tcres://app/tiles/lighthouse-re3mr/{z}/{x}/{y}.png' : `${import.meta.env.BASE_URL}tiles/lighthouse-re3mr/{z}/{x}/{y}.png`,
+        tilePath: typeof window !== 'undefined' && window.desktop ? `${window.desktop.appResourceUrl?.('tiles/lighthouse-re3mr') ?? 'tcres://app/tiles/lighthouse-re3mr'}/{z}/{x}/{y}.png` : `${import.meta.env.BASE_URL}tiles/lighthouse-re3mr/{z}/{x}/{y}.png`,
         pack: 'lighthouse',
         tileSize: 256,
         minZoom: 1,

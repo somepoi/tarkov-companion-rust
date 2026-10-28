@@ -60,6 +60,7 @@ pub struct HostState {
     settings_read_error: bool,
     pub integrations: crate::integrations::Integrations,
     pub logs: crate::logs::Logs,
+    pub packs: Result<crate::packs::Packs, String>,
 }
 
 impl HostState {
@@ -153,6 +154,14 @@ impl HostState {
         if let Err(message) = &inventory {
             startup_issues.push(format!("Inventory could not be opened: {message}. Use full backup recovery; the current database is retained."));
         }
+        let packs = crate::packs::Packs::new(
+            data_dir.clone(),
+            include_str!(concat!(env!("OUT_DIR"), "/packs-manifest.json")),
+            env!("CARGO_PKG_VERSION"),
+        );
+        if let Err(message) = &packs {
+            startup_issues.push(format!("Content packs unavailable: {message}"));
+        }
         Ok(Self {
             profile_root,
             data_dir,
@@ -162,6 +171,7 @@ impl HostState {
             settings_read_error,
             integrations: crate::integrations::Integrations::default(),
             logs: crate::logs::Logs::default(),
+            packs,
         })
     }
 
@@ -482,6 +492,34 @@ fn dispatch(
 ) -> Result<Value, NativeError> {
     let first = args.first().unwrap_or(&Value::Null);
     match channel {
+        "packs:ensure" => {
+            if _window.label() != "main" || benchmark_mode() {
+                return Err(error(
+                    "packs",
+                    "Pack installation requires the main application outside benchmark mode",
+                ));
+            }
+            let name = first
+                .as_str()
+                .filter(|name| matches!(*name, "scan" | "lighthouse"))
+                .ok_or_else(|| error("packs", "Unknown content pack"))?;
+            let packs = state
+                .packs
+                .as_ref()
+                .map_err(|e| error("packs", e.clone()))?;
+            if !packs.enabled() || !packs.contains(name) {
+                return Err(error(
+                    "packs",
+                    "No downloadable content pack is described by this build. Prepare bundled scanner/map assets first.",
+                ));
+            }
+            packs
+                .ensure(name, |progress| {
+                    let _ = app.emit("pack:progress", progress);
+                })
+                .map_err(|e| error("packs", e))?;
+            Ok(Value::Null)
+        }
         "ui:ready" => {
             if benchmark_mode()
                 && let Ok(value) = std::env::var("TC_BENCH_READY_FILE")
@@ -685,6 +723,51 @@ fn dispatch(
             ),
         )),
     }
+}
+
+#[tauri::command]
+pub async fn read_pack_resource(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<HostState>>,
+    relative: String,
+) -> Result<tauri::ipc::Response, NativeError> {
+    if !["main", "searchbar"].contains(&window.label()) {
+        return Err(error("window", "Unrecognized application window"));
+    }
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static READS: AtomicUsize = AtomicUsize::new(0);
+    struct ReadLease;
+    impl Drop for ReadLease {
+        fn drop(&mut self) {
+            READS.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
+    READS
+        .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+            (n < 2).then_some(n + 1)
+        })
+        .map_err(|_| error("resource_busy", "Content reads are busy; retry shortly"))?;
+    let lease = ReadLease;
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
+        let packs = state
+            .packs
+            .as_ref()
+            .map_err(|e| error("packs", e.clone()))?;
+        let bytes = packs
+            .read_resource(&relative)
+            .map_err(|e| error("packs", e))?
+            .ok_or_else(|| {
+                error(
+                    "resource_missing",
+                    "No installed pack contains this resource",
+                )
+            })?;
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
+    .map_err(|e| error("native_job", e.to_string()))?
 }
 
 #[tauri::command]

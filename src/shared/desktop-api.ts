@@ -282,6 +282,8 @@ export interface DesktopApi {
   openExternal: (url: string) => Promise<void>
   /** Reads a bundled scanner data file (desktop: file:// cannot be fetched). */
   readAppResource: (rel: string) => Promise<ArrayBuffer>
+  /** Native data-only URL resolver; append map tile template components afterwards. */
+  appResourceUrl?: (rel: string) => string
   /** Captures the screen under the mouse (PNG bytes). */
   captureScreen: () => Promise<Uint8Array>
   /** Newest screenshots from Documents\Escape from Tarkov\Screenshots. */

@@ -44,7 +44,7 @@ for (const pkg of packages) {
     references.push(`${path.basename(file)}: text ${hash.slice(0, 16)}`)
   }
   if (!pkg.license || !references.length) missing.push(`${pkg.name}@${pkg.version}`)
-  sections.push(`${pkg.name} ${pkg.version}`, `License expression: ${pkg.license ?? 'not declared'}`, `Authors: ${(pkg.authors ?? []).join(', ')}`, `Source: ${pkg.repository ?? pkg.homepage ?? pkg.source}`, ...(override?.files.map((entry) => `License source: ${entry.source}`) ?? []), ...references, '')
+  sections.push(`${pkg.name} ${pkg.version}`, `License expression: ${pkg.license ?? 'not declared'}`, `Authors: ${(pkg.authors ?? []).join(', ')}`.trimEnd(), `Source: ${pkg.repository ?? pkg.homepage ?? pkg.source}`, ...(override?.files.map((entry) => `License source: ${entry.source}`) ?? []), ...references, '')
 }
 const output = [
   'Tarkov Companion Rust — native dependency notices',

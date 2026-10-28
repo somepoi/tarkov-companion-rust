@@ -13,10 +13,10 @@ Git author remains the configured `somepoi` identity. No push, tag, publication 
 | 0: fork isolation and recommendation safety | Implemented foundation | Installer coexistence/upgrade/uninstall remains unverified |
 | 1: representative baseline and feature inventory | Tooling implemented | Real screenshot verification skipped at user request; comparable release measurements remain open |
 | 2: desktop adapter and Tauri compatibility | Implemented foundation | Native embedded frontend reached React layout; full page/runtime compatibility remains open |
-| 3: native desktop parity | In progress | Capture, hotkey, HKCU autostart and bounded live/backfill/Stats log transport implemented; log cache/recovery, searchbar, packs and runtime parity remain open |
+| 3: native desktop parity | In progress | Capture, hotkey, HKCU autostart, bounded log transport and native pack/protocol integration implemented; log cache/recovery, position integration, searchbar and runtime parity remain open |
 | 4: physical inventory and persistence | Implemented foundation | SQLite actor, revisions, scans, replay, undo, legacy separation and full backup/recovery implemented; recovery lifecycle remains unverified |
 | 5: verified full-container workflow | Implemented foundation | Durable review/import, crop/grid selection, identity correction, explicit appearance learning and bounded quantity OCR proposals implemented; real screenshot verification skipped by request, six-container/runtime acceptance remains open |
-| 6: conservative requirement planner | In progress | Authoritative SQLite inventory/reserve integration and explanation UI implemented; objective partial hand-ins, broader state constraints and economic estimates remain open |
+| 6: conservative requirement planner | In progress | Inventory/reserve integration, explanation UI and confirmed partial objective progress implemented; broader state constraints and economic estimates remain open |
 | 7: partial views and overlap | Pending | Registration, coverage and conflict semantics |
 | 8: measured optimization | Pending | Comparable workload measurements |
 | 9: assisted workflow and release | In progress | Explicit capture-to-container input implemented; automatic recognition/change reuse, exports, Windows installation/update/recovery and release gates remain open |
@@ -51,6 +51,9 @@ Git author remains the configured `somepoi` identity. No push, tag, publication 
 - Native logs now use event-driven Rust filesystem watching and a pull transport (one 256 KiB chunk, then worker acknowledgement). The original pure interpreter/reset rules moved to shared source with Electron compatibility exports and run in a dedicated frontend worker. Live synchronization, bounded historical review, Stats and BSG/Steam/default-path discovery are connected. Startup historical events are filtered by current profile/reset; unknown-mode quest events are excluded from automatic progression and reported in review. Per-mode native identity markers avoid cross-mode wipe prompts. See `docs/performance/native-logs.md` for bounds and remaining gates.
 
 ## Verification history
+
+- 2026-10-29 partial-objective checkpoint: TypeScript, lint and both frontend builds passed; read-only review found no P1/P2 issues. Partial consuming counters share one total across accepted item alternatives and use exact raw definition signatures. Lifecycle/import/wipe handling and planner freshness are source-implemented; runtime editor/restart behavior remains unverified. No tests or screenshots were used.
+- 2026-10-29 pack checkpoint: native service, trusted manifest embedding, streaming builder, binary IPC and scoped map protocol are connected. Both frontend builds, lint, Rust formatting, strict Clippy with custom-protocol, embedded native development build, built content integrity and whitespace checks passed. Notices cover 314 crates / 193 distinct texts. Review found immediate tile backpressure could leave blank patches; a bounded asynchronous waiting queue replaces it. Actual pack download/repair/interruption, WebView tile delivery and Windows installation were not exercised. No tests, pack publication or game screenshot access occurred. Filename-position service source is prepared separately and is not yet connected to the host.
 
 No tests were created or run for implementation. Historical audit test results do not establish the state of this branch.
 
