@@ -655,6 +655,7 @@ fn dispatch(
         "watcher:next" => state
             .logs
             .read_live(
+                app,
                 first
                     .as_u64()
                     .ok_or_else(|| error("logs_epoch", "Expected log configuration revision"))?,
@@ -667,6 +668,7 @@ fn dispatch(
                 first
                     .as_u64()
                     .ok_or_else(|| error("logs_job", "Expected historical job ID"))?,
+                args.get(1).and_then(Value::as_str),
             )
             .map_err(|e| error("logs", e)),
         "watcher:historyCancel" => state

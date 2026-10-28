@@ -12,6 +12,7 @@ import LogWorker from './native.worker?worker'
 type WithoutId<T> = T extends { id: number } ? Omit<T, 'id'> : never
 
 type State = WatcherState & { epoch: number }
+class ParserFailure extends Error {}
 const call = async <T>(channel: string, ...args: unknown[]): Promise<T> => {
   try {
     return await invoke<T>('desktop_call', { channel, args })
@@ -59,7 +60,7 @@ export function nativeLogBridge() {
   worker.onmessage = ({ data }: MessageEvent<WorkerResponse>) => {
     const request = pending.get(data.id)
     pending.delete(data.id)
-    if (data.error) request?.reject(new Error(data.error))
+    if (data.error) request?.reject(new ParserFailure(data.error))
     else request?.resolve(data)
   }
   const failWorker = (message: string) => {
@@ -84,11 +85,13 @@ export function nativeLogBridge() {
   let dirty = true
   let draining = false
   let fault = false
+  let recoverOnDirty = false
   let history: Promise<BackfillResult> | null = null
   let warning = ''
+  let liveSession: number | null = null
   const ready = listen<number>('native-logs-dirty', (event) => {
     if (event.payload < state.epoch) return
-    if (event.payload !== state.epoch) fault = false
+    if (event.payload !== state.epoch || recoverOnDirty) fault = false
     dirty = true
     void drain()
   })
@@ -135,11 +138,15 @@ export function nativeLogBridge() {
             : {}
         if (
           state.epoch !== value.state.epoch ||
-          state.currentFolder !== value.state.currentFolder
+          state.currentFolder !== value.state.currentFolder ||
+          (value.chunk !== null && liveSession !== null && value.chunk.session !== liveSession)
         ) {
           warning = ''
+          await job({ operation: 'reset', stream: 'live' })
           await call('position:reset')
+          liveSession = null
         }
+        if (value.chunk) liveSession = value.chunk.session
         if (state.status === 'watching' && value.state.status !== 'watching') await call('position:reset')
         state = { ...value.state, ...context }
         const parsed = value.chunk
@@ -182,8 +189,9 @@ export function nativeLogBridge() {
         if (!value.chunk && !dirty) break
       }
     } catch (error) {
-      await call('position:reset').catch(() => undefined)
+      recoverOnDirty = !(error instanceof ParserFailure) && workerFailure === null
       fault = true
+      await call('position:reset').catch(() => undefined)
       state = {
         ...state,
         status: 'error',
@@ -192,6 +200,8 @@ export function nativeLogBridge() {
       publish()
     } finally {
       draining = false
+      // Only a notification received during this attempt can authorize a retry.
+      if (dirty && recoverOnDirty && workerFailure === null) fault = false
       if (dirty && !fault && eventListeners.size) void drain()
     }
   }
@@ -204,6 +214,7 @@ export function nativeLogBridge() {
         'watcher:historyBegin',
       )
       try {
+        let skip: string | undefined
         for (;;) {
           const batch = await call<{
             done: boolean
@@ -211,7 +222,10 @@ export function nativeLogBridge() {
             files?: number
             folders?: number
             progress?: BackfillProgress
-          }>('watcher:historyNext', started.id)
+            sessionBegin?: { key: string; session: number; cacheable: boolean }
+            sessionEnd?: { key: string; cacheable: boolean }
+          }>('watcher:historyNext', started.id, skip ?? null)
+          skip = undefined
           if (batch.progress)
             for (const listener of progressListeners) listener(batch.progress)
           if (batch.done) {
@@ -230,6 +244,11 @@ export function nativeLogBridge() {
               })
             return parsed.result
           }
+          if (batch.sessionBegin) {
+            const admission = await job({ operation: 'historyBegin', ...batch.sessionBegin })
+            if (admission.useCache) skip = batch.sessionBegin.key
+          }
+          if (batch.sessionEnd) await job({ operation: 'historyEnd', ...batch.sessionEnd })
           if (batch.chunk)
             await job({
               operation: 'chunk',

@@ -3,15 +3,17 @@
 use encoding_rs::{Decoder, UTF_8};
 use notify::{RecursiveMode, Watcher};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, VecDeque},
     fs::{self, File, Metadata},
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    time::{Duration, Instant},
 };
 use tauri::Emitter;
 
@@ -22,7 +24,8 @@ const REPLACED: &str = "Log was truncated or replaced";
 pub struct Logs {
     state: Mutex<State>,
     dirty: Arc<AtomicBool>,
-    watch_error: Arc<Mutex<Option<String>>>,
+    watch_error: Arc<Mutex<Option<(u64, String)>>>,
+    watch_epoch: Arc<AtomicU64>,
 }
 #[derive(Default)]
 struct State {
@@ -37,6 +40,11 @@ struct State {
     history: Option<History>,
     watcher: Option<notify::RecommendedWatcher>,
     error: Option<String>,
+    root_creation: Option<u64>,
+    watch_paths: Vec<(PathBuf, bool)>,
+    watch_failed: bool,
+    watch_errors: VecDeque<Instant>,
+    watch_warning: Option<String>,
 }
 #[derive(Default)]
 struct Cursor {
@@ -52,6 +60,7 @@ struct History {
     index: usize,
     cursor: Cursor,
     files: usize,
+    key: Option<String>,
 }
 struct Tail {
     path: PathBuf,
@@ -100,6 +109,39 @@ fn role(name: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+fn path_prefix(path: &Path, base: &Path) -> bool {
+    let mut parts = path.components();
+    base.components().all(|expected| {
+        parts.next().is_some_and(|actual| {
+            if cfg!(windows) {
+                actual.as_os_str().to_string_lossy().to_lowercase()
+                    == expected.as_os_str().to_string_lossy().to_lowercase()
+            } else {
+                actual == expected
+            }
+        })
+    })
+}
+fn watch_failure(state: &mut State, cause: String) -> bool {
+    state.watcher = None;
+    state.watch_paths.clear();
+    state
+        .watch_errors
+        .retain(|at| at.elapsed() < Duration::from_secs(60));
+    state.watch_errors.push_back(Instant::now());
+    if state.watch_errors.len() >= 3 {
+        state.watch_failed = true;
+        state.error = Some(format!(
+            "{cause}. Watching stopped after repeated errors; reconnect the log folder."
+        ));
+        return false;
+    }
+    state.watch_warning = Some(format!("Log watching was rearmed after an error: {cause}"));
+    state.epoch += 1;
+    state.live = Cursor::default();
+    state.history = None;
+    true
+}
 fn scoped(path: &Path, root: &Path) -> Result<PathBuf, String> {
     let resolved = path.canonicalize().map_err(|e| e.to_string())?;
     if !resolved.starts_with(root) {
@@ -109,7 +151,10 @@ fn scoped(path: &Path, root: &Path) -> Result<PathBuf, String> {
 }
 fn folders(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut found = Vec::new();
-    for entry in fs::read_dir(root).map_err(|e| e.to_string())? {
+    for (index, entry) in fs::read_dir(root).map_err(|e| e.to_string())?.enumerate() {
+        if index >= MAX_FILES {
+            return Err("Log directory exceeds 50000 entries; choose a smaller directory".into());
+        }
         let entry = entry.map_err(|e| e.to_string())?;
         if !entry.file_type().map_err(|e| e.to_string())?.is_dir() {
             continue;
@@ -143,7 +188,10 @@ fn creation(metadata: &Metadata) -> u64 {
 
 fn tails(folder: &Path, root: &Path, historical: bool) -> Result<Vec<Tail>, String> {
     let mut found = Vec::new();
-    for entry in fs::read_dir(folder).map_err(|e| e.to_string())? {
+    for (index, entry) in fs::read_dir(folder).map_err(|e| e.to_string())?.enumerate() {
+        if index >= MAX_FILES {
+            return Err("Log session exceeds 50000 directory entries".into());
+        }
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name().to_string_lossy().into_owned();
         if role(&name).is_none() || !entry.file_type().map_err(|e| e.to_string())?.is_file() {
@@ -170,6 +218,31 @@ fn tails(folder: &Path, root: &Path, historical: bool) -> Result<Vec<Tail>, Stri
             .cmp(&(role(&b.name) != Some("application"), &b.name))
     });
     Ok(found)
+}
+fn session_key(root: &Path, folder: &Path) -> Result<String, String> {
+    let mut hash = Sha256::new();
+    hash.update(b"tc-log-history-v1");
+    hash.update(env!("CARGO_PKG_VERSION").as_bytes());
+    for path in [root, folder] {
+        let metadata = path.metadata().map_err(|e| e.to_string())?;
+        hash.update(path.to_string_lossy().as_bytes());
+        hash.update(creation(&metadata).to_le_bytes());
+    }
+    for tail in tails(folder, root, true)? {
+        let metadata = tail.path.metadata().map_err(|e| e.to_string())?;
+        hash.update(
+            serde_json::to_vec(&json!([tail.name, metadata.len(), creation(&metadata)]))
+                .map_err(|e| e.to_string())?,
+        );
+        let modified = metadata
+            .modified()
+            .map_err(|e| e.to_string())?
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_nanos();
+        hash.update(modified.to_le_bytes());
+    }
+    Ok(format!("{:x}", hash.finalize()))
 }
 impl Cursor {
     fn reset(
@@ -225,7 +298,10 @@ impl Cursor {
                     return Err(REPLACED.into());
                 }
             }
-            if creation(&metadata) != tail.creation || metadata.len() < tail.offset {
+            if creation(&metadata) != tail.creation
+                || metadata.len() < tail.offset
+                || (history && metadata.len() < tail.baseline)
+            {
                 return Err(REPLACED.into());
             }
             let size = if history {
@@ -297,6 +373,7 @@ impl Logs {
             return Ok(status(&state));
         }
         state.epoch += 1;
+        self.watch_epoch.store(state.epoch, Ordering::Release);
         state.configured_path = path.clone();
         state.detected_path = if path.is_none() && !crate::desktop::benchmark_mode() {
             crate::log_locator::detect()
@@ -313,71 +390,154 @@ impl Logs {
             .watch_error
             .lock()
             .map_err(|_| "Log error state is unavailable")? = None;
-        state.root = match state.path.as_ref() {
-            Some(path) => match Path::new(path).canonicalize() {
-                Ok(root) if root.is_dir() => Some(root),
-                _ => {
-                    state.error = Some("Selected log directory is unavailable".into());
-                    None
+        state.root = None;
+        state.root_creation = None;
+        state.watch_paths.clear();
+        state.watch_failed = false;
+        state.watch_errors.clear();
+        state.watch_warning = None;
+        self.reconcile_watch(app, &mut state)?;
+        self.dirty.store(true, Ordering::Release);
+        let value = status(&state);
+        let _ = app.emit("native-logs-dirty", state.epoch);
+        Ok(value)
+    }
+    fn reconcile_watch(&self, app: &tauri::AppHandle, state: &mut State) -> Result<(), String> {
+        if state.path.is_none() || state.watch_failed {
+            return Ok(());
+        }
+        let selected = PathBuf::from(state.path.as_ref().ok_or("No selected log root")?);
+        let resolved = selected.canonicalize().ok().filter(|path| path.is_dir());
+        let created = resolved
+            .as_ref()
+            .and_then(|path| path.metadata().ok())
+            .map(|metadata| creation(&metadata));
+        let changed = state.root != resolved || state.root_creation != created;
+        if changed {
+            state.epoch += 1;
+            state.live = Cursor::default();
+            state.history = None;
+            state.root = resolved.clone();
+            state.root_creation = created;
+        }
+        if state.paused {
+            return Ok(());
+        }
+        let mut desired = Vec::new();
+        let mut aliases = vec![selected.clone()];
+        if let Some(root) = &resolved {
+            desired.push((root.clone(), true));
+        }
+        let mut parent = selected.parent();
+        for _ in 0..32 {
+            let Some(path) = parent else { break };
+            if let Ok(anchor) = path.canonicalize()
+                && anchor.is_dir()
+            {
+                if let Ok(suffix) = selected.strip_prefix(path) {
+                    aliases.push(anchor.join(suffix));
                 }
-            },
-            None => None,
-        };
-        if !paused && let Some(root) = &state.root {
+                desired.push((anchor, false));
+                break;
+            }
+            parent = path.parent();
+        }
+        if changed || state.watcher.is_none() || desired != state.watch_paths {
+            state.watcher = None;
+            state.watch_paths.clear();
+            self.watch_epoch.store(state.epoch, Ordering::Release);
             let dirty = Arc::clone(&self.dirty);
             let error = Arc::clone(&self.watch_error);
+            let watch_epoch = Arc::clone(&self.watch_epoch);
             let handle = app.clone();
             let epoch = state.epoch;
             let watch = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+                if watch_epoch.load(Ordering::Acquire) != epoch {
+                    return;
+                }
                 match event {
-                    Ok(event) if matches!(event.kind, notify::EventKind::Access(_)) => return,
+                    Ok(event) => {
+                        if matches!(event.kind, notify::EventKind::Access(_)) {
+                            return;
+                        }
+                        if !event.paths.is_empty()
+                            && !event.paths.iter().any(|path| {
+                                aliases.iter().any(|target| {
+                                    path_prefix(path, target) || path_prefix(target, path)
+                                }) || resolved.as_ref().is_some_and(|root| {
+                                    path_prefix(path, root) || path_prefix(root, path)
+                                })
+                            })
+                        {
+                            return;
+                        }
+                    }
                     Err(cause) => {
                         if let Ok(mut error) = error.lock() {
-                            *error = Some(format!(
-                                "Log watcher error: {cause}. Reconnect the log folder."
+                            *error = Some((
+                                epoch,
+                                format!("Log watcher error: {cause}. Reconnect the log folder."),
                             ));
                         }
                     }
-                    _ => {}
                 }
                 if !dirty.swap(true, Ordering::AcqRel) {
                     let _ = handle.emit("native-logs-dirty", epoch);
                 }
             })
             .and_then(|mut watcher| {
-                watcher.watch(root, RecursiveMode::Recursive)?;
+                for (path, recursive) in &desired {
+                    watcher.watch(
+                        path,
+                        if *recursive {
+                            RecursiveMode::Recursive
+                        } else {
+                            RecursiveMode::NonRecursive
+                        },
+                    )?;
+                }
                 Ok(watcher)
             });
             match watch {
-                Ok(watcher) => state.watcher = Some(watcher),
-                Err(cause) => state.error = Some(cause.to_string()),
+                Ok(watcher) if !desired.is_empty() => { state.watcher = Some(watcher); state.watch_paths = desired; }
+                Ok(_) => state.error = Some("No existing ancestor is available to observe the log folder. Reconnect when it returns.".into()),
+                Err(cause) => {
+                    if watch_failure(state, cause.to_string()) { return self.reconcile_watch(app, state); }
+                }
             }
         }
-        self.dirty.store(true, Ordering::Release);
-        let value = status(&state);
-        let _ = app.emit("native-logs-dirty", state.epoch);
-        Ok(value)
+        if !state.watch_failed && state.watcher.is_some() {
+            state.error = if state.root.is_some() {
+                None
+            } else {
+                Some("Selected log directory is unavailable; waiting for its recreation".into())
+            };
+        }
+        Ok(())
     }
     pub fn status(&self) -> Result<Value, String> {
         let state = self.state.lock().map_err(|_| "Log state is unavailable")?;
         Ok(status(&state))
     }
-    pub fn read_live(&self, epoch: u64) -> Result<Value, String> {
+    pub fn read_live(&self, app: &tauri::AppHandle, epoch: u64) -> Result<Value, String> {
         let mut state = self.state.lock().map_err(|_| "Log state is unavailable")?;
         if state.epoch != epoch {
             return Err("Log configuration changed".into());
         }
         let refreshed = self.dirty.swap(false, Ordering::AcqRel);
-        if refreshed && state.watcher.is_some() && state.root.is_some() {
-            state.error = None;
-        }
-        if let Some(error) = self
+        let watch_error = self
             .watch_error
             .lock()
             .map_err(|_| "Log error state is unavailable")?
-            .take()
+            .take();
+        if refreshed {
+            self.reconcile_watch(app, &mut state)?;
+        }
+        if let Some((error_epoch, error)) = watch_error
+            && error_epoch == state.epoch
+            && watch_failure(&mut state, error)
         {
-            state.error = Some(error);
+            self.reconcile_watch(app, &mut state)?;
         }
         if state.paused || state.root.is_none() || state.error.is_some() {
             return Ok(json!({"state":status(&state),"chunk":null}));
@@ -417,6 +577,11 @@ impl Logs {
                         .sort_by_key(|t| (role(&t.name) != Some("application"), t.name.clone()));
                     state.live.index = 0;
                 }
+            } else if state.live.folder.is_some() {
+                state.live = Cursor::default();
+                state.epoch += 1;
+                state.watcher = None;
+                self.reconcile_watch(app, &mut state)?;
             }
         }
         let mut result = state.live.read(false);
@@ -454,10 +619,11 @@ impl Logs {
             index: 0,
             cursor: Cursor::default(),
             files: 0,
+            key: None,
         });
         Ok(json!({"id":id,"folders":count}))
     }
-    pub fn read_history(&self, id: u64) -> Result<Value, String> {
+    pub fn read_history(&self, id: u64, skip: Option<&str>) -> Result<Value, String> {
         let mut state = self.state.lock().map_err(|_| "Log state is unavailable")?;
         let root = state.root.clone().ok_or("No log directory")?;
         let history = state
@@ -465,7 +631,24 @@ impl Logs {
             .as_mut()
             .filter(|h| h.id == id)
             .ok_or("Historical read was replaced or cancelled")?;
-        loop {
+        if let Some(skip) = skip {
+            let key = history
+                .key
+                .as_deref()
+                .ok_or("No historical session is awaiting cache admission")?;
+            if skip != key
+                || history.index + 1 >= history.folders.len()
+                || history.cursor.files.iter().any(|tail| tail.offset != 0)
+                || session_key(&root, &history.folders[history.index])? != key
+            {
+                return Err("Cached log session changed; read history again".into());
+            }
+            history.index += 1;
+            history.cursor = Cursor::default();
+            history.key = None;
+            return Ok(json!({"done":false,"sessionSkipped":true}));
+        }
+        {
             if history.index >= history.folders.len() {
                 let files = history.files;
                 let folders = history.folders.len();
@@ -473,6 +656,7 @@ impl Logs {
                 return Ok(json!({"done":true,"files":files,"folders":folders}));
             }
             if history.cursor.folder.is_none() {
+                let key = session_key(&root, &history.folders[history.index])?;
                 history.cursor.reset(
                     &history.folders[history.index],
                     &root,
@@ -483,14 +667,36 @@ impl Logs {
                 if history.files > MAX_FILES {
                     return Err("Historical read exceeds 50000 files".into());
                 }
+                if history.index + 1 < history.folders.len()
+                    && session_key(&root, &history.folders[history.index])? != key
+                {
+                    return Err(
+                        "Historical session changed during admission; read history again".into(),
+                    );
+                }
+                history.key = Some(key.clone());
+                return Ok(
+                    json!({"done":false,"sessionBegin":{"key":key,"session":history.cursor.session,"cacheable":history.index + 1 < history.folders.len()},"progress":{"done":history.index,"total":history.folders.len(),"folder":history.cursor.folder}}),
+                );
             }
             if let Some(chunk) = history.cursor.read(true)? {
                 return Ok(
                     json!({"done":false,"chunk":chunk,"progress":{"done":history.index,"total":history.folders.len(),"folder":history.cursor.folder}}),
                 );
             }
+            let key = history
+                .key
+                .take()
+                .ok_or("Missing historical session signature")?;
+            let cacheable = history.index + 1 < history.folders.len();
+            if cacheable && session_key(&root, &history.folders[history.index])? != key {
+                return Err(
+                    "Historical log session changed during parsing; read history again".into(),
+                );
+            }
             history.index += 1;
             history.cursor = Cursor::default();
+            Ok(json!({"done":false,"sessionEnd":{"key":key,"cacheable":cacheable}}))
         }
     }
     pub fn cancel_history(&self, id: u64) -> Result<Value, String> {
@@ -506,7 +712,7 @@ impl Logs {
     }
 }
 fn status(state: &State) -> Value {
-    json!({"epoch":state.epoch,"status":if state.path.is_none(){"no-folder"}else if state.paused{"paused"}else if state.error.is_some(){"error"}else{"watching"},"logsPath":state.path,"detectedPath":state.detected_path,"currentFolder":state.live.folder,"lastEventAt":null,"sessionMode":"unknown","profileId":null,"accountId":null,"message":state.error})
+    json!({"epoch":state.epoch,"status":if state.path.is_none(){"no-folder"}else if state.paused{"paused"}else if state.error.is_some(){"error"}else{"watching"},"logsPath":state.path,"detectedPath":state.detected_path,"currentFolder":state.live.folder,"lastEventAt":null,"sessionMode":"unknown","profileId":null,"accountId":null,"message":state.error.as_ref().or(state.watch_warning.as_ref())})
 }
 
 pub(crate) fn looks_like_logs(path: &Path) -> bool {

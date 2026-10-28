@@ -14,6 +14,8 @@ export interface LogChunk {
   invalidUtf8: boolean
 }
 export type WorkerRequest =
+  | { id: number; operation: 'historyBegin'; key: string; session: number; cacheable: boolean }
+  | { id: number; operation: 'historyEnd'; key: string; cacheable: boolean }
   | { id: number; operation: 'drained' }
   | {
       id: number
@@ -30,4 +32,5 @@ export interface WorkerResponse {
   context?: Pick<WatcherState, 'sessionMode' | 'profileId' | 'accountId'>
   result?: BackfillResult
   warning?: string
+  useCache?: boolean
 }

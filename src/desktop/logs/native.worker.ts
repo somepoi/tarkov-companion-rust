@@ -25,6 +25,35 @@ const fresh = () => ({
 let live = fresh()
 let history = fresh()
 let result = emptyBackfill()
+type CachedSession = { events: GameEvent[]; span: { start: number; end: number } | null; weight: number }
+const cache = new Map<string, CachedSession>()
+let cacheWeight = 0
+let cacheEvents = 0
+let sessionKey: string | null = null
+let sessionCacheable = false
+const appendHistory = (events: GameEvent[]) => {
+  if (result.events.length + events.length > 200_000)
+    throw new Error('Historical event limit exceeded; choose a smaller archived log directory')
+  for (const event of events) result.events.push(event)
+}
+const cacheSession = (key: string) => {
+  const events = history.period
+  if (events.length > 50_000) return
+  let weight = 0
+  for (const event of events) {
+    weight += JSON.stringify(event).length
+    if (weight > 4_000_000) return
+  }
+  const old = cache.get(key)
+  if (old) { cacheWeight -= old.weight; cacheEvents -= old.events.length; cache.delete(key) }
+  while (cache.size && (cache.size >= 128 || cacheWeight + weight > 4_000_000 || cacheEvents + events.length > 50_000)) {
+    const oldest = cache.keys().next().value!
+    const entry = cache.get(oldest)!
+    cacheWeight -= entry.weight; cacheEvents -= entry.events.length; cache.delete(oldest)
+  }
+  cache.set(key, { events: [...events], weight, span: Number.isFinite(history.first) && history.last >= history.first ? { start: history.first, end: history.last } : null })
+  cacheWeight += weight; cacheEvents += events.length
+}
 const saveSpan = () => {
   if (Number.isFinite(history.first) && history.last >= history.first)
     result.sessions?.push({ start: history.first, end: history.last })
@@ -51,11 +80,41 @@ ctx.onmessage = ({ data }: MessageEvent<WorkerRequest>) => {
       else {
         history = fresh()
         result = emptyBackfill()
+        sessionKey = null
+        sessionCacheable = false
       }
       ctx.postMessage({ id: data.id } satisfies WorkerResponse)
       return
     }
+    if (data.operation === 'historyBegin') {
+      if (sessionKey !== null || !/^[a-f0-9]{64}$/.test(data.key) || !Number.isSafeInteger(data.session))
+        throw new Error('Invalid historical session admission')
+      const cached = data.cacheable ? cache.get(data.key) : undefined
+      history = fresh()
+      if (cached) {
+        appendHistory(cached.events)
+        if (cached.span) result.sessions?.push({ ...cached.span })
+        cache.delete(data.key); cache.set(data.key, cached)
+      } else {
+        history.session = data.session
+        sessionKey = data.key
+        sessionCacheable = data.cacheable
+      }
+      ctx.postMessage({ id: data.id, useCache: Boolean(cached) } satisfies WorkerResponse)
+      return
+    }
+    if (data.operation === 'historyEnd') {
+      if (sessionKey !== data.key || sessionCacheable !== data.cacheable) throw new Error('Historical session acknowledgement changed')
+      saveSpan()
+      if (data.cacheable) cacheSession(data.key)
+      sessionKey = null
+      sessionCacheable = false
+      history = fresh()
+      ctx.postMessage({ id: data.id } satisfies WorkerResponse)
+      return
+    }
     if (data.operation === 'finish') {
+      if (sessionKey !== null) throw new Error('Historical session was not completed')
       saveSpan()
       result.folders = data.folders
       result.files = data.files
@@ -111,6 +170,8 @@ ctx.onmessage = ({ data }: MessageEvent<WorkerRequest>) => {
         'Log contains invalid UTF-8; review this file before synchronizing progress',
       )
     let state = stream === 'live' ? live : history
+    if (stream === 'history' && (sessionKey === null || state.session !== chunk.session))
+      throw new Error('Historical chunk does not match the admitted session')
     if (state.session !== chunk.session) {
       if (stream === 'history') saveSpan()
       state = fresh()
@@ -143,11 +204,8 @@ ctx.onmessage = ({ data }: MessageEvent<WorkerRequest>) => {
       )
     })
     if (stream === 'history') {
-      if (result.events.length + events.length > 200_000)
-        throw new Error(
-          'Historical event limit exceeded; choose a smaller archived log directory',
-        )
-      result.events.push(...events)
+      appendHistory(events)
+      history.period.push(...events)
     } else if (!state.drained) {
       if (state.period.length + events.length > 200_000)
         throw new Error(
