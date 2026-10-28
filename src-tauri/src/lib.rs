@@ -7,6 +7,7 @@ mod inventory;
 mod log_locator;
 mod logs;
 mod packs;
+mod position;
 mod resources;
 
 use desktop::HostState;

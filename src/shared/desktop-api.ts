@@ -277,6 +277,7 @@ export interface DesktopApi {
   lastCleanup: () => Promise<CleanupResult | null>
   /** A new in-game screenshot was taken: the position from its file name. */
   onPosition: (cb: (p: PlayerPosition) => void) => () => void
+  onPositionError?: (cb: (message: string) => void) => () => void
   getRecentEvents: () => Promise<GameEvent[]>
   openLogsFolder: () => Promise<void>
   openExternal: (url: string) => Promise<void>

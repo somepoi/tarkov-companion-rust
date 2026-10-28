@@ -63,6 +63,7 @@ export function nativeLogBridge() {
     else request?.resolve(data)
   }
   const failWorker = (message: string) => {
+    void call('position:reset').catch(() => undefined)
     const error = new Error(
       message + '. Restart the app to reconnect log synchronization.',
     )
@@ -114,6 +115,7 @@ export function nativeLogBridge() {
           'watcher:next',
           state.epoch,
         ).catch(async () => {
+          await call('position:reset')
           state = await call<State>('watcher:getState')
           await job({ operation: 'reset', stream: 'live' })
           return call<{ state: State; chunk: LogChunk | null }>(
@@ -134,8 +136,11 @@ export function nativeLogBridge() {
         if (
           state.epoch !== value.state.epoch ||
           state.currentFolder !== value.state.currentFolder
-        )
+        ) {
           warning = ''
+          await call('position:reset')
+        }
+        if (state.status === 'watching' && value.state.status !== 'watching') await call('position:reset')
         state = { ...value.state, ...context }
         const parsed = value.chunk
           ? await job({
@@ -149,6 +154,11 @@ export function nativeLogBridge() {
         state = { ...state, ...parsed.context }
         if (parsed.warning) warning = parsed.warning
         for (const event of parsed.events ?? []) {
+          if (!event.historical && ['sessionMode', 'profile', 'gameVersion', 'mapLoading', 'raidMatched', 'raidStarting', 'raidStarted', 'raidEnded', 'matchingAborted'].includes(event.kind))
+            await call('position:event', event).catch(async (error: unknown) => {
+              await call('position:reset').catch(() => undefined)
+              state.message = `Position context was not updated: ${String(error)}`
+            })
           if (
             event.mode === 'unknown' &&
             (event.kind === 'taskFinished' ||
@@ -172,6 +182,7 @@ export function nativeLogBridge() {
         if (!value.chunk && !dirty) break
       }
     } catch (error) {
+      await call('position:reset').catch(() => undefined)
       fault = true
       state = {
         ...state,

@@ -345,6 +345,19 @@ fn restore(state: &HostState, source: &Path) -> Result<Value, String> {
             .map_err(|e| e.to_string())?;
     }
     drop(repository);
+    let settings_file = staging.join("settings.json");
+    if settings_file.exists() {
+        let mut settings = read_json(&settings_file, MAX_JSON)?;
+        if !settings.is_object() {
+            return Err("Recovered settings must contain an object".into());
+        }
+        settings["clearPositionShots"] = json!(false);
+        fs::write(
+            &settings_file,
+            serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+    }
     write_json(
         &staging.join("recovery-ready.json"),
         &json!({"version":1,"preparedAt":now()}),

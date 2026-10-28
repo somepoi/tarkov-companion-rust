@@ -60,6 +60,7 @@ pub struct HostState {
     settings_read_error: bool,
     pub integrations: crate::integrations::Integrations,
     pub logs: crate::logs::Logs,
+    pub positions: crate::position::Positions,
     pub packs: Result<crate::packs::Packs, String>,
 }
 
@@ -140,7 +141,7 @@ impl HostState {
             }
         }
         // A saved file must not bypass the same migration gates as settings IPC.
-        for key in ["searchBar", "clearPositionShots", "cleanAfterUpdate"] {
+        for key in ["searchBar", "cleanAfterUpdate"] {
             settings[key] = Value::Bool(false);
         }
         settings["updateMode"] = Value::String("off".into());
@@ -162,6 +163,9 @@ impl HostState {
         if let Err(message) = &packs {
             startup_issues.push(format!("Content packs unavailable: {message}"));
         }
+        if !startup_issues.is_empty() {
+            settings["clearPositionShots"] = json!(false);
+        }
         Ok(Self {
             profile_root,
             data_dir,
@@ -172,6 +176,7 @@ impl HostState {
             integrations: crate::integrations::Integrations::default(),
             logs: crate::logs::Logs::default(),
             packs,
+            positions: crate::position::Positions::default(),
         })
     }
 
@@ -180,6 +185,21 @@ impl HostState {
             .lock()
             .map(|s| s.clone())
             .map_err(|_| error("settings_lock", "Settings lock unavailable"))
+    }
+
+    fn configure_positions(
+        &self,
+        app: &tauri::AppHandle,
+        settings: &Value,
+    ) -> Result<Value, NativeError> {
+        let root = if benchmark_mode() {
+            PathBuf::new()
+        } else {
+            screenshot_dir(app)?
+        };
+        self.positions
+            .configure(app, settings, root)
+            .map_err(|e| error("position", e))
     }
 
     fn public_settings(&self) -> Result<Value, NativeError> {
@@ -234,7 +254,7 @@ impl HostState {
                     "Fork updates are disabled until the release channel is verified",
                 ));
             }
-            if matches!(key.as_str(), "clearPositionShots" | "cleanAfterUpdate") && value == true {
+            if key == "cleanAfterUpdate" && value == true {
                 return Err(error(
                     "migration_pending",
                     "Screenshot cleanup is disabled during native migration",
@@ -257,17 +277,41 @@ impl HostState {
                 .apply(app, &next, &self.profile_root)
                 .map_err(|e| error("desktop_integration", e))?;
         }
-        let saved = atomic_write(
-            &self.data_dir.join("settings.json"),
-            &serde_json::to_vec_pretty(&next).map_err(|e| error("settings_json", e.to_string()))?,
-        );
+        let position_changed = ["trackPosition", "clearPositionShots", "paused", "logsPath"]
+            .iter()
+            .any(|key| next[*key] != guard[*key]);
+        let position_applied = if position_changed {
+            self.configure_positions(app, &next).map(|_| ())
+        } else {
+            Ok(())
+        };
+        let saved = position_applied.and_then(|_| {
+            atomic_write(
+                &self.data_dir.join("settings.json"),
+                &serde_json::to_vec_pretty(&next)
+                    .map_err(|e| error("settings_json", e.to_string()))?,
+            )
+        });
         if let Err(cause) = saved {
+            let mut failures = Vec::new();
+            if position_changed && let Err(rollback) = self.configure_positions(app, &guard) {
+                let mut disabled = guard.clone();
+                disabled["trackPosition"] = json!(false);
+                disabled["clearPositionShots"] = json!(false);
+                let stopped = self.configure_positions(app, &disabled);
+                failures.push(format!(
+                    "Position rollback failed: {rollback}; tracking stop: {stopped:?}"
+                ));
+            }
             if integration_changed
                 && let Err(rollback) = self.integrations.apply(app, &guard, &self.profile_root)
             {
+                failures.push(format!("Desktop integration rollback failed: {rollback}"));
+            }
+            if !failures.is_empty() {
                 return Err(error(
                     "settings_rollback",
-                    format!("{cause}; could not restore previous desktop integration: {rollback}"),
+                    format!("{cause}; {}", failures.join("; ")),
                 ));
             }
             return Err(cause);
@@ -491,7 +535,46 @@ fn dispatch(
     args: &[Value],
 ) -> Result<Value, NativeError> {
     let first = args.first().unwrap_or(&Value::Null);
+    if matches!(
+        channel,
+        "settings:set" | "position:connect" | "position:event" | "position:reset"
+    ) && _window.label() != "main"
+    {
+        return Err(error(
+            "window",
+            "Only the main window can configure native tracking",
+        ));
+    }
     match channel {
+        "position:connect" => {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| error("settings_lock", "Settings lock unavailable"))?;
+            state.configure_positions(app, &settings)
+        }
+        "position:latest" => {
+            serde_json::to_value(state.positions.latest().map_err(|e| error("position", e))?)
+                .map_err(|e| error("position", e.to_string()))
+        }
+        "position:event" => {
+            let _settings = state
+                .settings
+                .lock()
+                .map_err(|_| error("settings_lock", "Settings lock unavailable"))?;
+            if first.to_string().len() > 16 * 1024 {
+                return Err(error("position", "Position event exceeds size limit"));
+            }
+            state
+                .positions
+                .note_game_event(first)
+                .map_err(|e| error("position", e))?;
+            Ok(Value::Null)
+        }
+        "position:reset" => {
+            state.positions.revoke().map_err(|e| error("position", e))?;
+            Ok(Value::Null)
+        }
         "packs:ensure" => {
             if _window.label() != "main" || benchmark_mode() {
                 return Err(error(

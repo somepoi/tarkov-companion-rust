@@ -145,7 +145,10 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     installUpdate: () => call('update:install'),
     getUpdateOutcome: () => call('update:outcome'),
     readLogStats: logs?.readLogStats ?? (() => call('stats:read')),
-    getLatestPosition: () => call('position:latest'),
+    getLatestPosition: async () => {
+      if (metadata.windowKind === 'main') await call('position:connect')
+      return call('position:latest')
+    },
     writeBackup: (json) => call('backup:write', json),
     listBackups: () => call('backup:list'),
     readBackup: (name) => call('backup:read', name),
@@ -153,6 +156,7 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     cleanUp: (dry) => call('cleanup:run', dry),
     lastCleanup: () => call('cleanup:last'),
     onPosition: (cb) => subscribe<PlayerPosition>('position:new', cb),
+    onPositionError: (cb) => subscribe<string>('position:error', cb),
     runInstaller: (version) => call('update:runInstaller', version),
     onUpdateStatus: (cb) => subscribe<UpdateStatus>('update:status', cb),
     onEvent:

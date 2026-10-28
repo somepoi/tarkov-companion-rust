@@ -23,7 +23,7 @@ import { AutoUntickCompleted } from '../maps/AutoUntick'
 import { WikiTickCarryOver } from '../quests/WikiTickCarryOver'
 import { RaidResultPrompt } from '../stats/RaidResultPrompt'
 import { RaidBriefingHost } from '../briefing/RaidBriefingHost'
-import { PositionListener } from '../maps/position'
+import { PositionListener, usePositionStore } from '../maps/position'
 import { AutoBackup } from '../desktop/HealthAndBackups'
 import { Sidebar } from './Sidebar'
 
@@ -40,6 +40,7 @@ function PageLoading() {
 
 export function Layout() {
   const [captureError, setCaptureError] = useState('')
+  const positionError = usePositionStore((s) => s.error)
   useEffect(() => window.desktop?.onScanCaptureError?.(setCaptureError), [])
   useEffect(() => { void window.desktop?.reportUiReady?.().catch(() => undefined) }, [])
   const { pathname } = useLocation()
@@ -113,6 +114,7 @@ export function Layout() {
         <UpdateBanner />
         {captureError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Screenshot capture failed: {captureError}</span><button className="btn" onClick={() => setCaptureError('')}>Dismiss</button></div>}
         <WipeBanner />
+        {positionError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Position tracking: {positionError}</span><button className="btn" onClick={() => usePositionStore.getState().setError(null)}>Dismiss</button></div>}
         {fullBleed ? (
           <ErrorBoundary key={`${pathname}|${formatKey}`} area={areaName(pathname)}>
             <Suspense fallback={<PageLoading />}>
