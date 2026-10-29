@@ -249,3 +249,76 @@ pub fn compose(
     }
     Ok(preview)
 }
+
+/// Patch only fully observed footprints. Unseen facts retain their previous screenshot.
+pub fn patch(
+    owner: &Container,
+    request: &Composition,
+    base: &crate::InventorySnapshot,
+) -> Result<ScanDraft, StorageError> {
+    let preview = compose(owner, request)?;
+    let mut draft = preview
+        .draft
+        .ok_or_else(|| invalid("Resolve view conflicts and split footprints before patching"))?;
+    if !draft.review_confirmed {
+        return Err(invalid(
+            "Partial patch requires reviewed views and one unchanged layout",
+        ));
+    }
+    let mut covered = vec![false; (owner.columns * owner.rows) as usize];
+    let mut protected = covered.clone();
+    for view in &request.views {
+        for row in view.row..view.row + view.rows {
+            for col in view.column..view.column + view.columns {
+                covered[(row * owner.columns + col) as usize] = true;
+            }
+        }
+    }
+    if base.id.len() > 128 || base.stacks.len() > 65_536 {
+        return Err(invalid("Invalid baseline snapshot"));
+    }
+    for stack in &base.stacks {
+        let b = stack.location;
+        if b.width == 0
+            || b.height == 0
+            || u64::from(b.column) + u64::from(b.width) > u64::from(owner.columns)
+            || u64::from(b.row) + u64::from(b.height) > u64::from(owner.rows)
+        {
+            return Err(invalid("Baseline footprint is outside the container"));
+        }
+        let mut count = 0;
+        for row in b.row..b.row + b.height {
+            for col in b.column..b.column + b.width {
+                let at = (row * owner.columns + col) as usize;
+                if covered[at] {
+                    count += 1;
+                }
+                protected[at] |= stack.never_sell;
+            }
+        }
+        if count != 0 && count != b.width * b.height {
+            return Err(invalid(
+                "Patch boundary crosses an existing stack; extend the registered coverage",
+            ));
+        }
+        if count == 0 {
+            let mut retained = stack.clone();
+            retained.provenance.method = format!("retained-snapshot:{}", base.id);
+            retained.provenance.observation_id = None;
+            draft.stacks.push(retained);
+        }
+    }
+    for stack in &mut draft.stacks {
+        let b = stack.location;
+        for row in b.row..b.row + b.height {
+            for col in b.column..b.column + b.width {
+                stack.never_sell |= protected[(row * owner.columns + col) as usize];
+            }
+        }
+    }
+    // A partial view must not assert that unseen historical facts were freshly inspected.
+    draft.full_coverage_confirmed = false;
+    draft.algorithm_version = "registered-partial-patch-v1".into();
+    crate::repository::validate_draft(&draft, owner)?;
+    Ok(draft)
+}

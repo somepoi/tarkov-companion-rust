@@ -539,6 +539,80 @@ impl Repository {
         Ok(result)
     }
 
+    pub fn commit_partial_checked(
+        &mut self,
+        request: CommitScan,
+        validate_evidence: impl FnOnce(
+            &ScanDraft,
+            &crate::composition::Composition,
+        ) -> Result<(), StorageError>,
+    ) -> Result<CommitResult, StorageError> {
+        text(&request.idempotency_key, "idempotency key")?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let scan = session(&tx, &request.session_id)?;
+        let current = container(&tx, &scan.container_id)?;
+        let payload: String = tx
+            .query_row(
+                "SELECT payload_json FROM scan_compositions WHERE session_id=?1",
+                [&scan.id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(StorageError::NotFound("registered views"))?;
+        let composition: crate::composition::Composition = serde_json::from_str(&payload)?;
+        let request_hash = hash(&serde_json::to_vec(&(
+            "partial-v1",
+            &request,
+            &composition,
+        ))?);
+        let replay: Option<(String, String)> = tx.query_row("SELECT request_hash,result_json FROM scan_commits WHERE profile_id=?1 AND container_id=?2 AND idempotency_key=?3", params![current.profile_id,current.id,request.idempotency_key], |row| Ok((row.get(0)?,row.get(1)?))).optional()?;
+        if let Some((previous, json)) = replay {
+            if previous != request_hash {
+                return Err(StorageError::IdempotencyConflict);
+            }
+            return Ok(serde_json::from_str(&json)?);
+        }
+        check_revision(&current, request.expected_revision)?;
+        if scan.status != ScanStatus::Draft
+            || scan.scope != ScanScope::Partial
+            || scan.base_revision != request.expected_revision
+        {
+            return Err(StorageError::Invalid(
+                "Partial patch requires an editable partial session at the current revision".into(),
+            ));
+        }
+        let base = snapshot(
+            &tx,
+            current
+                .current_snapshot_id
+                .as_deref()
+                .ok_or(StorageError::NotFound("baseline snapshot"))?,
+        )?;
+        let draft = crate::composition::patch(&current, &composition, &base)?;
+        validate_evidence(&draft, &composition)?;
+        let result = write_snapshot(&tx, &current, Some(&scan.id), &draft)?;
+        let json = serde_json::to_string(&draft)?;
+        tx.execute(
+            "UPDATE scan_sessions SET draft_json=?1,draft_hash=?2,status='committed' WHERE id=?3",
+            params![json, hash(json.as_bytes()), scan.id],
+        )?;
+        tx.execute(
+            "DELETE FROM scan_observations WHERE session_id=?1",
+            [&scan.id],
+        )?;
+        for observation in &draft.observations {
+            tx.execute(
+                "INSERT INTO scan_observations(session_id,id,payload_json) VALUES (?1,?2,?3)",
+                params![scan.id, observation.id, serde_json::to_string(observation)?],
+            )?;
+        }
+        tx.execute("INSERT INTO scan_commits(profile_id,container_id,idempotency_key,request_hash,result_json) VALUES (?1,?2,?3,?4,?5)", params![current.profile_id,current.id,request.idempotency_key,request_hash,serde_json::to_string(&result)?])?;
+        tx.commit()?;
+        Ok(result)
+    }
+
     /// Undo writes a new snapshot. An intervening commit prevents restoration;
     /// old snapshots and the evidence behind the undone commit are retained.
     pub fn undo_commit(

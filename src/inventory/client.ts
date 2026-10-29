@@ -227,3 +227,6 @@ export async function readArchivedScreenshot(hash: string): Promise<Blob> {
   const bytes = await invoke<ArrayBuffer>('read_archived_screenshot', { hash })
   return new Blob([bytes])
 }
+
+export const commitPartial = (sessionId: string, expectedRevision: number, idempotencyKey: string) =>
+  inventoryCall<CommitResult>({ operation: 'commitPartial', request: { sessionId, expectedRevision, idempotencyKey } })

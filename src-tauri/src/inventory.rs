@@ -60,6 +60,9 @@ pub enum Operation {
     AbandonScan {
         session_id: String,
     },
+    CommitPartial {
+        request: CommitScan,
+    },
     CommitScan {
         request: CommitScan,
     },
@@ -213,6 +216,17 @@ fn execute(
         }
         Operation::GetComposition { session_id } => value(repository.get_composition(&session_id)),
         Operation::AbandonScan { session_id } => value(repository.abandon_scan(&session_id)),
+        Operation::CommitPartial { request } => value(repository.commit_partial_checked(
+            request,
+            |draft, composition| {
+                validate_hashes(
+                    composition.views.iter().map(|view| &view.screenshot_hash),
+                    evidence_dir,
+                )
+                .and_then(|()| validate_evidence(draft, evidence_dir))
+                .map_err(stash_core::StorageError::Invalid)
+            },
+        )),
         Operation::CommitScan { request } => {
             value(repository.commit_scan_checked(request, |draft| {
                 validate_evidence(draft, evidence_dir).map_err(stash_core::StorageError::Invalid)
