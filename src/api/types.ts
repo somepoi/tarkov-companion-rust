@@ -946,7 +946,7 @@ export interface PlayerLevel {
 export interface ItemsBundle {
   mode?: GameMode
   fetchedAt?: number
-  fleaMarket?: { enabled: boolean | null; minPlayerLevel: number | null; foundInRaidRequired: boolean | null }
+  fleaMarket?: { enabled: boolean | null; minPlayerLevel: number | null; foundInRaidRequired: boolean | null; sellOfferFeeRate?: number | null; sellRequirementFeeRate?: number | null }
   items: ItemsById
   playerLevels: PlayerLevel[]
   /** Item category id -> English name (e.g. weapon part types). */

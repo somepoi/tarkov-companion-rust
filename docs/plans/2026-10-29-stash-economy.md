@@ -15,3 +15,5 @@ The UI lists independently priced trader/flea totals and unpriced/restricted uni
 Read-only review found the prior missing-level-to-zero fallback; it was corrected and follow-up review found no remaining P1/P2 issue in scope. Source UI detector returned no findings. No tests, fixtures, player/game state or sales were used. This does not establish actual revenue, full trade eligibility or complete economic modeling.
 
 Verification completed: TypeScript, clean lint, both frontend builds, embedded native build and whitespace checks passed. Rust planner code and allocation behavior were unchanged.
+
+After-fee follow-up: `2026-10-29-stash-fees.md` records the independently inspected API resolver model, retained mode-specific fee rates and explicit player modifier confirmation. Surplus references now include bounded gross/fees/net for the same eligible priced subset. This supersedes the initial absence of net estimates, while actual game charges, full eligibility and legacy non-stash economics remain unverified/separate.

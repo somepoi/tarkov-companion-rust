@@ -1,5 +1,6 @@
 import { friendlySwitchName } from './switchNames'
 import { objectiveItemConditions } from './itemConditions'
+import { feeRate } from '../lib/fleaFees'
 import { canonicalObjectiveDefinition, consumesItems } from '../lib/objectiveProgress'
 import { assertCatalogSupports, getEndpointCatalog } from './catalog'
 import { fetchJson, type GameMode } from './client'
@@ -550,6 +551,8 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
     enabled: typeof market?.enabled === 'boolean' ? market.enabled : null,
     minPlayerLevel: typeof market?.minPlayerLevel === 'number' && Number.isSafeInteger(market.minPlayerLevel) && market.minPlayerLevel >= 0 ? market.minPlayerLevel : null,
     foundInRaidRequired: typeof market?.foundInRaidRequired === 'boolean' ? market.foundInRaidRequired : null,
+    sellOfferFeeRate: feeRate(market?.sellOfferFeeRate) ? market.sellOfferFeeRate : null,
+    sellRequirementFeeRate: feeRate(market?.sellRequirementFeeRate) ? market.sellRequirementFeeRate : null,
   } }
 }
 

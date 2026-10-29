@@ -1,0 +1,17 @@
+# Historical surplus references after listing fees
+
+Continue Phase 6 economics without affecting native reservation verdicts or initiating a sale.
+
+1. Retain both validated flea fee rates from the same mode-specific item catalog as the price. Missing/invalid/old-cache rates remain unknown, never substituted by constants.
+2. Add an independent pure bounded estimator for individually purchasable units in one listing per saved physical SELL stack. Inputs are positive safe-integer RUB base/unit prices and quantity, known nonnegative rates <=1, and explicit integer player modifier levels. Calculate the source logarithmic fee, apply Intelligence Center 3 discount and Hideout Management scaling, round once per listing, preserve negative net returns and reject unsafe results.
+3. Require manual confirmation of current modifier levels before showing net totals; changing either input withdraws confirmation. The per-plan/mode keyed surface keeps these assumptions session-local. Show gross, fee, net and excluded unit counts over exactly the same priced subset.
+4. Keep quote/fetch freshness, offline context, restriction/price gaps and unverified physical condition/trader access/offer slots explicit. Net estimates never change KEEP/SELL/REVIEW. No pack offers, barter fees, relisting costs, actual player access or guaranteed proceeds are inferred.
+5. Verify TypeScript/lint/UI builds/native embedded build, source design checks and separate read-only review. Do not create/run tests, fixtures or screenshot checks.
+
+Primary source inspected 2026-10-29: https://github.com/the-hideout/tarkov-api/blob/main/resolvers/itemResolver.mjs (`Item.fleaMarketFee`), and read-only https://json.tarkov.dev/pve/items / https://json.tarkov.dev/regular/items fee fields. The source uses the separate offer/requirement rates and a 30% Intelligence Center >=3 discount scaled by management level. This is a catalog/source-based estimate, not verification of an in-game charge. The existing `src/lib/economy.ts` legacy estimate remains clearly distinct pending its own migration.
+
+Rollback: leave player modifier confirmation off; historical gross/trader references remain available. No schema or persisted setting changes.
+
+Implementation checkpoint: `src/lib/fleaFees.ts` independently expresses the resolver's per-unit listing model, with safe integer/finite/bounded input checks and no fallback coefficients. Catalog rates are optional for cache compatibility and normalized to unknown when malformed. For each confirmed SELL portion joined to its exact snapshot stack, SurplusValue accumulates gross/fee/net together only when all arithmetic is safe. Excluded units are counted explicitly; negative net values remain visible. Inputs default to a visible zero-discount scenario but no net value is shown until the user confirms those levels, and editing inputs withdraws that confirmation. The management input's 0..100 range is a supported calculation bound, not a claim about the game's skill cap. This surface does not inherit the legacy fee-discount preference.
+
+TypeScript, clean lint, both frontend builds, embedded native development build and whitespace checks passed. UI source detector returned no findings; separate read-only review checked the primary resolver and reported no concrete P1/P2 issue. No tests, synthetic fee cases, game screenshots, runtime UI, actual fee charge or sale were exercised. Existing non-stash economics still use the separately labeled legacy community estimate and remain a follow-up.
