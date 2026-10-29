@@ -750,6 +750,8 @@ export interface TaskObjective {
   planningGaps?: string[]
   /** Minimum dogtag level; zero means no level restriction. */
   minimumDogtagLevel?: number
+  /** Inclusive durability percentage bounds; absent for explicit unrestricted 0..100. */
+  durability?: { minimum: number; maximum: number }
   id: string
   type: string
   description: string

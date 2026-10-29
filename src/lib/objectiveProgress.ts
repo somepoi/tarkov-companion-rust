@@ -38,6 +38,7 @@ export function objectiveDefinition(taskId: string, objective: TaskObjective): s
   return canonicalObjectiveDefinition({ taskId, raw: objective.planningDefinition ?? {
     id: objective.id, type: objective.type, count: objective.count, itemIds: [...objective.itemIds].sort(),
     markerItemId: objective.markerItemId, foundInRaid: objective.foundInRaid,
+    minimumDogtagLevel: objective.minimumDogtagLevel, durability: objective.durability,
     optional: objective.optional, planningGaps: objective.planningGaps ?? [],
   } })
 }

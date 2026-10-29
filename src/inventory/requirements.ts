@@ -45,7 +45,7 @@ export function buildRequirements(input: Input) {
       )
     for (const objective of task.objectives) {
       const progress = consumesItems(objective) ? remainingObjective(input.profile, task, objective) : undefined
-      const source = `Quest: ${task.name} · ${objective.description}${objective.minimumDogtagLevel ? ` (dogtag level at least ${objective.minimumDogtagLevel})` : ''}${progress?.completed ? ` (${progress.completed} already completed; ${progress.quantity} remaining)` : ''}`
+      const source = `Quest: ${task.name} · ${objective.description}${objective.minimumDogtagLevel ? ` (dogtag level at least ${objective.minimumDogtagLevel})` : ''}${objective.durability ? ` (durability ${objective.durability.minimum}–${objective.durability.maximum}%)` : ''}${progress?.completed ? ` (${progress.completed} already completed; ${progress.quantity} remaining)` : ''}`
       if (progress?.gap) gaps.push(`${source}: ${progress.gap}`)
       if (progress?.quantity === 0 && !progress.gap) continue
       if (objective.planningGaps?.length)
@@ -57,6 +57,7 @@ export function buildRequirements(input: Input) {
           kind: consume,
           alternatives: objective.itemIds,
           minimumDogtagLevel: objective.minimumDogtagLevel,
+          durability: objective.durability,
           quantity: progress?.quantity ?? count(objective.count),
           fir:
             objective.foundInRaid === true

@@ -92,6 +92,29 @@ pub struct Stack {
     pub never_sell: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dogtag: Option<DogtagFact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub durability: Option<DurabilityFact>,
+}
+
+impl Stack {
+    pub(crate) fn valid_item_state(&self) -> bool {
+        let reviewed = self.item_id.is_some() && self.provenance.identity_confirmed;
+        self.dogtag
+            .as_ref()
+            .is_none_or(|fact| (1..=1000).contains(&fact.level) && (!fact.confirmed || reviewed))
+            && self.durability.as_ref().is_none_or(|fact| {
+                fact.percent.is_finite()
+                    && (0.0..=100.0).contains(&fact.percent)
+                    && (!fact.confirmed || reviewed)
+            })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DurabilityFact {
+    pub percent: f64,
+    pub confirmed: bool,
 }
 
 /// Manually read physical state, independent of icon/quantity/FIR review.

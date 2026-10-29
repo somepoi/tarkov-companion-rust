@@ -31,6 +31,13 @@ pub enum RequirementKind {
     },
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DurabilityRange {
+    pub minimum: u32,
+    pub maximum: u32,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Requirement {
@@ -42,6 +49,8 @@ pub struct Requirement {
     pub fir: FirConstraint,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub minimum_dogtag_level: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub durability: Option<DurabilityRange>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -168,6 +177,7 @@ struct Demand {
     count: u32,
     fir: FirConstraint,
     minimum_dogtag_level: Option<u32>,
+    durability: Option<DurabilityRange>,
     reason: String,
 }
 
@@ -292,14 +302,9 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                     }
                 }
             }
-            if stack.dogtag.as_ref().is_some_and(|fact| {
-                fact.level == 0
-                    || fact.level > 1000
-                    || fact.confirmed
-                        && (stack.item_id.is_none() || !stack.provenance.identity_confirmed)
-            }) {
+            if !stack.valid_item_state() {
                 return Err(PlannerError::Invalid(
-                    "invalid physical dogtag level fact".into(),
+                    "invalid physical item state fact".into(),
                 ));
             }
             let trusted = stack
@@ -350,6 +355,7 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                 count: reserve.extra_buffer,
                 fir: FirConstraint::Any,
                 minimum_dogtag_level: None,
+                durability: None,
                 reason: "Additional user buffer".into(),
             });
         }
@@ -403,6 +409,7 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
     let mut allocation_edges = Vec::new();
     let mut demand_edges = Vec::new();
     let mut unknown_dogtag_stacks = BTreeSet::new();
+    let mut unknown_durability_stacks = BTreeSet::new();
     for (demand_index, demand) in demands.iter().enumerate() {
         let node = demand_offset + demand_index;
         demand_edges.push(graph.add(node, sink, u64::from(demand.count), 0));
@@ -419,6 +426,21 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                         _ => {
                             if unknown_dogtag_stacks.insert(&s.stack.id) {
                                 gaps.push(format!("Stack {} needs a confirmed dogtag level before constrained surplus decisions.", s.stack.id));
+                            }
+                            continue;
+                        }
+                    }
+                }
+                if let Some(range) = demand.durability {
+                    match &s.stack.durability {
+                        Some(fact)
+                            if fact.confirmed
+                                && fact.percent >= f64::from(range.minimum)
+                                && fact.percent <= f64::from(range.maximum) => {}
+                        Some(fact) if fact.confirmed => continue,
+                        _ => {
+                            if unknown_durability_stacks.insert(&s.stack.id) {
+                                gaps.push(format!("Stack {} needs confirmed durability before constrained surplus decisions.", s.stack.id));
                             }
                             continue;
                         }
@@ -603,6 +625,14 @@ fn normalize_requirements(
     ordered.sort_by(|a, b| a.id.cmp(&b.id));
     for requirement in ordered {
         if requirement
+            .durability
+            .is_some_and(|range| range.minimum > range.maximum || range.maximum > 100)
+        {
+            return Err(PlannerError::Invalid(
+                "durability range must be ordered within 0..100 percent".into(),
+            ));
+        }
+        if requirement
             .minimum_dogtag_level
             .is_some_and(|level| level == 0 || level > 1000)
         {
@@ -648,6 +678,10 @@ fn normalize_requirements(
             count,
             fir: requirement.fir,
             minimum_dogtag_level: requirement.minimum_dogtag_level,
+            // A complete percentage range imposes no physical state restriction.
+            durability: requirement
+                .durability
+                .filter(|range| range.minimum > 0 || range.maximum < 100),
             reason: requirement.source.clone(),
         };
         match &requirement.kind {
@@ -662,6 +696,7 @@ fn normalize_requirements(
                     if existing.alternatives != demand.alternatives
                         || existing.fir != demand.fir
                         || existing.minimum_dogtag_level != demand.minimum_dogtag_level
+                        || existing.durability != demand.durability
                     {
                         return Err(PlannerError::Invalid(format!(
                             "reusable group {group} has incompatible item/FIR/state constraints; split into explicit groups"

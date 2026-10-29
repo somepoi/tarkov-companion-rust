@@ -149,6 +149,27 @@ export function StackIdentityReview({ stack, observation, items, onChange, onClo
           <p className="text-xs text-ink-muted">Confirm this stack's identity before remembering. Adjust the footprint if needed; choosing an item does not change its position or size.</p>
           <div className="space-y-2 border-t border-line pt-3">
             <label className="grid gap-1 text-sm">
+              Durability for the quest requirement (%)
+              <input type="number" min={0} max={100} step="any" className={`${inputClass} w-28`}
+                disabled={busy || !stack.provenance.identityConfirmed}
+                value={stack.durability?.percent ?? ''}
+                onChange={(event) => {
+                  const percent = event.target.valueAsNumber
+                  if (event.target.value === '') onChange({ durability: undefined })
+                  else if (Number.isFinite(percent) && percent >= 0 && percent <= 100)
+                    onChange({ durability: { percent, confirmed: false } })
+                }} />
+            </label>
+            <label className="flex gap-2 text-sm">
+              <input type="checkbox" checked={stack.durability?.confirmed ?? false}
+                disabled={busy || !stack.durability || !stack.provenance.identityConfirmed}
+                onChange={(event) => { if (stack.durability) onChange({ durability: { ...stack.durability, confirmed: event.target.checked } }) }} />
+              I verified this percentage against the quest's condition in the game.
+            </label>
+            <p className="max-w-prose text-xs text-ink-muted">Leave blank when unknown or not applicable. Use the percentage relevant to the requirement; do not enter a raw durability point count. The app does not infer a percentage from an icon, remaining uses or a catalog maximum.</p>
+          </div>
+          <div className="space-y-2 border-t border-line pt-3">
+            <label className="grid gap-1 text-sm">
               Dogtag level (only for this physical tag)
               <input type="number" min={1} max={1000} step={1} className={`${inputClass} w-28`}
                 disabled={busy || !stack.provenance.identityConfirmed}

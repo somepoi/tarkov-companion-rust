@@ -249,9 +249,13 @@ function StashManager({ mode }: { mode: GameMode }) {
             (Object.keys(patch.location) as (keyof Stack['location'])[])
               .some((field) => patch.location?.[field] !== stack.location[field])
           const next = { ...stack, ...patch }
-          if (moved || ('itemId' in patch && patch.itemId !== stack.itemId)) next.dogtag = undefined
-          else if (patch.provenance && !patch.provenance.identityConfirmed && next.dogtag)
-            next.dogtag = { ...next.dogtag, confirmed: false }
+          if (moved || ('itemId' in patch && patch.itemId !== stack.itemId)) {
+            next.dogtag = undefined
+            next.durability = undefined
+          } else if (patch.provenance && !patch.provenance.identityConfirmed) {
+            if (next.dogtag) next.dogtag = { ...next.dogtag, confirmed: false }
+            if (next.durability) next.durability = { ...next.durability, confirmed: false }
+          }
           if (moved) {
             // Different source pixels need new, independent review facts.
             next.provenance = {

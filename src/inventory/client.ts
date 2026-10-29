@@ -42,6 +42,7 @@ export interface Stack {
   }
   neverSell: boolean
   dogtag?: { level: number; confirmed: boolean }
+  durability?: { percent: number; confirmed: boolean }
 }
 export interface Observation {
   id: string
@@ -152,6 +153,7 @@ export interface Requirement {
   quantity: number | null
   fir: 'any' | 'required' | 'unknown'
   minimumDogtagLevel?: number
+  durability?: { minimum: number; maximum: number }
 }
 export interface RecommendationPlan {
   profileId: string

@@ -1,4 +1,5 @@
 import { friendlySwitchName } from './switchNames'
+import { objectiveItemConditions } from './itemConditions'
 import { canonicalObjectiveDefinition, consumesItems } from '../lib/objectiveProgress'
 import { assertCatalogSupports, getEndpointCatalog } from './catalog'
 import { fetchJson, type GameMode } from './client'
@@ -193,9 +194,7 @@ function adaptObjective(
     optional: Boolean(raw.optional),
     maps: (raw.maps ?? []).map((id) => mapsById[id]).filter((m): m is GameMap => Boolean(m)),
     count: typeof raw.count === 'number' ? raw.count : null,
-    minimumDogtagLevel: typeof raw.dogTagLevel === 'number' && Number.isSafeInteger(raw.dogTagLevel)
-      && raw.dogTagLevel > 0 && raw.dogTagLevel <= 1000 ? raw.dogTagLevel : undefined,
-    planningGaps: [raw.dogTagLevel != null && !(typeof raw.dogTagLevel === 'number' && Number.isSafeInteger(raw.dogTagLevel) && raw.dogTagLevel >= 0 && raw.dogTagLevel <= 1000) ? 'Invalid dogtag level requires review' : null, raw.minDurability != null || raw.maxDurability != null ? 'Item durability requires review' : null].filter((v): v is string => v !== null),
+    ...objectiveItemConditions(raw),
     itemIds,
     questItem: raw.questItem ? (questItems[raw.questItem] ?? null) : null,
     foundInRaid: typeof raw.foundInRaid === 'boolean' ? raw.foundInRaid : null,
