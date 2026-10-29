@@ -41,6 +41,7 @@ export interface Stack {
     corrected: boolean
   }
   neverSell: boolean
+  dogtag?: { level: number; confirmed: boolean }
 }
 export interface Observation {
   id: string
@@ -150,6 +151,7 @@ export interface Requirement {
   alternatives: string[]
   quantity: number | null
   fir: 'any' | 'required' | 'unknown'
+  minimumDogtagLevel?: number
 }
 export interface RecommendationPlan {
   profileId: string

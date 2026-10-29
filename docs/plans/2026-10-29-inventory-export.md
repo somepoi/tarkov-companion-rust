@@ -11,3 +11,5 @@ Implemented export builders and a collapsible stash control. A short-lived worke
 CSV container rows preserve empty/unscanned container metadata; physical rows retain unknown quantities as blank and separate confirmation flags. Legacy counts use an explicit unlocated record type. Reporting files exclude recommendations and prices to avoid exporting stale SELL instructions. Full backups remain the recovery path. Read-only source review found no P1/P2 issue after inspecting mode guards, formula neutralization, column alignment and worker/URL lifecycle. No tests, fixtures, actual download or recovery exercise were performed.
 
 Verification completed: TypeScript, clean lint, both frontend builds, embedded native build and whitespace checks passed. Source UI detector reported no findings. Runtime file delivery remains unverified.
+
+Schema-6 follow-up: CSV now includes `dogtag_level` and `dogtag_level_confirmed`, yielding 28 columns; container and legacy rows remain aligned. JSON retains the optional physical dogtag fact with the saved stack. Missing levels are blank/absent, never inferred from identity.

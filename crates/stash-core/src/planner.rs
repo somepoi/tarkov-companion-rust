@@ -40,6 +40,8 @@ pub struct Requirement {
     pub alternatives: Vec<String>,
     pub quantity: Option<u32>,
     pub fir: FirConstraint,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_dogtag_level: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -165,6 +167,7 @@ struct Demand {
     alternatives: Vec<String>,
     count: u32,
     fir: FirConstraint,
+    minimum_dogtag_level: Option<u32>,
     reason: String,
 }
 
@@ -289,6 +292,16 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                     }
                 }
             }
+            if stack.dogtag.as_ref().is_some_and(|fact| {
+                fact.level == 0
+                    || fact.level > 1000
+                    || fact.confirmed
+                        && (stack.item_id.is_none() || !stack.provenance.identity_confirmed)
+            }) {
+                return Err(PlannerError::Invalid(
+                    "invalid physical dogtag level fact".into(),
+                ));
+            }
             let trusted = stack
                 .item_id
                 .as_ref()
@@ -336,6 +349,7 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                 alternatives: vec![item_id.clone()],
                 count: reserve.extra_buffer,
                 fir: FirConstraint::Any,
+                minimum_dogtag_level: None,
                 reason: "Additional user buffer".into(),
             });
         }
@@ -388,6 +402,7 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
     }
     let mut allocation_edges = Vec::new();
     let mut demand_edges = Vec::new();
+    let mut unknown_dogtag_stacks = BTreeSet::new();
     for (demand_index, demand) in demands.iter().enumerate() {
         let node = demand_offset + demand_index;
         demand_edges.push(graph.add(node, sink, u64::from(demand.count), 0));
@@ -396,6 +411,18 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                 let s = &stock[index];
                 if demand.fir == FirConstraint::Required && s.stack.fir != Fir::Yes {
                     continue;
+                }
+                if let Some(minimum) = demand.minimum_dogtag_level {
+                    match &s.stack.dogtag {
+                        Some(fact) if fact.confirmed && fact.level >= minimum => {}
+                        Some(fact) if fact.confirmed => continue,
+                        _ => {
+                            if unknown_dogtag_stacks.insert(&s.stack.id) {
+                                gaps.push(format!("Stack {} needs a confirmed dogtag level before constrained surplus decisions.", s.stack.id));
+                            }
+                            continue;
+                        }
+                    }
                 }
                 let cost = i64::from(demand.fir == FirConstraint::Any && s.stack.fir == Fir::Yes);
                 let edge = graph.add(
@@ -575,6 +602,14 @@ fn normalize_requirements(
     let mut ordered = input.requirements.iter().collect::<Vec<_>>();
     ordered.sort_by(|a, b| a.id.cmp(&b.id));
     for requirement in ordered {
+        if requirement
+            .minimum_dogtag_level
+            .is_some_and(|level| level == 0 || level > 1000)
+        {
+            return Err(PlannerError::Invalid(
+                "minimum dogtag level must be 1..1000 or absent".into(),
+            ));
+        }
         if requirement.id.trim().is_empty() || !ids.insert(&requirement.id) {
             return Err(PlannerError::Invalid(
                 "requirement IDs must be nonempty and unique".into(),
@@ -612,6 +647,7 @@ fn normalize_requirements(
             alternatives,
             count,
             fir: requirement.fir,
+            minimum_dogtag_level: requirement.minimum_dogtag_level,
             reason: requirement.source.clone(),
         };
         match &requirement.kind {
@@ -623,9 +659,12 @@ fn normalize_requirements(
                     ));
                 }
                 if let Some(existing) = reusable.get_mut(group) {
-                    if existing.alternatives != demand.alternatives || existing.fir != demand.fir {
+                    if existing.alternatives != demand.alternatives
+                        || existing.fir != demand.fir
+                        || existing.minimum_dogtag_level != demand.minimum_dogtag_level
+                    {
                         return Err(PlannerError::Invalid(format!(
-                            "reusable group {group} has incompatible item/FIR constraints; split into explicit groups"
+                            "reusable group {group} has incompatible item/FIR/state constraints; split into explicit groups"
                         )));
                     }
                     existing.count = existing.count.max(count);

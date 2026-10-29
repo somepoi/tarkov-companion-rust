@@ -748,6 +748,8 @@ export interface TaskObjective {
   planningDefinition?: string
   /** Raw item state restrictions unsupported by physical stack facts. */
   planningGaps?: string[]
+  /** Minimum dogtag level; zero means no level restriction. */
+  minimumDogtagLevel?: number
   id: string
   type: string
   description: string

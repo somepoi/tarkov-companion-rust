@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, path::Path, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u32 = 5;
+const SCHEMA_VERSION: u32 = 6;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -157,6 +157,11 @@ impl Repository {
         if version < 5 {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             tx.execute_batch(include_str!("../migrations/0005_scan_compositions.sql"))?;
+            tx.commit()?;
+        }
+        if version < 6 {
+            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            tx.execute_batch(include_str!("../migrations/0006_dogtag_state.sql"))?;
             tx.commit()?;
         }
         Ok(Self { connection })
@@ -861,6 +866,17 @@ pub(crate) fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(),
     let mut ids = BTreeSet::new();
     let mut occupied = BTreeSet::new();
     for stack in &draft.stacks {
+        if stack.dogtag.as_ref().is_some_and(|fact| {
+            fact.level == 0
+                || fact.level > 1000
+                || fact.confirmed
+                    && (stack.item_id.is_none() || !stack.provenance.identity_confirmed)
+        }) {
+            return Err(StorageError::Invalid(
+                "dogtag level must be 1..1000 and confirmation requires a known reviewed identity"
+                    .into(),
+            ));
+        }
         text(&stack.id, "stack ID")?;
         if let Some(item) = &stack.item_id {
             text(item, "item ID")?;

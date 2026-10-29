@@ -148,6 +148,27 @@ export function StackIdentityReview({ stack, observation, items, onChange, onClo
           </div>
           <p className="text-xs text-ink-muted">Confirm this stack's identity before remembering. Adjust the footprint if needed; choosing an item does not change its position or size.</p>
           <div className="space-y-2 border-t border-line pt-3">
+            <label className="grid gap-1 text-sm">
+              Dogtag level (only for this physical tag)
+              <input type="number" min={1} max={1000} step={1} className={`${inputClass} w-28`}
+                disabled={busy || !stack.provenance.identityConfirmed}
+                value={stack.dogtag?.level ?? ''}
+                onChange={(event) => {
+                  const level = event.target.valueAsNumber
+                  if (event.target.value === '') onChange({ dogtag: undefined })
+                  else if (Number.isSafeInteger(level) && level >= 1 && level <= 1000)
+                    onChange({ dogtag: { level, confirmed: false } })
+                }} />
+            </label>
+            <label className="flex gap-2 text-sm">
+              <input type="checkbox" checked={stack.dogtag?.confirmed ?? false}
+                disabled={busy || !stack.dogtag || !stack.provenance.identityConfirmed}
+                onChange={(event) => { if (stack.dogtag) onChange({ dogtag: { ...stack.dogtag, confirmed: event.target.checked } }) }} />
+              I checked this tag's level in the game.
+            </label>
+            <p className="max-w-prose text-xs text-ink-muted">Leave blank for other items or an unknown level. Icon recognition does not read or confirm a tag's level. Changing identity or footprint clears this fact.</p>
+          </div>
+          <div className="space-y-2 border-t border-line pt-3">
             <button className="btn" disabled={busy || !validPatch || !stack.provenance.identityConfirmed
               || !canReadQuantity(items?.[stack.itemId ?? ''], { col: location.column, row: location.row, w: location.width, h: location.height })}
               onClick={() => void readAmount()}>Read stack amount again</button>

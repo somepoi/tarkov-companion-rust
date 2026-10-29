@@ -90,6 +90,16 @@ pub struct Stack {
     pub location: CellBox,
     pub provenance: Provenance,
     pub never_sell: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dogtag: Option<DogtagFact>,
+}
+
+/// Manually read physical state, independent of icon/quantity/FIR review.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DogtagFact {
+    pub level: u32,
+    pub confirmed: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
