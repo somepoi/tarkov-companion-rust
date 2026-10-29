@@ -1,16 +1,19 @@
 import { useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import type { ItemsById } from '../api/types'
+import { SurplusValue } from './SurplusValue'
+import type { ItemsBundle, ItemsById } from '../api/types'
 import type { Inventory, RecommendationPlan } from './client'
 
 export function PlanResults({
   plan,
   inventory,
-  items,
+  items, catalog, level,
 }: {
   plan: RecommendationPlan
   inventory: Inventory
   items: ItemsById
+  catalog?: ItemsBundle
+  level: number
 }) {
   'use no memo' // The virtualizer owns mutable measurement state.
   const [filter, setFilter] = useState('')
@@ -69,9 +72,9 @@ export function PlanResults({
         units · {totals.unknown} uncertain stacks
       </p>
       <p className="text-xs text-ink-muted">
-        {plan.horizon}. Requirements consume full objective quantities; partial
-        hand-ins are not inferred. No automatic sale or inventory changes.
+        {plan.horizon}. Requirements use confirmed remaining quantities; unrecorded partial hand-ins are not inferred. No automatic sale or inventory changes.
       </p>
+      <SurplusValue key={`${plan.planRevision}:${catalog?.fetchedAt}:${level}`} plan={plan} inventory={inventory} catalog={catalog} level={level} />
       {!!plan.coverageGaps.length && (
         <details open className="border-l-2 border-warning pl-3">
           <summary className="cursor-pointer text-sm font-medium text-warning">

@@ -674,7 +674,7 @@ function PlannerEditor({
         <PlanResults
           plan={plan}
           inventory={inventory}
-          items={items.data?.items ?? {}}
+          items={items.data?.items ?? {}} catalog={items.data} level={progression.playerLevel}
         />
       )}
     </section>

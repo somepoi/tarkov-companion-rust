@@ -507,7 +507,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
       iconLink: realPicture(raw.iconLink),
       wikiLink: raw.wikiLink ?? null,
       avg24hPrice: raw.avg24hPrice ?? null,
-      fleaLevel: raw.minLevelForFlea ? raw.minLevelForFlea : null,
+      fleaLevel: typeof raw.minLevelForFlea === 'number' && Number.isSafeInteger(raw.minLevelForFlea) && raw.minLevelForFlea >= 0 ? raw.minLevelForFlea : null,
       lastLowPrice: raw.lastLowPrice ?? null,
       low24hPrice: raw.low24hPrice ?? null,
       high24hPrice: raw.high24hPrice ?? null,
@@ -544,7 +544,12 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
   for (const [id, c] of Object.entries(doc.data.itemCategories ?? {})) {
     if (c?.name) categoryNames[c.id ?? id] = t(c.name, c.normalizedName ?? id)
   }
-  return { items: out, playerLevels, categoryNames }
+  const market = doc.data.fleaMarket
+  return { items: out, playerLevels, categoryNames, mode: gameMode, fetchedAt: Date.now(), fleaMarket: {
+    enabled: typeof market?.enabled === 'boolean' ? market.enabled : null,
+    minPlayerLevel: typeof market?.minPlayerLevel === 'number' && Number.isSafeInteger(market.minPlayerLevel) && market.minPlayerLevel >= 0 ? market.minPlayerLevel : null,
+    foundInRaidRequired: typeof market?.foundInRaidRequired === 'boolean' ? market.foundInRaidRequired : null,
+  } }
 }
 
 /** Flea-market price history for one item (cached for 5 minutes by the hook). */

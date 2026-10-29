@@ -472,7 +472,7 @@ export function ItemDetails({ item }: { item: Item }) {
             </dd>
           </>
         )}
-        {!banned && item.fleaLevel != null && (
+        {!banned && item.fleaLevel != null && item.fleaLevel > 0 && (
           <>
             <dt className="text-white/50">Sell from</dt>
             <dd>level {item.fleaLevel}</dd>

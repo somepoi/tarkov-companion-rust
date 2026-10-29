@@ -940,6 +940,9 @@ export interface PlayerLevel {
 
 /** Result of the items document: the item catalogue plus the level table it ships with. */
 export interface ItemsBundle {
+  mode?: GameMode
+  fetchedAt?: number
+  fleaMarket?: { enabled: boolean | null; minPlayerLevel: number | null; foundInRaidRequired: boolean | null }
   items: ItemsById
   playerLevels: PlayerLevel[]
   /** Item category id -> English name (e.g. weapon part types). */
