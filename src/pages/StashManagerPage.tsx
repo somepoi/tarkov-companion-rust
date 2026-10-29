@@ -3,6 +3,7 @@ import { Boxes, ImageUp, Plus, Save, Trash2, Undo2 } from 'lucide-react'
 import { useItems } from '../api/hooks'
 import type { GameMode } from '../api/client'
 import { useProgressStore } from '../store/progress'
+import { MultiViewPanel } from '../inventory/MultiViewPanel'
 import { PlanningPanel } from '../inventory/PlanningPanel'
 import { BackupPanel } from '../inventory/BackupPanel'
 import { StackIdentityReview } from '../inventory/StackIdentityReview'
@@ -61,6 +62,7 @@ function StashManager({ mode }: { mode: GameMode }) {
   const [selectedId, setSelectedId] = useState('')
   const [session, setSession] = useState<ScanSession | null>(null)
   const [draft, setDraft] = useState<ScanDraft | null>(null)
+  const [viewSize, setViewSize] = useState({ columns: 14, rows: 14 })
   const [lastCommit, setLastCommit] = useState<CommitResult | null>(null)
   const [containerName, setContainerName] = useState('')
   const [dimensions, setDimensions] = useState({ columns: 14, rows: 14 })
@@ -231,7 +233,7 @@ function StashManager({ mode }: { mode: GameMode }) {
         }),
       })
   }
-  async function begin(container: Container) {
+  async function begin(container: Container, scope: 'full' | 'partial' = 'full') {
     setReviewStackId(null)
     setStagedImage(null)
     setCaptureArmed(false)
@@ -240,8 +242,9 @@ function StashManager({ mode }: { mode: GameMode }) {
     const next = await inventoryCall<ScanSession>({
       operation: 'beginScan',
       containerId: container.id,
-      scope: 'full',
+      scope,
     })
+    setViewSize({ columns: container.columns, rows: container.rows })
     setSession(next)
     setSelectedId(container.id)
     setLastCommit(null)
@@ -276,6 +279,7 @@ function StashManager({ mode }: { mode: GameMode }) {
       throw new Error('No saved draft matches the current container revision.')
     setSelectedId(container.id)
     setSession(saved)
+    setViewSize({ columns: saved.draft.observations[0]?.sourceGrid?.cols ?? container.columns, rows: saved.draft.observations[0]?.sourceGrid?.rows ?? container.rows })
     setDraft(saved.draft)
     setLastCommit(null)
     commitKey.current = crypto.randomUUID()
@@ -360,8 +364,8 @@ function StashManager({ mode }: { mode: GameMode }) {
       grid,
     )
     if (generation.current !== token) return
-    if (result.grid.cols !== selected.container.columns || result.grid.rows !== selected.container.rows)
-      throw new Error(`Detected ${result.grid.cols}×${result.grid.rows} cells; this container is ${selected.container.columns}×${selected.container.rows}. Adjust the selected area or set the grid manually. Draft rows are unchanged.`)
+    if (result.grid.cols !== viewSize.columns || result.grid.rows !== viewSize.rows)
+      throw new Error(`Detected ${result.grid.cols}×${result.grid.rows} cells; this visible view is ${viewSize.columns}×${viewSize.rows}. Adjust the selected area or set the grid manually. Draft rows are unchanged.`)
     checkedGrid(result.grid, crop)
     let quantities: QuantityReport | undefined
     let quantityFailure = ''
@@ -596,7 +600,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                       onClick={() => void action(() => begin(entry.container))}
                     >
                       New full scan
-                    </button>
+                    </button><button className="btn" disabled={busy || !entry.snapshot} onClick={() => void action(() => begin(entry.container, 'partial'))}>Update visible region</button>
                   </div>
                 </div>
               ))}
@@ -657,12 +661,15 @@ function StashManager({ mode }: { mode: GameMode }) {
                 unrecognized regions must be checked in the game. Reimporting
                 this session never adds to the previous snapshot.
               </p>
+              <div className="flex flex-wrap gap-3">
+                {(['columns', 'rows'] as const).map((key) => <label key={key} className="text-sm">Visible {key} <input className={`${inputClass} w-20`} type="number" min={1} max={selected.container[key]} value={viewSize[key]} disabled={busy} onChange={(e) => { const value = Number(e.target.value); if (Number.isInteger(value) && value >= 1 && value <= selected.container[key]) { setViewSize({ ...viewSize, [key]: value }); changeDraft({ ...draft, fullCoverageConfirmed: false, reviewConfirmed: false }) } }} /></label>)}
+              </div>
               {stagedImage && (
                 <ScreenshotRegistration
-                  key={stagedImage.hash}
+                  key={`${stagedImage.hash}:${viewSize.columns}:${viewSize.rows}`}
                   image={stagedImage}
-                  columns={selected.container.columns}
-                  rows={selected.container.rows}
+                  columns={viewSize.columns}
+                  rows={viewSize.rows}
                   busy={busy}
                   hasDraftRows={draft.stacks.length > 0}
                   onScan={(crop, grid) => action(() => recognizeImage(crop, grid))}
@@ -945,6 +952,10 @@ function StashManager({ mode }: { mode: GameMode }) {
                 />{' '}
                 Save these reviewed facts; unknown values remain uncertain.
               </label>
+              <MultiViewPanel key={session.id} session={session} container={selected.container} draft={draft} imageHash={stagedImage?.hash} viewSize={viewSize} busy={busy} validDraft={(value) => !value.stacks.some((stack) => stack.provenance.quantityConfirmed && !quantityFitsCatalog(stack.quantity, catalog.data?.items[stack.itemId ?? '']))} run={(job) => action(job)}
+                onEdit={async (view) => { const token = generation.current; const blob = await readArchivedScreenshot(view.screenshotHash); const bitmap = await createImageBitmap(blob); const { width, height } = bitmap; bitmap.close(); if (generation.current !== token) return; setViewSize({ columns: view.columns, rows: view.rows }); setStagedImage({ blob, hash: view.screenshotHash, width, height }); changeDraft(structuredClone(view.draft)); setReviewStackId(null) }}
+                onApply={(next) => { setViewSize({ columns: selected.container.columns, rows: selected.container.rows }); changeDraft(next) }}
+                onCommitted={async (result) => { setLastCommit(result); setSession(null); setDraft(null); setStagedImage(null); await refresh() }} />
               <div className="flex flex-wrap gap-2">
                 <button
                   className="btn"
@@ -966,6 +977,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                   className="btn"
                   disabled={
                     busy ||
+                    session.scope !== 'full' || viewSize.columns !== selected.container.columns || viewSize.rows !== selected.container.rows ||
                     !draft.fullCoverageConfirmed ||
                     !draft.reviewConfirmed ||
                     draft.stacks.some((stack) => stack.provenance.quantityConfirmed && !quantityFitsCatalog(stack.quantity, catalog.data?.items[stack.itemId ?? '']))
