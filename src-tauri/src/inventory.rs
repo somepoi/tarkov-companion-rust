@@ -46,6 +46,17 @@ pub enum Operation {
         session_id: String,
         draft: ScanDraft,
     },
+    ComposeViews {
+        session_id: String,
+        composition: stash_core::composition::Composition,
+    },
+    SaveComposition {
+        session_id: String,
+        composition: stash_core::composition::Composition,
+    },
+    GetComposition {
+        session_id: String,
+    },
     AbandonScan {
         session_id: String,
     },
@@ -183,6 +194,24 @@ fn execute(
         Operation::SaveDraft { session_id, draft } => {
             value(repository.save_scan_draft(&session_id, draft))
         }
+        Operation::ComposeViews {
+            session_id,
+            composition,
+        } => value(repository.compose_views(&session_id, &composition)),
+        Operation::SaveComposition {
+            session_id,
+            composition,
+        } => {
+            repository
+                .compose_views(&session_id, &composition)
+                .map_err(|e| e.to_string())?;
+            validate_hashes(
+                composition.views.iter().map(|view| &view.screenshot_hash),
+                evidence_dir,
+            )?;
+            value(repository.save_composition(&session_id, composition))
+        }
+        Operation::GetComposition { session_id } => value(repository.get_composition(&session_id)),
         Operation::AbandonScan { session_id } => value(repository.abandon_scan(&session_id)),
         Operation::CommitScan { request } => {
             value(repository.commit_scan_checked(request, |draft| {
@@ -228,6 +257,8 @@ pub async fn inventory_call(
             | Operation::ListScans { .. }
             | Operation::PlanningState { .. }
             | Operation::CalculatePlan { .. }
+            | Operation::ComposeViews { .. }
+            | Operation::GetComposition { .. }
     );
     let state = std::sync::Arc::clone(state.inner());
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -246,12 +277,20 @@ pub async fn inventory_call(
 }
 
 fn validate_evidence(draft: &ScanDraft, evidence_dir: &std::path::Path) -> Result<(), String> {
-    let hashes = draft
-        .stacks
-        .iter()
-        .filter_map(|s| s.provenance.screenshot_hash.as_ref())
-        .chain(draft.observations.iter().map(|o| &o.screenshot_hash))
-        .collect::<std::collections::BTreeSet<_>>();
+    validate_hashes(
+        draft
+            .stacks
+            .iter()
+            .filter_map(|s| s.provenance.screenshot_hash.as_ref())
+            .chain(draft.observations.iter().map(|o| &o.screenshot_hash)),
+        evidence_dir,
+    )
+}
+fn validate_hashes<'a>(
+    hashes: impl Iterator<Item = &'a String>,
+    evidence_dir: &std::path::Path,
+) -> Result<(), String> {
+    let hashes = hashes.collect::<std::collections::BTreeSet<_>>();
     for hash in hashes {
         if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("Invalid screenshot hash".into());

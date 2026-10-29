@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, path::Path, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u32 = 4;
+const SCHEMA_VERSION: u32 = 5;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -95,6 +95,18 @@ impl Repository {
                 hashes.insert(hash);
             }
         }
+        if version >= 5 {
+            let mut compositions = repository
+                .connection
+                .prepare("SELECT payload_json FROM scan_compositions")?;
+            for json in compositions.query_map([], |r| r.get::<_, String>(0))? {
+                let request: crate::composition::Composition = serde_json::from_str(&json?)?;
+                for view in request.views {
+                    digest(&view.screenshot_hash)?;
+                    hashes.insert(view.screenshot_hash);
+                }
+            }
+        }
         Ok(hashes)
     }
 
@@ -140,6 +152,11 @@ impl Repository {
         if version < 4 {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             tx.execute_batch(include_str!("../migrations/0004_quantity_evidence.sql"))?;
+            tx.commit()?;
+        }
+        if version < 5 {
+            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            tx.execute_batch(include_str!("../migrations/0005_scan_compositions.sql"))?;
             tx.commit()?;
         }
         Ok(Self { connection })
@@ -341,6 +358,57 @@ impl Repository {
         let session = session(&tx, &id)?;
         tx.commit()?;
         Ok(session)
+    }
+
+    pub fn compose_views(
+        &self,
+        session_id: &str,
+        request: &crate::composition::Composition,
+    ) -> Result<crate::composition::CompositionPreview, StorageError> {
+        let scan = session(&self.connection, session_id)?;
+        let owner = container(&self.connection, &scan.container_id)?;
+        check_revision(&owner, scan.base_revision)?;
+        crate::composition::compose(&owner, request)
+    }
+    pub fn save_composition(
+        &mut self,
+        session_id: &str,
+        request: crate::composition::Composition,
+    ) -> Result<crate::composition::CompositionPreview, StorageError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let scan = session(&tx, session_id)?;
+        if scan.status != ScanStatus::Draft {
+            return Err(StorageError::Invalid(
+                "Composition requires an editable scan".into(),
+            ));
+        }
+        let owner = container(&tx, &scan.container_id)?;
+        check_revision(&owner, scan.base_revision)?;
+        let preview = crate::composition::compose(&owner, &request)?;
+        let payload = serde_json::to_string(&request)?;
+        if payload.len() > 8 * 1024 * 1024 {
+            return Err(StorageError::Invalid("Composition exceeds 8 MiB".into()));
+        }
+        tx.execute("INSERT INTO scan_compositions(session_id,payload_json) VALUES (?1,?2) ON CONFLICT(session_id) DO UPDATE SET payload_json=excluded.payload_json", params![session_id, payload])?;
+        tx.commit()?;
+        Ok(preview)
+    }
+    pub fn get_composition(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<crate::composition::Composition>, StorageError> {
+        session(&self.connection, session_id)?;
+        let json: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT payload_json FROM scan_compositions WHERE session_id=?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(json.map(|value| serde_json::from_str(&value)).transpose()?)
     }
 
     pub fn get_scan(&self, session_id: &str) -> Result<ScanSession, StorageError> {
@@ -645,7 +713,7 @@ fn validate_box(location: CellBox, owner: &Container) -> Result<(), StorageError
     Ok(())
 }
 
-fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(), StorageError> {
+pub(crate) fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(), StorageError> {
     text(&draft.captured_at, "capture time")?;
     text(&draft.algorithm_version, "algorithm version")?;
     text(&draft.catalog_version, "catalog version")?;

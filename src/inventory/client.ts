@@ -62,6 +62,37 @@ export interface ScanDraft {
   stacks: Stack[]
   observations: Observation[]
 }
+/** Local screenshot draft registered into one stable container layout. */
+export interface RegisteredView {
+  id: string
+  screenshotHash: string
+  column: number
+  row: number
+  columns: number
+  rows: number
+  coverageConfirmed: boolean
+  draft: ScanDraft
+}
+export interface ScanComposition {
+  stableLayoutConfirmed: boolean
+  views: RegisteredView[]
+  choices: { column: number; row: number; viewId: string }[]
+}
+export interface CompositionPreview {
+  coveredCells: number
+  totalCells: number
+  unresolvedCells: number
+  conflicts: { column: number; row: number; viewIds: string[] }[]
+  splitStacks: string[]
+  draft: ScanDraft | null
+}
+export const composeViews = (sessionId: string, composition: ScanComposition) =>
+  inventoryCall<CompositionPreview>({ operation: 'composeViews', sessionId, composition })
+export const saveComposition = (sessionId: string, composition: ScanComposition) =>
+  inventoryCall<CompositionPreview>({ operation: 'saveComposition', sessionId, composition })
+export const getComposition = (sessionId: string) =>
+  inventoryCall<ScanComposition | null>({ operation: 'getComposition', sessionId })
+
 export interface ScanSession {
   id: string
   containerId: string
