@@ -40,3 +40,15 @@ export function cropForGrid(grid: Grid, size: ImageSize): ImageCrop {
     h: Math.ceil(grid.oy + grid.rows * grid.pitch + 1) - Math.floor(grid.oy),
   }, size)
 }
+
+/** Geometric agreement only: this does not establish which container is open. */
+export function checkedRepeatedGrid(detected: Grid, expected: Grid, crop: ImageCrop): void {
+  checkedGrid(detected, crop)
+  checkedGrid(expected, crop)
+  const boundaries = (grid: Grid) => [grid.ox, grid.oy,
+    grid.ox + grid.cols * grid.pitch, grid.oy + grid.rows * grid.pitch]
+  const target = boundaries(expected)
+  if (detected.cols !== expected.cols || detected.rows !== expected.rows
+    || boundaries(detected).some((value, index) => Math.abs(value - target[index]) > 1.5))
+    throw new Error('The new screenshot grid differs from the reviewed area. Select the container again. Draft rows are unchanged.')
+}

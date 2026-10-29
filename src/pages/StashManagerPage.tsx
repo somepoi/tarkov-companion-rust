@@ -50,6 +50,15 @@ const unknown = (): Stack => ({
 })
 const captureTime = () => new Date().toISOString()
 
+interface ScanRegistration {
+  sessionId: string
+  width: number
+  height: number
+  crop: ImageCrop
+  grid: Grid
+  lastHash: string
+}
+
 export function StashManagerPage() {
   const mode = useProgressStore((s) => s.gameMode)
   return <StashManager key={mode} mode={mode} />
@@ -71,6 +80,8 @@ function StashManager({ mode }: { mode: GameMode }) {
   const [reviewStackId, setReviewStackId] = useState<string | null>(null)
   const [stagedImage, setStagedImage] = useState<StagedScreenshot | null>(null)
   const [captureArmed, setCaptureArmed] = useState(false)
+  const [registration, setRegistration] = useState<ScanRegistration | null>(null)
+  const [assisted, setAssisted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
@@ -194,7 +205,25 @@ function StashManager({ mode }: { mode: GameMode }) {
       setNotice('Screenshot skipped: a stash operation is still running. Finish it and import again; the current draft is unchanged.')
       return
     }
-    void action(() => importImage(image))
+    void action(async () => {
+      const next = await importImage(image)
+      if (!next || !assisted || !registration || registration.sessionId !== session?.id) return
+      if (registration.lastHash === next.hash) {
+        setNotice('This screenshot was already prepared. Existing draft rows are unchanged.')
+        return
+      }
+      try {
+        if (next.width !== registration.width || next.height !== registration.height
+          || viewSize.columns !== registration.grid.cols || viewSize.rows !== registration.grid.rows)
+          throw new Error('Screenshot or visible grid dimensions changed. Select the container again. Draft rows are unchanged.')
+        const result = await recognizeImage(registration.crop, undefined, next, registration.grid)
+        if (result) setRegistration({ ...registration, lastHash: next.hash })
+      } catch (cause) {
+        setAssisted(false)
+        setRegistration(null)
+        throw cause
+      }
+    })
   }
   async function refresh(profileId = profile?.id) {
     if (profileId) {
@@ -235,6 +264,8 @@ function StashManager({ mode }: { mode: GameMode }) {
       })
   }
   async function begin(container: Container, scope: 'full' | 'partial' = 'full') {
+    setRegistration(null)
+    setAssisted(false)
     setReviewStackId(null)
     setStagedImage(null)
     setCaptureArmed(false)
@@ -263,6 +294,8 @@ function StashManager({ mode }: { mode: GameMode }) {
     commitKey.current = crypto.randomUUID()
   }
   async function resume(container: Container) {
+    setRegistration(null)
+    setAssisted(false)
     setReviewStackId(null)
     setStagedImage(null)
     setCaptureArmed(false)
@@ -295,8 +328,10 @@ function StashManager({ mode }: { mode: GameMode }) {
     bitmap.close()
     checkedCrop(null, { width, height })
     if (generation.current !== token) return
-    setStagedImage({ blob: file, hash, width, height })
+    const next = { blob: file, hash, width, height }
+    setStagedImage(next)
     setNotice('Screenshot archived. Select one complete container before recognizing it. Existing draft rows are unchanged.')
+    return next
   }
   async function retryQuantity(stack: Stack): Promise<QuantityReading | undefined> {
     const observation = observationsById.get(stack.provenance.observationId ?? '')
@@ -333,10 +368,10 @@ function StashManager({ mode }: { mode: GameMode }) {
     })
     return reading
   }
-  async function recognizeImage(crop: ImageCrop, grid?: Grid): Promise<Grid | undefined> {
-    if (!session || !draft || !stagedImage || !selected) return
+  async function recognizeImage(crop: ImageCrop, grid?: Grid, image = stagedImage, expectedGrid?: Grid): Promise<Grid | undefined> {
+    if (!session || !draft || !image || !selected) return
     const token = generation.current
-    const { blob: file, hash } = stagedImage
+    const { blob: file, hash } = image
     const [
       { readWords },
       { scanImage },
@@ -363,6 +398,7 @@ function StashManager({ mode }: { mode: GameMode }) {
       words,
       undefined,
       grid,
+      expectedGrid,
     )
     if (generation.current !== token) return
     if (result.grid.cols !== viewSize.columns || result.grid.rows !== viewSize.rows)
@@ -428,6 +464,11 @@ function StashManager({ mode }: { mode: GameMode }) {
         ? `Quantity OCR: ${quantities.suggested} suggested, ${quantities.attempted - quantities.suggested} unread/ambiguous and ${quantities.skipped} skipped by geometry/resource limits (${quantities.eligible} eligible stacks). All amounts require confirmation. `
         : 'No eligible stackable footprints; amounts remain unknown. '
     setNotice(`${result.assetWarnings?.join(' ') ?? ''} ${ocrFailed ? 'Name OCR was unavailable; image matching was used. ' : ''}${quantitySummary}Review each identity and amount. FIR remains unknown until confirmed. Verify the entire container before saving.`)
+    if (!expectedGrid) {
+      setRegistration({ sessionId: session.id, width: image.width, height: image.height,
+        crop: { ...crop }, grid: { ...result.grid }, lastHash: hash })
+      setAssisted(false)
+    }
     return result.grid
   }
 
@@ -642,7 +683,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0]
-                      if (file) void action(() => importImage(file))
+                      if (file) receiveImage(file)
                       e.target.value = ''
                     }}
                   />
@@ -658,13 +699,30 @@ function StashManager({ mode }: { mode: GameMode }) {
                 This applies while this page is open and the Item Collection scanner is closed.
                 You can also paste or drop a screenshot here. Review the area and recognized rows before saving.
               </p>
+              <label className="flex gap-2 text-sm">
+                <input type="checkbox" checked={assisted}
+                  disabled={busy || !registration || registration.sessionId !== session.id}
+                  onChange={(event) => setAssisted(event.target.checked)} />
+                I checked the last recognized area. Use it to prepare the next screenshots automatically.
+              </label>
+              <p className="max-w-prose text-xs text-ink-muted">
+                First recognize a selected area manually, then enable this for the current session.
+                Keep the same container open in the same position. New images replace current editor rows
+                with unconfirmed suggestions; save any source view you want to keep first.
+                A changed grid requires manual selection. Nothing is saved to inventory automatically.
+              </p>
+              {registration && registration.sessionId === session.id && <p className="text-xs text-ink-muted">
+                Last recognized area: X {registration.crop.x}, Y {registration.crop.y},
+                width {registration.crop.w}, height {registration.crop.h};
+                grid {registration.grid.cols}×{registration.grid.rows}.
+              </p>}
               <p className="text-sm text-ink-muted">
                 A confirmed full scan replaces this container only. Empty or
                 unrecognized regions must be checked in the game. Reimporting
                 this session never adds to the previous snapshot.
               </p>
               <div className="flex flex-wrap gap-3">
-                {(['columns', 'rows'] as const).map((key) => <label key={key} className="text-sm">Visible {key} <input className={`${inputClass} w-20`} type="number" min={1} max={selected.container[key]} value={viewSize[key]} disabled={busy} onChange={(e) => { const value = Number(e.target.value); if (Number.isInteger(value) && value >= 1 && value <= selected.container[key]) { setViewSize({ ...viewSize, [key]: value }); changeDraft({ ...draft, fullCoverageConfirmed: false, reviewConfirmed: false }) } }} /></label>)}
+                {(['columns', 'rows'] as const).map((key) => <label key={key} className="text-sm">Visible {key} <input className={`${inputClass} w-20`} type="number" min={1} max={selected.container[key]} value={viewSize[key]} disabled={busy} onChange={(e) => { const value = Number(e.target.value); if (Number.isInteger(value) && value >= 1 && value <= selected.container[key]) { setRegistration(null); setAssisted(false); setViewSize({ ...viewSize, [key]: value }); changeDraft({ ...draft, fullCoverageConfirmed: false, reviewConfirmed: false }) } }} /></label>)}
               </div>
               {stagedImage && (
                 <ScreenshotRegistration
@@ -955,8 +1013,8 @@ function StashManager({ mode }: { mode: GameMode }) {
                 Save these reviewed facts; unknown values remain uncertain.
               </label>
               <MultiViewPanel key={session.id} session={session} container={selected.container} draft={draft} imageHash={stagedImage?.hash} viewSize={viewSize} busy={busy} validDraft={(value) => !value.stacks.some((stack) => stack.provenance.quantityConfirmed && !quantityFitsCatalog(stack.quantity, catalog.data?.items[stack.itemId ?? '']))} run={(job) => action(job)}
-                onEdit={async (view) => { const token = generation.current; const blob = await readArchivedScreenshot(view.screenshotHash); const bitmap = await createImageBitmap(blob); const { width, height } = bitmap; bitmap.close(); if (generation.current !== token) return; setViewSize({ columns: view.columns, rows: view.rows }); setStagedImage({ blob, hash: view.screenshotHash, width, height }); changeDraft(structuredClone(view.draft)); setReviewStackId(null) }}
-                onApply={(next) => { setViewSize({ columns: selected.container.columns, rows: selected.container.rows }); changeDraft(next) }}
+                onEdit={async (view) => { const token = generation.current; const blob = await readArchivedScreenshot(view.screenshotHash); const bitmap = await createImageBitmap(blob); const { width, height } = bitmap; bitmap.close(); if (generation.current !== token) return; setRegistration(null); setAssisted(false); setViewSize({ columns: view.columns, rows: view.rows }); setStagedImage({ blob, hash: view.screenshotHash, width, height }); changeDraft(structuredClone(view.draft)); setReviewStackId(null) }}
+                onApply={(next) => { setRegistration(null); setAssisted(false); setViewSize({ columns: selected.container.columns, rows: selected.container.rows }); changeDraft(next) }}
                 onCommitted={async (result) => { setLastCommit(result); setSession(null); setDraft(null); setStagedImage(null); await refresh() }} />
               <div className="flex flex-wrap gap-2">
                 <button

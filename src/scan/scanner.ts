@@ -118,12 +118,16 @@ export async function scanImage(
   preferredPitch?: number,
   /** Explicit full-image registration; bypasses grid discovery only. */
   grid?: Grid,
+  /** Discover independently, then require agreement before replacing draft suggestions. */
+  expectedGrid?: Grid,
 ): Promise<ScanResult> {
   await ensureWorker()
   const bitmap = await createImageBitmap(image)
   try {
     const area = checkedCrop(crop, bitmap)
     if (grid) checkedGrid(grid, area)
+    if (expectedGrid) checkedGrid(expectedGrid, area)
+    if (grid && expectedGrid) throw new Error('Repeated recognition requires independent grid discovery.')
   } catch (error) {
     bitmap.close()
     throw error
@@ -131,7 +135,7 @@ export async function scanImage(
   const id = nextId++
   return new Promise<ScanResult>((resolve, reject) => {
     pending.set(id, { resolve, reject, onProgress })
-    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words, grid }
+    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words, grid, expectedGrid }
     try {
       if (!worker) throw new Error('Scanner is unavailable. Try again.')
       worker.postMessage(msg, [bitmap])
