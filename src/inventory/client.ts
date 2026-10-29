@@ -43,6 +43,12 @@ export interface Stack {
   neverSell: boolean
   dogtag?: { level: number; confirmed: boolean }
   durability?: { percent: number; confirmed: boolean }
+  joinedSources?: JoinedSource[]
+}
+export interface JoinedSource {
+  viewId: string; stackId: string; screenshotHash: string
+  viewColumn: number; viewRow: number; columns: number; rows: number
+  location: CellBox; sourceGrid: Grid | null
 }
 export interface Observation {
   id: string
@@ -79,6 +85,14 @@ export interface ScanComposition {
   stableLayoutConfirmed: boolean
   views: RegisteredView[]
   choices: { column: number; row: number; viewId: string }[]
+  joins?: FootprintJoin[]
+}
+export interface FootprintJoin {
+  id: string
+  parts: { viewId: string; stackId: string }[]
+  samePhysicalItemConfirmed: boolean
+  reviewConfirmed: boolean
+  output: Stack
 }
 export interface CompositionPreview {
   coveredCells: number

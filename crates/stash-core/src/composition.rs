@@ -1,5 +1,5 @@
 //! Explicit cell ownership for multiple registered views. Icons never establish identity.
-use crate::{CellBox, Container, ScanDraft, StorageError};
+use crate::{CellBox, Container, ScanDraft, Stack, StorageError};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -28,6 +28,40 @@ pub struct Composition {
     pub stable_layout_confirmed: bool,
     pub views: Vec<RegisteredView>,
     pub choices: Vec<CellChoice>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joins: Vec<FootprintJoin>,
+}
+
+impl Composition {
+    pub fn evidence_hashes(&self) -> impl Iterator<Item = &String> {
+        self.views.iter().flat_map(|view| {
+            std::iter::once(&view.screenshot_hash)
+                .chain(view.draft.stacks.iter().flat_map(Stack::evidence_hashes))
+                .chain(
+                    view.draft
+                        .observations
+                        .iter()
+                        .map(|observation| &observation.screenshot_hash),
+                )
+        })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FragmentRef {
+    pub view_id: String,
+    pub stack_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FootprintJoin {
+    pub id: String,
+    pub parts: Vec<FragmentRef>,
+    pub same_physical_item_confirmed: bool,
+    pub review_confirmed: bool,
+    pub output: Stack,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +99,7 @@ pub fn compose(
     if request.views.is_empty()
         || request.views.len() > 32
         || request.choices.len() > 65_536
+        || request.joins.len() > 256
         || !(1..=256).contains(&owner.columns)
         || !(1..=256).contains(&owner.rows)
     {
@@ -178,6 +213,7 @@ pub fn compose(
             }
         }
     }
+    let (joined, consumed) = crate::reconciliation::resolve(owner, request, &selected, &protected)?;
     if preview.unresolved_cells > 0 {
         return Ok(preview);
     }
@@ -185,9 +221,18 @@ pub fn compose(
     draft.stacks.clear();
     draft.observations.clear();
     draft.full_coverage_confirmed = preview.covered_cells == total;
-    draft.review_confirmed =
-        request.stable_layout_confirmed && request.views.iter().all(|v| v.draft.review_confirmed);
-    draft.algorithm_version = "registered-views-v1".into();
+    draft.review_confirmed = request.stable_layout_confirmed
+        && request.views.iter().all(|v| v.draft.review_confirmed)
+        && request
+            .joins
+            .iter()
+            .all(|join| join.same_physical_item_confirmed && join.review_confirmed);
+    draft.algorithm_version = if request.joins.is_empty() {
+        "registered-views-v1"
+    } else {
+        "registered-joined-views-v1"
+    }
+    .into();
     let versions: BTreeSet<_> = request
         .views
         .iter()
@@ -212,6 +257,9 @@ pub fn compose(
             draft.observations.push(next);
         }
         for stack in &view.draft.stacks {
+            if consumed.contains(&(index, stack.id.as_str())) {
+                continue;
+            }
             let location = shifted(stack.location, view);
             let mut chosen = 0;
             for row in location.row..location.row + location.height {
@@ -231,6 +279,10 @@ pub fn compose(
             let mut next = stack.clone();
             next.id = id(&view.id, &next.id);
             next.location = location;
+            for source in &mut next.joined_sources {
+                source.view_column += view.column;
+                source.view_row += view.row;
+            }
             for row in location.row..location.row + location.height {
                 for col in location.column..location.column + location.width {
                     next.never_sell |= protected[(row * owner.columns + col) as usize];
@@ -243,6 +295,7 @@ pub fn compose(
             draft.stacks.push(next);
         }
     }
+    draft.stacks.extend(joined);
     if preview.split_stacks.is_empty() {
         crate::repository::validate_draft(&draft, owner)?;
         preview.draft = Some(draft);

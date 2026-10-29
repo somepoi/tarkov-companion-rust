@@ -94,9 +94,18 @@ pub struct Stack {
     pub dogtag: Option<DogtagFact>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub durability: Option<DurabilityFact>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub joined_sources: Vec<JoinedSource>,
 }
 
 impl Stack {
+    pub fn evidence_hashes(&self) -> impl Iterator<Item = &String> {
+        self.provenance.screenshot_hash.iter().chain(
+            self.joined_sources
+                .iter()
+                .map(|source| &source.screenshot_hash),
+        )
+    }
     pub(crate) fn valid_item_state(&self) -> bool {
         let reviewed = self.item_id.is_some() && self.provenance.identity_confirmed;
         self.dogtag
@@ -108,6 +117,21 @@ impl Stack {
                     && (!fact.confirmed || reviewed)
             })
     }
+}
+
+/// Direct clipped-source evidence, independent of persisted composition lifetime.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JoinedSource {
+    pub view_id: String,
+    pub stack_id: String,
+    pub screenshot_hash: String,
+    pub view_column: u32,
+    pub view_row: u32,
+    pub columns: u32,
+    pub rows: u32,
+    pub location: CellBox,
+    pub source_grid: Option<SourceGrid>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

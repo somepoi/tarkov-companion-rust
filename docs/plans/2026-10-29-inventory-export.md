@@ -15,3 +15,5 @@ Verification completed: TypeScript, clean lint, both frontend builds, embedded n
 Schema-6 follow-up: CSV now includes `dogtag_level` and `dogtag_level_confirmed`, yielding 28 columns; container and legacy rows remain aligned. JSON retains the optional physical dogtag fact with the saved stack. Missing levels are blank/absent, never inferred from identity.
 
 Schema-7 follow-up: `durability_percent` and `durability_confirmed` extend CSV to 30 columns. Unknown state remains blank/absent with false confirmation; a known zero percent is preserved as zero. JSON/full backups retain the optional manual fact independently of identity, quantity and FIR review.
+
+Schema-8 backend follow-up: `joined_sources` extends CSV to 31 columns, with quoted JSON for direct fragment hashes/footprints/registration; non-joined/container/legacy rows remain aligned and empty in that column. Reporting JSON and full backups retain the typed source list independently of staged composition lifetime.

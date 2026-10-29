@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, path::Path, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u32 = 7;
+const SCHEMA_VERSION: u32 = 8;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -75,9 +75,9 @@ impl Repository {
             .prepare("SELECT payload_json FROM snapshot_stacks")?;
         for json in stacks.query_map([], |r| r.get::<_, String>(0))? {
             let stack: Stack = serde_json::from_str(&json?)?;
-            if let Some(hash) = stack.provenance.screenshot_hash {
-                digest(&hash)?;
-                hashes.insert(hash);
+            for hash in stack.evidence_hashes() {
+                digest(hash)?;
+                hashes.insert(hash.clone());
             }
         }
         let mut drafts = repository
@@ -87,12 +87,12 @@ impl Repository {
             let draft: ScanDraft = serde_json::from_str(&json?)?;
             for hash in draft
                 .stacks
-                .into_iter()
-                .filter_map(|s| s.provenance.screenshot_hash)
-                .chain(draft.observations.into_iter().map(|o| o.screenshot_hash))
+                .iter()
+                .flat_map(Stack::evidence_hashes)
+                .chain(draft.observations.iter().map(|o| &o.screenshot_hash))
             {
-                digest(&hash)?;
-                hashes.insert(hash);
+                digest(hash)?;
+                hashes.insert(hash.clone());
             }
         }
         if version >= 5 {
@@ -101,9 +101,9 @@ impl Repository {
                 .prepare("SELECT payload_json FROM scan_compositions")?;
             for json in compositions.query_map([], |r| r.get::<_, String>(0))? {
                 let request: crate::composition::Composition = serde_json::from_str(&json?)?;
-                for view in request.views {
-                    digest(&view.screenshot_hash)?;
-                    hashes.insert(view.screenshot_hash);
+                for hash in request.evidence_hashes() {
+                    digest(hash)?;
+                    hashes.insert(hash.clone());
                 }
             }
         }
@@ -167,6 +167,11 @@ impl Repository {
         if version < 7 {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             tx.execute_batch(include_str!("../migrations/0007_durability_state.sql"))?;
+            tx.commit()?;
+        }
+        if version < 8 {
+            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            tx.execute_batch(include_str!("../migrations/0008_clipped_footprints.sql"))?;
             tx.commit()?;
         }
         Ok(Self { connection })
@@ -797,6 +802,130 @@ fn validate_box(location: CellBox, owner: &Container) -> Result<(), StorageError
     Ok(())
 }
 
+fn validate_source_grid(grid: &SourceGrid) -> Result<(), StorageError> {
+    if !grid.pitch.is_finite()
+        || !(1.0..=8192.0).contains(&grid.pitch)
+        || !grid.ox.is_finite()
+        || !grid.oy.is_finite()
+        || grid.ox.abs() > 65_536.0
+        || grid.oy.abs() > 65_536.0
+        || !(1..=256).contains(&grid.cols)
+        || !(1..=256).contains(&grid.rows)
+    {
+        return Err(StorageError::Invalid(
+            "invalid screenshot grid registration".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_joined_sources(
+    stack: &Stack,
+    owner: &Container,
+    records: &mut usize,
+    visits: &mut u64,
+) -> Result<(), StorageError> {
+    if stack.joined_sources.is_empty() {
+        return Ok(());
+    }
+    if !(2..=32).contains(&stack.joined_sources.len())
+        || stack.provenance.observation_id.is_some()
+        || stack.provenance.screenshot_hash.as_ref()
+            != stack
+                .joined_sources
+                .first()
+                .map(|source| &source.screenshot_hash)
+    {
+        return Err(StorageError::Invalid(
+            "invalid direct joined-source attribution".into(),
+        ));
+    }
+    *records += stack.joined_sources.len();
+    if *records > 8192 {
+        return Err(StorageError::Invalid(
+            "too many joined source records".into(),
+        ));
+    }
+    let mut views = BTreeSet::new();
+    let mut covered = BTreeSet::new();
+    let target = stack.location;
+    for source in &stack.joined_sources {
+        text(&source.stack_id, "fragment stack ID")?;
+        digest(&source.screenshot_hash)?;
+        if source.view_id.is_empty()
+            || source.view_id.len() > 64
+            || source.stack_id.len() > 128
+            || !source
+                .view_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            || !views.insert(&source.view_id)
+            || !(1..=256).contains(&source.columns)
+            || !(1..=256).contains(&source.rows)
+            || u64::from(source.view_column) + u64::from(source.columns) > u64::from(owner.columns)
+            || u64::from(source.view_row) + u64::from(source.rows) > u64::from(owner.rows)
+        {
+            return Err(StorageError::Invalid(
+                "invalid joined source view registration".into(),
+            ));
+        }
+        let mut local = owner.clone();
+        local.columns = source.columns;
+        local.rows = source.rows;
+        validate_box(source.location, &local)?;
+        if let Some(grid) = &source.source_grid {
+            validate_source_grid(grid)?;
+            if grid.cols != source.columns || grid.rows != source.rows {
+                return Err(StorageError::Invalid(
+                    "joined source grid dimensions disagree".into(),
+                ));
+            }
+        }
+        let part = CellBox {
+            column: source.view_column + source.location.column,
+            row: source.view_row + source.location.row,
+            ..source.location
+        };
+        if part.column != target.column.max(source.view_column)
+            || part.row != target.row.max(source.view_row)
+            || part.column + part.width
+                != (target.column + target.width).min(source.view_column + source.columns)
+            || part.row + part.height
+                != (target.row + target.height).min(source.view_row + source.rows)
+        {
+            return Err(StorageError::Invalid(
+                "fragment evidence contradicts the visible whole-footprint intersection".into(),
+            ));
+        }
+        if part.column < target.column
+            || part.row < target.row
+            || part.column + part.width > target.column + target.width
+            || part.row + part.height > target.row + target.height
+        {
+            return Err(StorageError::Invalid(
+                "joined source lies outside the physical footprint".into(),
+            ));
+        }
+        *visits += u64::from(part.width) * u64::from(part.height);
+        if *visits > 1_000_000 {
+            return Err(StorageError::Invalid(
+                "joined source evidence exceeds the cell budget".into(),
+            ));
+        }
+        for row in part.row..part.row + part.height {
+            for column in part.column..part.column + part.width {
+                covered.insert((column, row));
+            }
+        }
+    }
+    if covered.len() as u64 != u64::from(target.width) * u64::from(target.height) {
+        return Err(StorageError::Invalid(
+            "joined source evidence does not cover the complete footprint".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(), StorageError> {
     text(&draft.captured_at, "capture time")?;
     text(&draft.algorithm_version, "algorithm version")?;
@@ -811,19 +940,8 @@ pub(crate) fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(),
         text(&observation.id, "observation ID")?;
         digest(&observation.screenshot_hash)?;
         validate_box(observation.location, owner)?;
-        if let Some(grid) = &observation.source_grid
-            && (!grid.pitch.is_finite()
-                || !(1.0..=8192.0).contains(&grid.pitch)
-                || !grid.ox.is_finite()
-                || !grid.oy.is_finite()
-                || grid.ox.abs() > 65_536.0
-                || grid.oy.abs() > 65_536.0
-                || !(1..=256).contains(&grid.cols)
-                || !(1..=256).contains(&grid.rows))
-        {
-            return Err(StorageError::Invalid(
-                "invalid screenshot grid registration".into(),
-            ));
+        if let Some(grid) = &observation.source_grid {
+            validate_source_grid(grid)?;
         }
         if observation.quantity == Some(0) || !observations.insert(&observation.id) {
             return Err(StorageError::Invalid(
@@ -870,6 +988,8 @@ pub(crate) fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(),
     }
     let mut ids = BTreeSet::new();
     let mut occupied = BTreeSet::new();
+    let mut joined_records = 0;
+    let mut joined_visits = 0;
     for stack in &draft.stacks {
         if !stack.valid_item_state() {
             return Err(StorageError::Invalid(
@@ -905,6 +1025,7 @@ pub(crate) fn validate_draft(draft: &ScanDraft, owner: &Container) -> Result<(),
             ));
         }
         validate_box(stack.location, owner)?;
+        validate_joined_sources(stack, owner, &mut joined_records, &mut joined_visits)?;
         for row in stack.location.row..stack.location.row + stack.location.height {
             for column in stack.location.column..stack.location.column + stack.location.width {
                 if !occupied.insert((column, row)) {

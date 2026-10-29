@@ -1,7 +1,7 @@
 import type { Inventory } from './client'
 
 const LIMIT = 20 * 1024 * 1024
-const headers = ['record_type', 'profile_id', 'mode', 'container_id', 'container_name', 'container_columns', 'container_rows', 'snapshot_id', 'revision', 'full_coverage', 'captured_at', 'stack_id', 'item_id', 'quantity', 'fir', 'column', 'row', 'width', 'height', 'rotated', 'identity_confirmed', 'quantity_confirmed', 'never_sell', 'method', 'screenshot_hash', 'observation_id', 'dogtag_level', 'dogtag_level_confirmed', 'durability_percent', 'durability_confirmed']
+const headers = ['record_type', 'profile_id', 'mode', 'container_id', 'container_name', 'container_columns', 'container_rows', 'snapshot_id', 'revision', 'full_coverage', 'captured_at', 'stack_id', 'item_id', 'quantity', 'fir', 'column', 'row', 'width', 'height', 'rotated', 'identity_confirmed', 'quantity_confirmed', 'never_sell', 'method', 'screenshot_hash', 'observation_id', 'dogtag_level', 'dogtag_level_confirmed', 'durability_percent', 'durability_confirmed', 'joined_sources']
 /** CSV is a spreadsheet-facing report; JSON retains exact source text. */
 function csvCell(value: unknown): string {
   let text = value == null ? '' : String(value)
@@ -31,9 +31,10 @@ export function inventoryExport(inventory: Inventory, format: 'json' | 'csv', ex
         stack.location.column, stack.location.row, stack.location.width, stack.location.height, stack.location.rotated,
         stack.provenance.identityConfirmed, stack.provenance.quantityConfirmed, stack.neverSell, stack.provenance.method,
         stack.provenance.screenshotHash, stack.provenance.observationId, stack.dogtag?.level, stack.dogtag?.confirmed ?? false,
-        stack.durability?.percent, stack.durability?.confirmed ?? false])
+        stack.durability?.percent, stack.durability?.confirmed ?? false,
+        stack.joinedSources?.length ? JSON.stringify(stack.joinedSources) : ''])
     }
-    for (const [item, count] of Object.entries(inventory.legacy?.counts ?? {})) append(['legacy-count', inventory.profile.id, inventory.profile.mode, '', '', '', '', '', '', 'unlocated', '', '', item, count, 'unknown', '', '', '', '', '', false, false, '', 'legacy-checklist', '', '', '', false, '', false])
+    for (const [item, count] of Object.entries(inventory.legacy?.counts ?? {})) append(['legacy-count', inventory.profile.id, inventory.profile.mode, '', '', '', '', '', '', 'unlocated', '', '', item, count, 'unknown', '', '', '', '', '', false, false, '', 'legacy-checklist', '', '', '', false, '', false, ''])
     result = new Blob(['\uFEFF', ...lines], { type: 'text/csv;charset=utf-8' })
   }
   if (result.size > LIMIT) throw new Error('Inventory export exceeds 20 MiB; use a full backup for larger data')

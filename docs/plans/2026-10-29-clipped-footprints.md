@@ -1,0 +1,23 @@
+# Explicit reconciliation of clipped physical footprints
+
+Continue Phase 7 without treating repeated icons or counts as physical identity.
+
+Backend contract first, followed by frontend review:
+
+1. Schema 8 adds optional composition joins: a safe ID, 2..32 explicit source view/stack references, a same-physical-item assertion, independent output review assertion and a manually reviewed output stack. Limit 256 joins / 8192 parts. Old compositions default to no joins.
+2. Each part must come from a distinct view, touch that view's boundary, and exactly equal the intersection of the complete proposed footprint and its source view. Require the exact rectangular union of parts, no holes, no part reuse, no recursive joins and selected cell authority from one of the declared parts at every cell. Ordinary overlap choices remain mandatory. If one source sees the complete footprint, use ordinary authority instead.
+3. Never sum quantities or copy identity/FIR/state confirmations from fragments. The separate output stack supplies manually reviewed facts; unconfirmed joins cannot authorize a commit. Preserve never-sell protection from all overlapping sources/baseline.
+4. Store bounded direct fragment evidence with the resulting physical stack: source hashes, local footprint/grid and view registration. Snapshots, partial retention, JSON reporting and full backups must retain every source, independently of staged composition lifetime. Native commit evidence validation must check all hashes.
+5. Existing full replacement/partial CAS, idempotency, undo and mixed-age coverage rules remain authoritative. Partial patches still require full observation of every overwritten baseline footprint; a reconciliation is not permission to invent unseen cells.
+6. Add a frontend editor that selects fragments, shows the proposed rectangle and independent output facts/assertions, invalidates joins when source views change and supports reviewing retained source evidence. This remains outstanding until connected.
+7. Verify types/lint, strict native Clippy/formatting, both frontend builds/native embedded build and read-only review. No tests, image fixtures or real screenshot checks, per user instructions.
+
+Rollback: use the pre-schema-8 SQLite backup with a matching older binary; no automatic downgrade. No game input, implicit deduplication, publication or new source recognition algorithm.
+
+Backend checkpoint: `reconciliation.rs` resolves bounded explicit joins after normal view/cell validation, including pending unresolved overlaps. The final composition review assertion additionally requires both per-join assertions. It canonicalizes output IDs/provenance, preserves independent manually supplied facts and ORs source protection; it never adds fragment quantities. Ordinary source stacks declared as parts are consumed exactly once and replaced by the complete output footprint. Partial patching retains the existing whole-baseline-footprint, revision, replay and mixed-age rules.
+
+Schema 8 preserves old payloads with optional empty joins/sources and uses the incumbent SQLite backup-before-migration path. Joined sources retain local footprint/grid and absolute source view registration, bounded to 32 per stack / 8192 total records / one million visited source cells per draft. Source intersections and union coverage are validated independently when a draft is saved/committed. Stack/composition evidence iterators feed native archive verification and backup retention for snapshots, drafts and staged views, including nested evidence on ordinary selected stacks. Ordinary composition translates source view origins while preserving local pixel registration; retained baseline evidence stays unchanged. JSON and 31-column CSV preserve direct source metadata. Geometry edits discard stale joined source geometry; source-view replacement/deletion removes dependent joins.
+
+Review identified an insufficient directional clipping check: merely touching any view boundary allowed a fragment to stop inside a view where the proposed item continued. Exact four-edge footprint/view intersection checks now apply in both reconciliation and durable source validation; follow-up review found no remaining P1/P2 issue in the fix and source retention changes.
+
+TypeScript, lint, both frontend builds, strict custom-protocol Clippy, Rust formatting, embedded native development build, whitespace and source UI checks passed. No tests, synthetic images, real screenshots, actual migration/restart/backup/restore/replay or runtime composition were exercised. This is the backend checkpoint only: the fragment selection, independent output editor and multi-source review UI are still required. Phase 7 is not complete.

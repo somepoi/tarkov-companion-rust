@@ -208,10 +208,7 @@ fn execute(
             repository
                 .compose_views(&session_id, &composition)
                 .map_err(|e| e.to_string())?;
-            validate_hashes(
-                composition.views.iter().map(|view| &view.screenshot_hash),
-                evidence_dir,
-            )?;
+            validate_hashes(composition.evidence_hashes(), evidence_dir)?;
             value(repository.save_composition(&session_id, composition))
         }
         Operation::GetComposition { session_id } => value(repository.get_composition(&session_id)),
@@ -219,12 +216,9 @@ fn execute(
         Operation::CommitPartial { request } => value(repository.commit_partial_checked(
             request,
             |draft, composition| {
-                validate_hashes(
-                    composition.views.iter().map(|view| &view.screenshot_hash),
-                    evidence_dir,
-                )
-                .and_then(|()| validate_evidence(draft, evidence_dir))
-                .map_err(stash_core::StorageError::Invalid)
+                validate_hashes(composition.evidence_hashes(), evidence_dir)
+                    .and_then(|()| validate_evidence(draft, evidence_dir))
+                    .map_err(stash_core::StorageError::Invalid)
             },
         )),
         Operation::CommitScan { request } => {
@@ -295,7 +289,7 @@ fn validate_evidence(draft: &ScanDraft, evidence_dir: &std::path::Path) -> Resul
         draft
             .stacks
             .iter()
-            .filter_map(|s| s.provenance.screenshot_hash.as_ref())
+            .flat_map(|stack| stack.evidence_hashes())
             .chain(draft.observations.iter().map(|o| &o.screenshot_hash)),
         evidence_dir,
     )

@@ -249,6 +249,7 @@ function StashManager({ mode }: { mode: GameMode }) {
             (Object.keys(patch.location) as (keyof Stack['location'])[])
               .some((field) => patch.location?.[field] !== stack.location[field])
           const next = { ...stack, ...patch }
+          if (moved) next.joinedSources = undefined
           if (moved || ('itemId' in patch && patch.itemId !== stack.itemId)) {
             next.dogtag = undefined
             next.durability = undefined
