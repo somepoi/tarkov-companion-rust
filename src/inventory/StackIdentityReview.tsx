@@ -3,6 +3,7 @@ import type { ItemsById } from '../api/types'
 import { recordFromSpot, useLearnedStore } from '../scan/learned'
 import { readArchivedScreenshot, type Observation, type Stack } from './client'
 import { canReadQuantity, type QuantityReading } from '../scan/quantity'
+import { JoinedSourceReview } from './JoinedSourceReview'
 
 const inputClass = 'rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink'
 
@@ -117,12 +118,13 @@ export function StackIdentityReview({ stack, observation, items, onChange, onClo
         <button className="btn" disabled={busy} onClick={onClose}>Close item review</button>
       </div>
       <div className="flex flex-wrap items-start gap-4">
+        {!!stack.joinedSources?.length && <JoinedSourceReview sources={stack.joinedSources} />}
         {evidence && validPatch ? (
           <svg role="img" aria-label="Archived screenshot at this stack's position" viewBox={`${x} ${y} ${width} ${height}`}
             className="h-48 max-w-full border border-line bg-surface" style={{ width: Math.min(320, 192 * width / height) }}>
             <image href={evidence.url} width={evidence.width} height={evidence.height} />
           </svg>
-        ) : <p className="max-w-sm text-sm text-ink-muted">{!observation ? 'Manual stack: no screenshot evidence.' : !grid ? 'This older draft has no pixel registration. You can correct its identity, or reimport the screenshot to remember its appearance.' : !evidence && !error ? 'Loading archived screenshot…' : 'The selected footprint is outside the archived image. Check its column, row and size.'}</p>}
+        ) : <p className="max-w-sm text-sm text-ink-muted">{!observation ? stack.joinedSources?.length ? 'This complete footprint uses several source fragments. Review them above; it has no single complete screenshot patch for learning or quantity OCR.' : 'Manual stack: no single screenshot observation. Review the original sources separately when joining fragments.' : !grid ? 'This older draft has no pixel registration. You can correct its identity, or reimport the screenshot to remember its appearance.' : !evidence && !error ? 'Loading archived screenshot…' : 'The selected footprint is outside the archived image. Check its column, row and size.'}</p>}
         <div className="min-w-0 flex-1 space-y-2">
           {!!observation?.candidates.length && <div className="flex flex-wrap gap-2">
             {observation.candidates.map((candidate, index) => (

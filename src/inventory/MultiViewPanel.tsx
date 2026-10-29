@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ViewAlignment } from './ViewAlignment'
+import { useItems } from '../api/hooks'
+import { FootprintReconciliation } from './FootprintReconciliation'
+import { validJoinedFacts } from './joinedFacts'
 import { composeViews, saveComposition, getComposition, commitPartial, inventoryCall, type ScanComposition, type CompositionPreview, type ScanSession, type Container, type ScanDraft, type CommitResult, type RegisteredView } from './client'
 
 const empty = (): ScanComposition => ({ stableLayoutConfirmed: false, views: [], choices: [] })
@@ -12,6 +15,7 @@ export function MultiViewPanel({ session, container, draft, imageHash, viewSize,
   onEdit: (view: RegisteredView) => Promise<void>
   onApply: (draft: ScanDraft) => void; onCommitted: (result: CommitResult) => Promise<void>
 }) {
+  const catalog = useItems()
   const [composition, setComposition] = useState<ScanComposition>(empty)
   const [preview, setPreview] = useState<CompositionPreview | null>(null)
   const [origin, setOrigin] = useState({ column: 0, row: 0 })
@@ -35,6 +39,7 @@ export function MultiViewPanel({ session, container, draft, imageHash, viewSize,
   const execute = (job: () => Promise<void>) => { void run(job) }
   const ready = !busy && !loading && !loadFailed
   const coverageValid = coverage && coverageDraft === draft && coverageImage === imageHash
+  const joinedFactsValid = (composition.joins ?? []).every((join) => validJoinedFacts(join.output, catalog.data?.items))
   const inspect = async () => {
     if (editingId) throw new Error('Replace or cancel the current view edit before checking composition')
     const result = await composeViews(session.id, composition)
@@ -72,6 +77,8 @@ export function MultiViewPanel({ session, container, draft, imageHash, viewSize,
       change({ ...composition, choices: [...choices.values()] })
     }}>Use view {index + 1} for its covered cells</button><button className="btn" disabled={!ready} onClick={() => { if (editingId === view.id) setEditingId(null); change({ ...composition, stableLayoutConfirmed: false, views: composition.views.filter((v) => v.id !== view.id), choices: [], joins: composition.joins?.filter((join) => !join.parts.some((part) => part.viewId === view.id)) }) }}>Remove view {index + 1}</button></div>)}
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={composition.stableLayoutConfirmed} disabled={!ready} onChange={(e) => change({ ...composition, stableLayoutConfirmed: e.target.checked })} />All views show the same container without moving, consuming or transferring items between captures.</label>
+    {composition.views.length >= 2 && <FootprintReconciliation composition={composition} ready={ready && !editingId} onChange={(next) => { change(next); setMessage('Joined footprint changes are in memory. Save registered views before leaving this scan.') }} />}
+    {!joinedFactsValid && <p role="alert" className="text-sm text-danger">A joined item's identity, orientation or confirmed amount conflicts with the current catalog. Open its review, or refresh the catalog before applying or committing the composition.</p>}
     <div className="flex flex-wrap gap-2"><button className="btn" disabled={!ready || !composition.views.length} onClick={() => execute(async () => { await inventoryCall({ operation: 'saveDraft', sessionId: session.id, draft }); await saveComposition(session.id, composition); if (alive.current) setMessage('Registered views saved.') })}>Save registered views</button><button className="btn" disabled={!ready || !composition.views.length || Boolean(editingId)} onClick={() => execute(inspect)}>Check coverage and overlaps</button></div>
     {preview && <>
       <p className="text-sm">Coverage: {preview.coveredCells}/{preview.totalCells} cells · unresolved overlaps: {preview.unresolvedCells} · split footprints: {preview.splitStacks.length}</p>
@@ -80,9 +87,9 @@ export function MultiViewPanel({ session, container, draft, imageHash, viewSize,
       {preview.splitStacks.length > 0 && <p role="alert" className="text-sm text-danger">The choices split an item footprint. Remove a conflicting view or revise cell choices; no partial item can be counted.</p>}
       {preview.draft && <>
         <p className="text-sm text-ink-muted">{preview.draft.stacks.length} selected stacks. Unseen baseline stacks are retained by a partial update. A boundary crossing an existing stack will reject the commit. Partial results remain incomplete and cannot authorize SELL.</p>
-        {session.scope === 'full' ? <button className="btn" disabled={!ready || !preview.draft.fullCoverageConfirmed || !preview.draft.reviewConfirmed} onClick={() => onApply(preview.draft!)}>Use full composition for final review</button> : <>
+        {session.scope === 'full' ? <button className="btn" disabled={!ready || !joinedFactsValid || !preview.draft.fullCoverageConfirmed || !preview.draft.reviewConfirmed} onClick={() => execute(async () => { await saveComposition(session.id, composition); if (alive.current) onApply(preview.draft!) })}>Use full composition for final review</button> : <>
           <label className="flex gap-2 text-sm"><input type="checkbox" checked={approved} disabled={!ready || !preview.draft.reviewConfirmed} onChange={(e) => setApproved(e.target.checked)} />Replace the covered cells with these reviewed views and keep unseen historical stacks.</label>
-          <button className="btn" disabled={!ready || !approved || !preview.draft.reviewConfirmed || !validDraft(preview.draft)} onClick={() => execute(async () => { if (stagedKey.current !== key.current) { await saveComposition(session.id, composition); stagedKey.current = key.current } const result = await commitPartial(session.id, session.baseRevision, key.current); if (alive.current) await onCommitted(result) })}>Commit visible-region update</button>
+          <button className="btn" disabled={!ready || !joinedFactsValid || !approved || !preview.draft.reviewConfirmed || !validDraft(preview.draft)} onClick={() => execute(async () => { if (stagedKey.current !== key.current) { await saveComposition(session.id, composition); stagedKey.current = key.current } const result = await commitPartial(session.id, session.baseRevision, key.current); if (alive.current) await onCommitted(result) })}>Commit visible-region update</button>
         </>}
       </>}
     </>}
