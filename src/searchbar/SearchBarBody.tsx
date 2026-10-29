@@ -15,12 +15,14 @@ import { computeTaskStatuses, isFactionEligible, STATUS_LABEL } from '../lib/tas
 import { useMapOptions, type MapOption } from '../maps/useMapOptions'
 import type { PlayerPosition } from '../shared/desktop-api'
 import { useInventoryStore } from '../store/inventory'
+import { usePrefs } from '../store/prefs'
 import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useStoryStore } from '../store/story'
 import { useUiStore } from '../store/ui'
 import { ItemDetails, OnMapBox, PictureDetails, QuestDetails, SideButton } from './details'
 import { DetailsContext, panelKey, type DetailsCtx, type KeyMap, type MapRequest, type View } from './detailsContext'
+import { useFleaFees } from '../hooks/useFleaFees'
 import { bossIndex, extractIndex, mapRows, raidMap, type MapRow, type RaidState } from './overlayLogic'
 import { useOverlayPrefs, type Ref } from './overlayPrefs'
 import type { Request } from './SearchBarApp'
@@ -58,7 +60,7 @@ export interface BodyProps {
 }
 
 /** The app window's stores this bar shows and changes. */
-const FOLLOWED = [useProgressStore, useInventoryStore, useMapOverlayStore, useUiStore, useStoryStore]
+const FOLLOWED = [useProgressStore, useInventoryStore, useMapOverlayStore, useUiStore, useStoryStore, usePrefs]
 
 export default function SearchBarBody(props: BodyProps) {
   // After an unload the stores in this window may be older than what the app window saved since
@@ -80,6 +82,7 @@ export default function SearchBarBody(props: BodyProps) {
 
 function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, raidRow, request, locked }: BodyProps) {
   const { needs, gameData, hideout, items, inventory } = useNeeds()
+  const feeContext = useFleaFees(items.data)
   const profile = useProfile()
   const mode = useProgressStore((s) => s.gameMode)
   const mapOptions = useMapOptions()
@@ -330,6 +333,7 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
         ? {
             data,
             items: items.data?.items,
+            feeContext,
             stations: hideout.data ?? [],
             statuses,
             completed: progress?.completed ?? profile.completedTaskIds,
@@ -351,7 +355,7 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
             traderName,
           }
         : null,
-    [data, items.data, hideout.data, statuses, profile.completedTaskIds, progress, needs, inventory, mode, onMap, tickQuest, keyMaps, showKey, openMap, openPanel, prefs.toggleStar, starred, traderName],
+    [data, items.data, feeContext, hideout.data, statuses, profile.completedTaskIds, progress, needs, inventory, mode, onMap, tickQuest, keyMaps, showKey, openMap, openPanel, prefs.toggleStar, starred, traderName],
   )
 
   const clear = () => {

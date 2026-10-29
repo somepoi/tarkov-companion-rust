@@ -68,6 +68,7 @@ export interface Prefs {
   // Prices and data
   priceSource: PriceSource
   fleaFeeDiscount: FleaFeeDiscount
+  fleaFeeManagement: { pve: number | null; regular: number | null }
   /** Minutes between price refreshes (the items document). */
   dataRefreshMinutes: number
   /** Hours between checks for new quests and other game content (tasks, maps, traders, hideout, crafts, barters). */
@@ -114,6 +115,7 @@ export const DEFAULT_PREFS: Prefs = {
   confirmDangerous: true,
   priceSource: 'best',
   fleaFeeDiscount: 'auto',
+  fleaFeeManagement: { pve: null, regular: null },
   dataRefreshMinutes: 60,
   contentCheckHours: 6,
   refreshOnFocus: true,
@@ -156,6 +158,11 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => boolean } = {
   confirmDangerous: isBool,
   priceSource: oneOf('best', 'trader', 'flea'),
   fleaFeeDiscount: oneOf('auto', 'on', 'off'),
+  fleaFeeManagement: (v) => typeof v === 'object' && v !== null && !Array.isArray(v)
+    && Object.keys(v).length === 2 && ['pve', 'regular'].every((mode) => {
+      const value = (v as Record<string, unknown>)[mode]
+      return value === null || typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 100
+    }),
   dataRefreshMinutes: clampNum(15, 24 * 60),
   contentCheckHours: clampNum(1, 24),
   refreshOnFocus: isBool,

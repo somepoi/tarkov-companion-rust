@@ -309,6 +309,8 @@ function GeneralSection() {
 function PricesSection() {
   const [source, setSource] = usePref('priceSource')
   const [fee, setFee] = usePref('fleaFeeDiscount')
+  const [management, setManagement] = usePref('fleaFeeManagement')
+  const gameMode = useProgressStore((s) => s.gameMode)
   const [refresh, setRefresh] = usePref('dataRefreshMinutes')
   const [content, setContent] = usePref('contentCheckHours')
   const [onFocus, setOnFocus] = usePref('refreshOnFocus')
@@ -319,8 +321,14 @@ function PricesSection() {
       <Row label="Value items by" hint="Used for estimated item values on the flea and ammo tabs. Best = whichever pays more (selling) or costs less (buying).">
         <Segmented value={source} onChange={setSource} label="Value items by" options={[{ value: 'best', label: 'Best of both' }, { value: 'trader', label: 'Traders' }, { value: 'flea', label: 'Flea market' }]} />
       </Row>
-      <Row label="Lower flea fees (Intelligence Center 3)" hint="Automatic reads your Intelligence Center level from the Hideout tab.">
+      <Row label="Lower flea fees (Intelligence Center 3)" hint="Automatic uses the recorded Hideout level; an unrecorded level means a no-discount scenario. Yes/No forces the discount scenario. Stash references use their own confirmed levels.">
         <Segmented value={fee} onChange={setFee} label="Flea fee discount" options={[{ value: 'auto', label: 'Automatic' }, { value: 'on', label: 'Yes' }, { value: 'off', label: 'No' }]} />
+      </Row>
+      <Row label={`Hideout Management level · ${gameMode === 'pve' ? 'PvE' : 'PvP'}`} hint="Enter your current skill level for discounted catalog references. Blank means unknown and hides discounted net estimates. Saved separately for PvE/PvP; the supported calculation range is 0–100.">
+        <input type="number" min={0} max={100} step={1} aria-label="Hideout Management skill level for fee estimates"
+          className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm"
+          value={management[gameMode] ?? ''}
+          onChange={(event) => { const value = event.target.valueAsNumber; if (event.target.value === '') setManagement({ ...management, [gameMode]: null }); else if (Number.isSafeInteger(value) && value >= 0 && value <= 100) setManagement({ ...management, [gameMode]: value }) }} />
       </Row>
       <Row label="Check for new quests and content every" hint="Quests, maps, traders and hideout from tarkov.dev. New quests only come with game patches, so a few checks a day are enough; also checked at every start. Unchanged data is not downloaded again. Trader restock times and the Goons' map stay up to date while those screens are open.">
         <Select

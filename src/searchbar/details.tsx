@@ -6,7 +6,7 @@ import { useKeyWiki } from '../api/wikiKey'
 import { useWikiGuide, type GuideImage } from '../api/wikiGuide'
 import { WikiImage } from '../components/WikiImage'
 import { bestArmorClass, caliberLabel, shotDamage } from '../lib/ammo'
-import { fleaFee } from '../lib/economy'
+import { FEE_NOTE, catalogFleaSale } from '../lib/economy'
 import { formatNumber, formatRoubles } from '../lib/format'
 import { keyVerdict } from '../lib/keyVerdict'
 import { remainingFor } from '../lib/needs'
@@ -404,7 +404,7 @@ export function ItemDetails({ item }: { item: Item }) {
   const isKey = item.types.includes('keys')
   const owned = c.ownedKeyIds.has(item.id)
   const keyMaps = isKey ? c.keyMaps(item) : []
-  const net = !banned && item.avg24hPrice ? item.avg24hPrice - fleaFee(item.basePrice, item.avg24hPrice) : null
+  const net = catalogFleaSale(item, 1, c.feeContext)?.net ?? null
   const keyQuests = useMemo(
     () => (isKey ? c.data.tasks.filter((t) => !c.completed.has(t.id) && (t.neededKeys.some((k) => k.keyIds.includes(item.id)) || t.objectives.some((o) => o.requiredKeys.some((g) => g.includes(item.id))))) : []),
     [isKey, c.data.tasks, c.completed, item.id],
@@ -440,12 +440,13 @@ export function ItemDetails({ item }: { item: Item }) {
         </dd>
         {net !== null && (
           <>
-            <dt className="text-white/50">You get</dt>
-            <dd className="tabular-nums" title="Selling one at the 24 h average, after the flea fee">
-              {formatRoubles(net)} <span className="text-white/45">after the fee</span>
+            <dt className="text-white/50">Net reference</dt>
+            <dd className="tabular-nums" title={FEE_NOTE}>
+              {formatRoubles(net)} <span className="text-white/45">estimated after fees</span>
             </dd>
           </>
         )}
+        {!banned && net === null && <><dt className="text-white/50">Net reference</dt><dd className="text-white/45" title={FEE_NOTE}>Unknown: review market rules, level and fee settings</dd></>}
         {!banned && item.avg24hPrice != null && slots > 1 && (
           <>
             <dt className="text-white/50">Per slot</dt>

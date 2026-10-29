@@ -1,41 +1,28 @@
-import type { Craft, HideoutStation, Item, ItemsById } from '../api/types'
+import type { Craft, HideoutStation, Item, ItemsById, ItemsBundle } from '../api/types'
 import { prefs } from '../store/prefs'
-import { useInventoryStore } from '../store/inventory'
-import { useProgressStore } from '../store/progress'
-
-const INTELLIGENCE_CENTER = '5d484fdf654e7600691aadf8'
-
-/**
- * Intelligence Center level 3 lowers flea fees (5% → 3%). Settings → Prices: "auto" uses the
- * level from the Hideout tab, "on"/"off" force it.
- */
-export function hasFleaDiscount(): boolean {
-  const mode = prefs().fleaFeeDiscount
-  if (mode !== 'auto') return mode === 'on'
-  const gameMode = useProgressStore.getState().gameMode
-  return (useInventoryStore.getState().byMode?.[gameMode]?.stationLevels?.[INTELLIGENCE_CENTER] ?? 0) >= 3
-}
+import { estimateListing, type FeeModifiers } from './fleaFees'
 
 /** Shown wherever a flea fee is used. */
 export const FEE_NOTE =
-  'Flea fees are an estimate from the community formula (5% base, 3% with Intelligence Center level 3 — see Settings → Prices; one offer per stack); the game may charge slightly differently.'
+  'Historical references, not guaranteed trades. Fees use mode-specific catalog rates and Settings → Prices: automatic uses the recorded Intelligence Center level (unrecorded means no discount); forced Yes/No selects a scenario. Discounted estimates require a recorded Hideout Management level. One listing with individually purchasable units; item condition, trader access, slots and actual charges remain unverified.'
 
-/**
- * Flea market listing fee, as the game computes it (community-documented formula):
- *   fee = VO·Ti·4^PO·Q + VR·Tr·4^PR·Q
- * VO = total base value, VR = asking price, Ti = Tr = 5 % (3 % with Intelligence Center 3),
- * PO = log10(VO/VR) (raised to 1.08 when VR < VO), PR = log10(VR/VO) (raised to 1.08 when VR >= VO).
- */
-export function fleaFee(basePrice: number, askingPrice: number, count = 1, intelCenter3 = hasFleaDiscount()): number {
-  const vo = Math.max(1, basePrice * count)
-  const vr = Math.max(1, askingPrice)
-  const t = intelCenter3 ? 0.03 : 0.05
-  let po = Math.log10(vo / vr)
-  if (vr < vo) po = Math.pow(po, 1.08)
-  let pr = Math.log10(vr / vo)
-  if (vr >= vo) pr = Math.pow(pr, 1.08)
-  const q = 1 // the fee is per offer; selling the stack as one offer
-  return Math.round(vo * t * Math.pow(4, po) * q + vr * t * Math.pow(4, pr) * q)
+export interface MarketFeeContext {
+  catalog: ItemsBundle
+  playerLevel: number
+  modifiers: FeeModifiers
+}
+
+/** Generic catalog references cannot establish a physical item's FIR or condition. */
+export function catalogFleaSale(item: Item, count: number, context: MarketFeeContext | null) {
+  const market = context?.catalog.fleaMarket
+  if (!context || !context.catalog.mode || context.catalog.items[item.id] !== item
+    || market?.enabled !== true || market.foundInRaidRequired !== false || item.types.includes('noFlea')
+    || !Number.isSafeInteger(context.playerLevel) || !Number.isSafeInteger(market.minPlayerLevel)
+    || market.minPlayerLevel === null || market.minPlayerLevel < 0
+    || item.fleaLevel == null || !Number.isSafeInteger(item.fleaLevel) || item.fleaLevel < 0
+    || context.playerLevel < Math.max(market.minPlayerLevel, item.fleaLevel)
+    || item.avg24hPrice == null) return null
+  return estimateListing(item.basePrice, item.avg24hPrice, count, market, context.modifiers)
 }
 
 /**
@@ -54,17 +41,17 @@ export function acquireCost(item: Item | undefined): number | null {
 }
 
 /** Best price you can get for one unit: flea (minus fee) or trader buy-back. */
-export function sellValue(item: Item | undefined, count = 1): { total: number; via: 'flea' | 'trader' | null } {
-  if (!item) return { total: 0, via: null }
-  const trader = (item.sellToTrader[0]?.priceRUB ?? 0) * count
-  const fleaUnit = item.types.includes('noFlea') ? null : item.avg24hPrice
-  if (fleaUnit == null) return { total: trader, via: trader > 0 ? 'trader' : null }
-  const gross = fleaUnit * count
-  const net = Math.round(gross - fleaFee(item.basePrice, gross, count))
+export function sellValue(item: Item | undefined, count = 1, context: MarketFeeContext | null = null): { total: number | null; via: 'flea' | 'trader' | null } {
+  if (!item || !Number.isSafeInteger(count) || count <= 0) return { total: null, via: null }
+  const quotedTrader = item.sellToTrader[0]?.priceRUB
+  const value = quotedTrader != null && Number.isSafeInteger(quotedTrader) && quotedTrader > 0 ? quotedTrader * count : NaN
+  const trader = Number.isSafeInteger(value) && value > 0 ? value : null
+  const net = catalogFleaSale(item, count, context)?.net ?? null
   const source = prefs().priceSource
-  if (source === 'trader' && trader > 0) return { total: trader, via: 'trader' }
-  if (source === 'flea') return { total: net, via: 'flea' }
-  return net >= trader ? { total: net, via: 'flea' } : { total: trader, via: 'trader' }
+  if (source === 'trader' && trader !== null) return { total: trader, via: 'trader' }
+  if (source === 'flea' && net !== null) return { total: net, via: 'flea' }
+  if (net !== null && (trader === null || net >= trader)) return { total: net, via: 'flea' }
+  return { total: trader, via: trader === null ? null : 'trader' }
 }
 
 export interface CraftEconomics {
@@ -72,7 +59,7 @@ export interface CraftEconomics {
   station: HideoutStation | undefined
   outputItem: Item | undefined
   inputCost: number | null
-  revenue: number
+  revenue: number | null
   revenueVia: 'flea' | 'trader' | null
   profit: number | null
   profitPerHour: number | null
@@ -80,19 +67,23 @@ export interface CraftEconomics {
   partialCost: boolean
 }
 
-export function craftEconomics(craft: Craft, items: ItemsById, stationsById: Record<string, HideoutStation>): CraftEconomics {
+export function craftEconomics(craft: Craft, items: ItemsById, stationsById: Record<string, HideoutStation>, context: MarketFeeContext | null = null): CraftEconomics {
   const outputItem = items[craft.output.itemId]
   let inputCost = 0
   let partial = false
   for (const inp of craft.inputs) {
     if (inp.tool) continue // tools are returned after the craft
     const c = acquireCost(items[inp.itemId])
-    if (c == null) partial = true
-    else inputCost += c * inp.count
+    const cost = c == null ? NaN : c * inp.count
+    if (c == null || !Number.isSafeInteger(c) || c < 0 || !Number.isSafeInteger(inp.count) || inp.count <= 0
+      || !Number.isSafeInteger(cost) || !Number.isSafeInteger(inputCost + cost)) partial = true
+    else inputCost += cost
   }
-  const sale = sellValue(outputItem, craft.output.count)
-  const profit = sale.total - inputCost
+  const sale = sellValue(outputItem, craft.output.count, context)
+  const difference = sale.total === null || partial ? null : sale.total - inputCost
+  const profit = difference !== null && Number.isSafeInteger(difference) ? difference : null
   const hours = craft.duration / 3600
+  const hourly = profit !== null && Number.isFinite(hours) && hours > 0 ? Math.round(profit / hours) : null
   return {
     craft,
     station: stationsById[craft.stationId],
@@ -101,7 +92,7 @@ export function craftEconomics(craft: Craft, items: ItemsById, stationsById: Rec
     revenue: sale.total,
     revenueVia: sale.via,
     profit: outputItem ? profit : null,
-    profitPerHour: outputItem && hours > 0 ? Math.round(profit / hours) : null,
+    profitPerHour: outputItem && hourly !== null && Number.isSafeInteger(hourly) ? hourly : null,
     partialCost: partial,
   }
 }

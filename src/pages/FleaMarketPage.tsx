@@ -6,7 +6,8 @@ import type { Item, PricePoint } from '../api/types'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { TradersPanel } from '../components/TradersPanel'
 import { useNeeds } from '../hooks/useNeeds'
-import { FEE_NOTE, fleaFee } from '../lib/economy'
+import { FEE_NOTE, catalogFleaSale, type MarketFeeContext } from '../lib/economy'
+import { useFleaFees } from '../hooks/useFleaFees'
 import { matchesSearch, rankMatch, searchWords } from '../lib/fleaSearch'
 import { useLinkParam } from '../lib/linkParam'
 import { formatNumber, formatRoubles, formatTimeAgo } from '../lib/format'
@@ -48,14 +49,16 @@ interface Changes {
   points: { t: number; p: number }[]
 }
 
-function buildRow(item: Item): Row {
+function buildRow(item: Item, feeContext: MarketFeeContext | null): Row {
   const banned = item.types.includes('noFlea')
   const flea = banned ? null : item.avg24hPrice
   const traderSell = item.sellToTrader[0]?.priceRUB ?? 0
   const best = Math.max(flea ?? 0, traderSell)
   const slots = item.width * item.height || 1
   const traderBuy = item.buyFromTrader[0]?.priceRUB ?? null
-  const flip = flea != null && traderBuy != null ? Math.round(flea - fleaFee(item.basePrice, flea) - traderBuy) : null
+  const estimate = catalogFleaSale(item, 1, feeContext)
+  const difference = estimate && traderBuy != null && Number.isSafeInteger(traderBuy) && traderBuy > 0 ? estimate.net - traderBuy : null
+  const flip = difference !== null && Number.isSafeInteger(difference) ? difference : null
   return {
     item,
     banned,
@@ -208,6 +211,7 @@ const FleaRow = memo(function FleaRow({ row, open, needed, collected, coverage, 
 
 export function FleaMarketPage() {
   const items = useItems(true, TEN_MINUTES)
+  const feeContext = useFleaFees(items.data)
   const gameData = useGameData()
   const { needs, coverage, inventory } = useNeeds()
   const filters = useFleaStore((s) => s.filters)
@@ -238,7 +242,7 @@ export function FleaMarketPage() {
     return () => clearInterval(id)
   }, [])
 
-  const rows = useMemo(() => (items.data ? Object.values(items.data.items).map(buildRow) : []), [items.data])
+  const rows = useMemo(() => (items.data ? Object.values(items.data.items).map((item) => buildRow(item, feeContext)) : []), [items.data, feeContext])
   // Lower-cased names once per data load, not on every keystroke.
   const searchText = useMemo(() => new Map(rows.map((r) => [r.item.id, `${r.item.name}\n${r.item.shortName}`.toLowerCase()])), [rows])
   // Typing stays instant; the 4,000-row filter catches up right after.

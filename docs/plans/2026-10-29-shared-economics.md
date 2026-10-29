@@ -1,0 +1,19 @@
+# Shared catalog fee references
+
+Remove the legacy fixed 5%/3% approximation identified while implementing stash fees. Keep all economics advisory; no inventory allocations or sales change.
+
+1. Use the independently inspected `src/lib/fleaFees.ts` estimator everywhere a flea net reference is calculated. Require the same current-mode catalog, known market/item level rules and applicable FIR policy; generic item views cannot establish FIR for a particular physical item.
+2. Preserve the existing discount preference: automatic reads the recorded Hideout level (unrecorded means no-discount scenario), forced on/off select explicit hypothetical discount tiers. Add optional per-mode Hideout Management levels to validated persisted preferences. Missing management blocks discounted estimates; it does not affect a no-discount scenario.
+3. Centralize mode/metadata validation and create a reactive fee context shared by the flea table and searchbar. Recompute when mode, catalog, player level, discount preference, recorded station or management changes. Do not trigger another data download or timer.
+4. Replace legacy math in flea flips/item details and retained craft/sell helpers. Unknown prices/fees produce nullable economics rather than zero proceeds. Retain negative estimates, label hypothetical eligibility, and keep the existing stash's separate explicit per-plan modifier confirmation.
+5. Verify types/lint, both frontend builds, embedded native build, UI source checks and separate read-only review. No tests, fixtures or screenshots.
+
+Primary formula evidence remains https://github.com/the-hideout/tarkov-api/blob/main/resolvers/itemResolver.mjs, inspected 2026-10-29. It is a source-based historical estimate, not a verified actual charge or available trade.
+
+Rollback: old fee-display code can be restored independently of physical inventory. New preference fields are optional on import and default to unknown. No database migration, game access, publication or automatic transaction.
+
+Implementation checkpoint: the fixed coefficient implementation is removed. Flea flips and searchbar item details use the shared catalog estimator through a mode-checked reactive context; old bundles without rates yield unknown net references. Generic catalog views require the market's FIR policy explicitly false, since they lack physical FIR evidence. Existing discount overrides remain hypothetical scenarios, and automatic mode reads the stored Hideout tier with the documented no-discount default. Optional Management settings default to null independently for PvE/PvP and are validated by the existing preference cleanup/persistence path. The full interface backup retains this preference store; ordinary progress-only exports still have their original scope.
+
+The searchbar now rehydrates global price preferences before body mounting and on cross-window storage changes. Fee context dependencies include mode, item bundle, player level, recorded station tier, discount and management, so rows/details recalculate without an additional network request or timer. Stash references keep their independent per-plan confirmation. Retained sell/craft helpers return unknown revenue/profit instead of fabricated zero; malformed/unsafe prices, counts, costs and derived hourly arithmetic are rejected, while negative estimates remain intact.
+
+TypeScript, lint, both frontend builds, embedded native development build and whitespace checks passed. Source UI detector returned no findings; separate read-only review, including cross-window preferences and arithmetic updates, found no concrete P1/P2 issue. No tests, synthetic fee cases, runtime windows/settings, game screenshots, actual fee or trades were exercised. These changes do not establish actual player access, item condition eligibility, offer capacity or guaranteed proceeds.
