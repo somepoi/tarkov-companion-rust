@@ -1,0 +1,18 @@
+# Pixel-based view position hints
+
+Continue Phase 7 with an automatic alignment proposal that never adds a view, chooses overlap authority or counts physical items itself.
+
+1. Compare the current screenshot with one explicitly selected registered source view. Use only independently reviewed item footprints tied to archived screenshot observations and valid local pixel registration. Item IDs are not matching keys.
+2. A short-lived worker hashes full-resolution interior patches. Match only nonuniform patches with identical pixel/cell dimensions and SHA-256, unique within each eligible reviewed anchor set. Repeated identical patches do not establish correspondence.
+3. Propose one absolute cell origin only if at least three distinct unique patches all agree on the offset, span multiple columns and rows, and the entire new view fits inside the container. Any competing offset, insufficient evidence or resource limit leaves manual registration available. This is a geometry hint, not proof of physical identity or unchanged layout.
+4. Bound input images to the incumbent 40-million-pixel/64-MiB limits, at most 128 reviewed anchors per view, one-million-pixel patches and 16 million hashed patch pixels overall. Decode sources sequentially; discard pixels after each digest and terminate the worker after completion/failure/cancellation/45-second processing timeout. No idle worker or queue.
+5. Show proposal support and overlap, requiring an explicit Apply position action. Applying clears visible coverage confirmation. Source views, current stack facts, saved composition, overlap choices and accepted inventory stay untouched. Changing image/draft/reference invalidates a pending proposal.
+6. Verify types/lint/both UI builds/native embedded build and separate source review. No tests, synthetic image fixtures, real screenshots or recognition accuracy claims, per user instructions.
+
+Rollback: ignore the optional hint and enter the existing manual coordinates. No schema, native persistence or recognition algorithm change.
+
+Implementation checkpoint: `alignViewPixels.ts` extracts screenshot/observation-bound reviewed anchors, `viewAlignment.worker.ts` checks geometry and exact pixel correspondence, and `ViewAlignment.tsx` exposes source selection and explicit position application inside the existing serialized stash action. The result binds to exact draft/reference objects, image hash and view/container dimensions. Component cleanup aborts pending worker work; binary source reads finishing after cleanup never start processing. No state is persisted by the hint.
+
+The 129th eligible anchor or any selected patch exceeding geometry/pixel limits rejects the entire hint. A source review identified that skipping over-budget patches could hide contradictory evidence; fail-closed admission replaces that behavior. Nonuniformity is only an informativeness filter; matching source pixels never prove physical stack identity, container identity or unchanged layout. Different image compression, pixel scaling, antialiasing or changed overlays may prevent a hint. Thresholds/timeout are implementation bounds, not measured accuracy/performance budgets.
+
+TypeScript, lint, both frontend builds, embedded native development build and whitespace checks passed. UI source detector returned no findings. Follow-up read-only review found no remaining concrete P1/P2 issue after the resource-limit fix. An initial Windows case-only module resolution collision was corrected by giving the helper a distinct filename. No tests, synthetic images, real screenshots, runtime alignment/cancellation workflows or recognition/performance measurements were performed. Clipped-boundary reconciliation remains open.

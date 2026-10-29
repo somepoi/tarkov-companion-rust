@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ViewAlignment } from './ViewAlignment'
 import { composeViews, saveComposition, getComposition, commitPartial, inventoryCall, type ScanComposition, type CompositionPreview, type ScanSession, type Container, type ScanDraft, type CommitResult, type RegisteredView } from './client'
 
 const empty = (): ScanComposition => ({ stableLayoutConfirmed: false, views: [], choices: [] })
@@ -57,6 +58,11 @@ export function MultiViewPanel({ session, container, draft, imageHash, viewSize,
       {(['column', 'row'] as const).map((axis) => <label key={axis} className="text-sm">Starting {axis}<input className={`${field} ml-2 w-20`} type="number" min={0} max={container[axis === 'column' ? 'columns' : 'rows'] - viewSize[axis === 'column' ? 'columns' : 'rows']} value={origin[axis]} disabled={!ready} onChange={(e) => { const n = Number(e.target.value); if (Number.isInteger(n) && n >= 0) { setOrigin({ ...origin, [axis]: n }); setCoverage(false) } }} /></label>)}
       <button className="btn" disabled={!ready || (!editingId && composition.views.length >= 32) || !imageHash || !coverageValid || !draft.reviewConfirmed || !validDraft(draft)} onClick={add}>{editingId ? 'Replace reviewed view' : 'Add reviewed view'}</button>
     </div>
+    {imageHash && composition.views.length > 0 && <ViewAlignment
+      key={`${imageHash}:${viewSize.columns}:${viewSize.rows}:${editingId ?? ''}`}
+      views={composition.views.filter((view) => view.id !== editingId)} draft={draft} imageHash={imageHash}
+      viewSize={viewSize} container={container} ready={ready} run={run}
+      onApply={(next) => { setOrigin(next); setCoverage(false); setMessage('Position hint applied to editor coordinates only. Recheck every visible cell before adding this view.') }} />}
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={coverageValid} disabled={!ready} onChange={(e) => { setCoverage(e.target.checked); setCoverageDraft(draft); setCoverageImage(imageHash) }} />I checked every visible cell in this screenshot, including empty cells and clipped edges.</label>
     {editingId && <button className="btn" disabled={!ready} onClick={() => { setEditingId(null); setPreview(null); setApproved(false) }}>Cancel view edit</button>}
     {message && <p role="status" className="text-sm text-ink-muted">{message}</p>}
