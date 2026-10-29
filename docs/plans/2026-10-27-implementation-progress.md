@@ -19,7 +19,7 @@ Git author remains the configured `somepoi` identity. No push, tag, publication 
 | 6: conservative requirement planner | In progress | Inventory/reserve integration, partial objective progress and mode-aware surplus catalog references implemented; broader item-state constraints, net fees and full trade eligibility remain open |
 | 7: partial views and overlap | In progress | Registered views, explicit overlap authority, full-composition/final-review and partial-patch UI connected; clipped-boundary reconciliation, automatic registration and runtime acceptance remain open |
 | 8: measured optimization | Pending | Comparable workload measurements |
-| 9: assisted workflow and release | In progress | Explicit capture-to-container input implemented; automatic recognition/change reuse, exports, Windows installation/update/recovery and release gates remain open |
+| 9: assisted workflow and release | In progress | Capture-to-container input, full backup/recovery and inventory fact exports implemented; automatic recognition/change reuse, Windows installation/update/recovery runtime and release gates remain open |
 
 ## Decisions
 
@@ -51,6 +51,8 @@ Git author remains the configured `somepoi` identity. No push, tag, publication 
 - Native logs now use event-driven Rust filesystem watching and a pull transport (one 256 KiB chunk, then worker acknowledgement). The original pure interpreter/reset rules moved to shared source with Electron compatibility exports and run in a dedicated frontend worker. Live synchronization, bounded historical review, Stats and BSG/Steam/default-path discovery are connected. Startup historical events are filtered by current profile/reset; unknown-mode quest events are excluded from automatic progression and reported in review. Per-mode native identity markers avoid cross-mode wipe prompts. See `docs/performance/native-logs.md` for bounds and remaining gates.
 
 ## Verification history
+
+- 2026-10-29 inventory export checkpoint: fresh mode/profile-specific SQLite facts can be downloaded as versioned JSON or spreadsheet-safe CSV, with explicit container/physical/legacy record types and independent unknown/confirmation fields. A short-lived worker builds bounded files; late mode changes, errors and cleanup cancel work/revoke URLs. TypeScript, clean lint, both frontend builds, embedded native build, source UI detector and whitespace checks passed. Read-only review reported no remaining P1/P2 findings. No tests, fixtures, actual WebView downloads or restore exercises were performed; reporting JSON is not the full recovery format.
 
 - 2026-10-29 economy reference checkpoint: mode/fetch/flea-rule metadata accompanies the incumbent item cache; confirmed SELL portions can display trader buyback and gross flea references with restricted/missing quantities, age-at-evaluation and offline context. Prices never change native recommendations. Current primary API fields were inspected read-only; missing item flea levels remain unknown after a review correction. TypeScript, clean lint, both frontend builds, embedded native build, whitespace checks and source UI detector passed. Follow-up source review reported no remaining P1/P2 issue in this scope. No tests, fixtures, game/player mutations or sale actions were used; actual conditions/access/fees/revenue remain unverified.
 

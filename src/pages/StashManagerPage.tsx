@@ -4,6 +4,7 @@ import { useItems } from '../api/hooks'
 import type { GameMode } from '../api/client'
 import { useProgressStore } from '../store/progress'
 import { MultiViewPanel } from '../inventory/MultiViewPanel'
+import { ExportPanel } from '../inventory/ExportPanel'
 import { PlanningPanel } from '../inventory/PlanningPanel'
 import { BackupPanel } from '../inventory/BackupPanel'
 import { StackIdentityReview } from '../inventory/StackIdentityReview'
@@ -473,6 +474,7 @@ function StashManager({ mode }: { mode: GameMode }) {
           {notice}
         </p>
       )}
+      {profile && <ExportPanel key={profile.id} profile={profile} busy={busy} run={(job) => action(job)} />}
       {!profile ? (
         <div className="space-y-3">
           <p className="text-ink-muted">
