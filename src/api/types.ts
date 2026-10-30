@@ -389,8 +389,8 @@ export interface RawItem {
   properties?: RawItemProperties | null
   /** Items that cannot be fitted on the same weapon as this one. */
   conflictingItems?: string[]
-  /** Presets only: the parts of the build (weapon, mods and loaded rounds). */
-  containsItems?: { item: string; count?: number }[]
+  /** Preset parts, or explicit members of the provider's special dogtag group. */
+  containsItems?: { item: string; count?: number; attributes?: unknown }[]
 }
 
 /** Only the ammo fields are read; other property types are ignored. */
@@ -537,6 +537,8 @@ export interface TraderPrice {
 }
 
 export interface Item {
+  /** Validated direct alternatives only for the provider's any-dogtag group. */
+  dogtagAlternatives?: string[] | null
   id: string
   name: string
   shortName: string
@@ -915,6 +917,8 @@ export interface Task {
 
 /** Everything the Quests/Dashboard tabs need, loaded for one game mode. */
 export interface GameData {
+  /** Optional for older offline caches; stale adapters cannot authorize surplus. */
+  planningSchema?: number
   gameMode: GameMode
   tasks: Task[]
   tasksById: Record<string, Task>
@@ -944,6 +948,7 @@ export interface PlayerLevel {
 
 /** Result of the items document: the item catalogue plus the level table it ships with. */
 export interface ItemsBundle {
+  planningSchema?: number
   mode?: GameMode
   fetchedAt?: number
   fleaMarket?: { enabled: boolean | null; minPlayerLevel: number | null; foundInRaidRequired: boolean | null; sellOfferFeeRate?: number | null; sellRequirementFeeRate?: number | null }

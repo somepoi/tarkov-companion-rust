@@ -2,7 +2,8 @@ import type { HideoutStation, ItemsById, Task } from '../api/types'
 import type { Profile } from '../store/progress'
 import { isFactionEligible } from '../lib/taskStatus'
 import type { PlanningPreferences, Requirement } from './client'
-import { count, type RecipeCatalog } from './recipeCatalog'
+import { count, RECIPE_PLANNING_SCHEMA, type RecipeCatalog } from './recipeCatalog'
+import { planningItemAlternatives } from '../api/planningItems'
 import { consumesItems, orphanObjectiveProgress, remainingObjective } from '../lib/objectiveProgress'
 
 interface Input {
@@ -21,6 +22,13 @@ export function buildRequirements(input: Input) {
   const requirements: Requirement[] = []
   const gaps: string[] = []
   const add = (r: Requirement) => {
+    const resolved = r.alternatives.map((id) => planningItemAlternatives(id, input.items))
+    for (const result of resolved) if (result.gap) gaps.push(`${r.source}: ${result.gap}`)
+    r = { ...r, alternatives: [...new Set(resolved.flatMap((result) => result.ids))] }
+    if (r.alternatives.length > 256) {
+      gaps.push(`${r.source}: too many accepted item alternatives`)
+      r.alternatives = []
+    }
     requirements.push(r)
     if (r.quantity === null || r.fir === 'unknown' || !r.alternatives.length)
       gaps.push(`${r.source}: unknown quantity, FIR or accepted items`)
@@ -166,6 +174,8 @@ export function buildRequirements(input: Input) {
   ] as const) {
     for (const [recipeId, batches] of Object.entries(selected)) {
       if (!batches) continue
+      if (input.recipes?.planningSchema !== RECIPE_PLANNING_SCHEMA)
+        gaps.push('Saved recipe input conditions need a catalog refresh before surplus decisions')
       const recipe = input.recipes?.[
         kind === 'craft' ? 'crafts' : 'barters'
       ].find((r) => r.id === recipeId)
@@ -185,9 +195,10 @@ export function buildRequirements(input: Input) {
       recipe.inputs.forEach((r, index) =>
         add({
           id: `${kind}:${recipeId}:${index}`,
-          source: `${kind === 'craft' ? 'Craft' : 'Barter'}: ${name} × ${batches}${r.tool ? ' (sequential tool)' : ''}`,
+          source: `${kind === 'craft' ? 'Craft' : 'Barter'}: ${name} × ${batches}${r.tool ? ' (sequential tool)' : ''}${r.minimumDogtagLevel ? ` (dogtag level at least ${r.minimumDogtagLevel})` : ''}`,
           kind: r.tool ? reusable(`craft-tool:${r.itemId}`) : consume,
           alternatives: [r.itemId],
+          minimumDogtagLevel: r.minimumDogtagLevel,
           quantity:
             r.quantity === null
               ? null

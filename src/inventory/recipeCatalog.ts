@@ -1,15 +1,19 @@
 import { fetchJson, type GameMode } from '../api/client'
 
+export const RECIPE_PLANNING_SCHEMA = 1
+
 /** Validated planning view of the JSON API. Never invent missing input counts. */
 export interface Recipe {
   id: string
   outputId: string
   stationId: string | null
   stationLevel: number | null
-  inputs: { itemId: string; quantity: number | null; tool: boolean }[]
+  inputs: { itemId: string; quantity: number | null; tool: boolean; minimumDogtagLevel?: number }[]
   gaps: string[]
 }
 export interface RecipeCatalog {
+  /** Older offline adapters must not silently omit input restrictions. */
+  planningSchema?: number
   crafts: Recipe[]
   barters: Recipe[]
 }
@@ -53,16 +57,23 @@ function parse(document: unknown, kind: 'craft' | 'barter'): Recipe[] {
       const attributes = record(input.attributes)
       if (input.attributes != null && (typeof input.attributes !== 'object' || Array.isArray(input.attributes))) gaps.push('Malformed input attributes')
       const unsupported = Object.keys(attributes).filter(
-        (k) => kind !== 'craft' || k !== 'tool',
+        (k) => !((kind === 'craft' && k === 'tool') || (kind === 'barter' && k === 'minLevel')),
       )
       if (unsupported.length)
         gaps.push(`Unsupported input conditions: ${unsupported.join(', ')}`)
       if ('tool' in attributes && typeof attributes.tool !== 'boolean')
         gaps.push('Unknown tool condition')
+      let minimumDogtagLevel: number | undefined
+      if (kind === 'barter' && 'minLevel' in attributes) {
+        const level = count(attributes.minLevel)
+        if (level === null || level > 1000) gaps.push('Invalid minimum dogtag level')
+        else if (level > 0) minimumDogtagLevel = level
+      }
       return {
         itemId,
         quantity,
         tool: kind === 'craft' && attributes.tool === true,
+        minimumDogtagLevel,
       }
     })
     if (
@@ -110,5 +121,5 @@ export async function fetchRecipeCatalog(
     fetchJson<unknown>(`/${mode}/crafts`, signal),
     fetchJson<unknown>(`/${mode}/barters`, signal),
   ])
-  return { crafts: parse(crafts, 'craft'), barters: parse(barters, 'barter') }
+  return { planningSchema: RECIPE_PLANNING_SCHEMA, crafts: parse(crafts, 'craft'), barters: parse(barters, 'barter') }
 }

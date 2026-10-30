@@ -9,7 +9,8 @@ import { del, get, set } from 'idb-keyval'
 import type { QueryClient } from '@tanstack/react-query'
 
 const ONE_DAY = 24 * 60 * 60 * 1000
-/** Bump whenever an adapter in queries.ts changes the shape of cached data. */
+/** Bump for incompatible adapted data. Additive planning metadata uses explicit
+ * schema/freshness guards so upgrades retain last-known offline catalogs. */
 const CACHE_SCHEMA = 15
 /** Query key roots that are live data and must not be served from disk. */
 const LIVE_ROOTS = new Set(['prices', 'status', 'logStats'])

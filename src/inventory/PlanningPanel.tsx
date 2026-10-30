@@ -14,7 +14,8 @@ import {
   type RecommendationPlan,
   type UserReserve,
 } from './client'
-import { fetchRecipeCatalog } from './recipeCatalog'
+import { fetchRecipeCatalog, RECIPE_PLANNING_SCHEMA } from './recipeCatalog'
+import { ANY_DOGTAG_ID, PLANNING_CATALOG_SCHEMA } from '../api/planningItems'
 import { buildRequirements } from './requirements'
 import { PlanResults } from './PlanResults'
 import { quantityFitsCatalog } from '../scan/quantity'
@@ -87,7 +88,7 @@ function PlannerEditor({
   const recipes = useQuery({
     queryKey: ['planningRecipes', mode],
     queryFn: ({ signal }) => fetchRecipeCatalog(mode, signal),
-    staleTime: contentMs(),
+    staleTime: (query) => query.state.data?.planningSchema === RECIPE_PLANNING_SCHEMA ? contentMs() : 0,
   })
   const [base, setBase] = useState(saved)
   const [preferences, setPreferences] = useState<PlanningPreferences>(
@@ -265,9 +266,12 @@ function PlannerEditor({
   async function calculate() {
     const gaps = [...normalized.coverageGaps]
     for (const entry of inventory.containers)
-      for (const stack of entry.snapshot?.stacks ?? [])
+      for (const stack of entry.snapshot?.stacks ?? []) {
+        if (stack.itemId === ANY_DOGTAG_ID)
+          gaps.push(`${entry.container.name}, cell ${stack.location.column}/${stack.location.row}: choose the concrete dogtag variant before surplus decisions`)
         if (stack.quantity !== null && !quantityFitsCatalog(stack.quantity, items.data?.items[stack.itemId ?? '']))
           gaps.push(`${entry.container.name}, cell ${stack.location.column}/${stack.location.row}: amount exceeds the current catalog stack limit; review the snapshot`)
+      }
     if (
       !game.data ||
       game.isError ||
@@ -277,6 +281,8 @@ function PlannerEditor({
       items.isError
     )
       gaps.push('Quest, hideout or item catalog is unavailable')
+    if (game.data?.planningSchema !== PLANNING_CATALOG_SCHEMA || items.data?.planningSchema !== PLANNING_CATALOG_SCHEMA)
+      gaps.push('Saved quest or item conditions need a catalog refresh before surplus decisions')
     if (wiki.loading || wiki.error)
       gaps.push('Wiki-only quest coverage is unavailable or incomplete')
     const timestamps = [
@@ -298,6 +304,9 @@ function PlannerEditor({
       )
     if (Object.keys(preferences.reserves).some((id) => !items.data?.items[id]))
       gaps.push('A reserved item is missing from the catalog')
+    const groupedReserve = preferences.reserves[ANY_DOGTAG_ID]
+    if (groupedReserve && (groupedReserve.neverSell || groupedReserve.minimumTotal || groupedReserve.extraBuffer))
+      gaps.push('Any-dogtag manual reserves need concrete variant selections before surplus decisions')
     const result = await inventoryCall<RecommendationPlan>({
       operation: 'calculatePlan',
       request: {

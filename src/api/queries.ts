@@ -1,5 +1,6 @@
 import { friendlySwitchName } from './switchNames'
 import { objectiveItemConditions } from './itemConditions'
+import { adaptDogtagAlternatives, PLANNING_CATALOG_SCHEMA } from './planningItems'
 import { feeRate } from '../lib/fleaFees'
 import { canonicalObjectiveDefinition, consumesItems } from '../lib/objectiveProgress'
 import { assertCatalogSupports, getEndpointCatalog } from './catalog'
@@ -363,6 +364,7 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
 
   return {
     gameMode,
+    planningSchema: PLANNING_CATALOG_SCHEMA,
     tasks,
     tasksById: indexById(tasks),
     traders,
@@ -502,6 +504,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
   const out: ItemsById = {}
   for (const raw of Object.values(doc.data.items)) {
     const item: Item = {
+      dogtagAlternatives: adaptDogtagAlternatives(raw, doc.data.items),
       id: raw.id,
       name: t(raw.name, raw.normalizedName),
       shortName: t(raw.shortName, raw.normalizedName),
@@ -547,7 +550,7 @@ export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Prom
     if (c?.name) categoryNames[c.id ?? id] = t(c.name, c.normalizedName ?? id)
   }
   const market = doc.data.fleaMarket
-  return { items: out, playerLevels, categoryNames, mode: gameMode, fetchedAt: Date.now(), fleaMarket: {
+  return { planningSchema: PLANNING_CATALOG_SCHEMA, items: out, playerLevels, categoryNames, mode: gameMode, fetchedAt: Date.now(), fleaMarket: {
     enabled: typeof market?.enabled === 'boolean' ? market.enabled : null,
     minPlayerLevel: typeof market?.minPlayerLevel === 'number' && Number.isSafeInteger(market.minPlayerLevel) && market.minPlayerLevel >= 0 ? market.minPlayerLevel : null,
     foundInRaidRequired: typeof market?.foundInRaidRequired === 'boolean' ? market.foundInRaidRequired : null,

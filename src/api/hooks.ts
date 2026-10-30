@@ -5,6 +5,7 @@ import { fetchCrafts, fetchGameData, fetchHideout, fetchItems, fetchPriceHistory
 import { FIVE_MINUTES, ONE_MINUTE, contentMs, refreshMs } from './queryClient'
 import type { GameData } from './types'
 import { useProgressStore } from '../store/progress'
+import { PLANNING_CATALOG_SCHEMA } from './planningItems'
 
 /** Game content: check every few hours (Settings); while in error, every minute. */
 export const contentOrRetry = (status: 'pending' | 'error' | 'success') =>
@@ -52,7 +53,7 @@ export function useGameData(opts: GameDataOptions = {}) {
   return useQuery({
     queryKey: gameDataKeys.mode(gameMode),
     queryFn: ({ signal }) => fetchGameData(gameMode, signal),
-    staleTime: (query) => gameDataInterval(query.state.data, opts),
+    staleTime: (query) => query.state.data?.planningSchema === PLANNING_CATALOG_SCHEMA ? gameDataInterval(query.state.data, opts) : 0,
     refetchInterval: (query) => (query.state.status === 'error' ? ONE_MINUTE : gameDataInterval(query.state.data, opts)),
   })
 }
@@ -68,7 +69,7 @@ export function useItems(enabled = true, refetchMs?: number) {
     queryKey: itemKeys.mode(gameMode),
     queryFn: ({ signal }) => fetchItems(gameMode, signal),
     enabled,
-    staleTime: refetchMs ? Math.min(refetchMs, refreshMs()) : refreshMs(),
+    staleTime: (query) => query.state.data?.planningSchema === PLANNING_CATALOG_SCHEMA ? (refetchMs ? Math.min(refetchMs, refreshMs()) : refreshMs()) : 0,
     refetchInterval: (query) => (query.state.status === 'error' ? ONE_MINUTE : (refetchMs ?? refreshMs())),
   })
 }
