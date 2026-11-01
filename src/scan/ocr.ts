@@ -9,6 +9,7 @@ import type { OcrWord } from './core'
 import { abortable } from './abort'
 import type { ImageCrop } from './registration'
 import { prepareText } from './prepareText'
+import { cachedText, cacheText, clearTextCache } from './textCache'
 import { TEXT_PAD as PAD } from './ocrPreparationConstants'
 
 type TessWorker = Awaited<ReturnType<typeof createWorker>>
@@ -32,6 +33,7 @@ function scheduleRelease() {
     if (queuedReads || workerPromise !== candidate) return
     // Detach before asynchronous termination so a fresh read gets a new engine.
     workerPromise = null
+    clearTextCache()
     void candidate.then((worker) => worker.terminate()).catch(() => undefined)
   }, 60_000)
 }
@@ -82,6 +84,9 @@ interface ReadOptions {
   scale?: 1 | 2 | 4
   isCurrent?: () => boolean
   signal?: AbortSignal
+  /** Exact prepared-image reuse is scoped to one reviewed scan session. */
+  cacheScope?: string
+  reusePreparedText?: boolean
 }
 
 let ocrQueue = Promise.resolve()
@@ -106,6 +111,19 @@ async function readWordsNow(image: Blob, crop: ImageCrop | null, opts: ReadOptio
   checkCurrent()
   const { png, area, scale } = await prepareText(image, crop, opts, opts.signal)
   checkCurrent()
+  const restoreCoordinates = (words: OcrWord[]) => words.map((word) => ({
+    ...word,
+    x0: area.x + (word.x0 - PAD) / scale, y0: area.y + (word.y0 - PAD) / scale,
+    x1: area.x + (word.x1 - PAD) / scale, y1: area.y + (word.y1 - PAD) / scale,
+  }))
+  let cacheKey: string | undefined
+  if (opts.cacheScope && opts.cacheScope.length <= 512 && png.size <= 16 * 1024 * 1024) {
+    const hash = await crypto.subtle.digest('SHA-256', await png.arrayBuffer())
+    checkCurrent()
+    cacheKey = `${opts.cacheScope}:${Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')}`
+    const cached = opts.reusePreparedText ? cachedText(cacheKey) : undefined
+    if (cached) return restoreCoordinates(cached)
+  }
   const worker = await abortable(getWorker(), opts.signal)
   checkCurrent()
   const currentPromise = workerPromise
@@ -113,7 +131,7 @@ async function readWordsNow(image: Blob, crop: ImageCrop | null, opts: ReadOptio
   const { data } = await new Promise<Awaited<typeof result>>((resolve, reject) => {
     const clear = () => opts.signal?.removeEventListener('abort', abort)
     const reset = () => {
-      if (workerPromise === currentPromise) workerPromise = null
+      if (workerPromise === currentPromise) { workerPromise = null; clearTextCache() }
       void worker.terminate().catch(() => undefined)
     }
     const abort = () => {
@@ -137,14 +155,15 @@ async function readWordsNow(image: Blob, crop: ImageCrop | null, opts: ReadOptio
           words.push({
             text: w.text,
             conf: w.confidence,
-            x0: area.x + (w.bbox.x0 - PAD) / scale,
-            y0: area.y + (w.bbox.y0 - PAD) / scale,
-            x1: area.x + (w.bbox.x1 - PAD) / scale,
-            y1: area.y + (w.bbox.y1 - PAD) / scale,
+            x0: w.bbox.x0,
+            y0: w.bbox.y0,
+            x1: w.bbox.x1,
+            y1: w.bbox.y1,
           })
         }
       }
     }
   }
-  return words
+  if (cacheKey) cacheText(cacheKey, words)
+  return restoreCoordinates(words)
 }

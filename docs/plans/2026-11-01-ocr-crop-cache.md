@@ -1,0 +1,13 @@
+# Exact prepared-crop OCR reuse
+
+Goal: implement the plan's crop-hash cache for recognition work without using image equality as physical item/container identity.
+
+The Stash Manager name-text reader tags calls with the scan-session ID. After the existing worker prepares the crop, hash its exact PNG bytes (up to 16 MiB) with SHA-256. Successful OCR words are stored in prepared-image coordinates, before conversion back to screenshot offsets/scaling. During explicit session-scoped assisted preparation only, an exact scoped cache hit reuses those text suggestions and maps coordinates using the current crop/scale. The normal manual scan still runs OCR and can seed/replace the entry. Other text readers and quantity OCR do not use the cache. Different threshold/scale/pixels cannot hit unless their complete prepared OCR input bytes are identical.
+
+Keep at most eight entries, 4096 words per entry and a 1-MiB accounting budget (128 bytes per word plus UTF-16 text/key charge). This charge is an admission policy, not a strict JavaScript heap measurement. Retain text only, never screenshot/PNG blobs or identity/quantity/FIR facts. Use LRU eviction and clear entries when the idle OCR engine is released or its active Tesseract job fails/cancels. Entries never persist across application reloads. Generation/cancellation checks precede hit publication and entry creation.
+
+Independent grid discovery, the matcher, current screenshot evidence, new observations and manual confirmation still run. Exact processed-crop equality can hold across different source images after thresholding; this is valid only for reusing the same OCR input result. It never establishes source-image equality, scroll alignment, physical identity, full coverage or a committed fact. The UI's existing assisted opt-in explains reuse and continued review.
+
+This is a bounded exact-crop name-OCR cache. General changed-region detection, partial matching/quantity reuse and Phase D runtime validation remain open; no acceleration/accuracy claim is made from builds. No tests, fixtures, screenshots or actual reuse workflow will run under the user's instruction.
+
+Verification on 2026-11-01: clean oxlint, TypeScript, Tauri frontend production build, Electron frontend/main/preload production build, embedded native custom-protocol development build (12.78s) and whitespace checks exited 0. Source review traced exact prepared-input hashing, session scoping, normal/manual versus assisted reads, raw-word coordinate conversion, bounded eviction, idle/active-engine reset and independent match/review gates. No tests, fixtures, images, OCR comparisons or cache-hit workflows were created or run. Existing installer artifacts were not refreshed.

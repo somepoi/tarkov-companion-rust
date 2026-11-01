@@ -401,7 +401,7 @@ function StashManager({ mode }: { mode: GameMode }) {
       await useLearnedStore.getState().load()
       if (!isCurrent()) return
       let ocrFailed = false
-      const words = await readWords(file, crop, { isCurrent, signal: controller.signal }).catch(() => {
+      const words = await readWords(file, crop, { isCurrent, signal: controller.signal, cacheScope: session.id, reusePreparedText: !!expectedGrid }).catch(() => {
         ocrFailed = true
         return undefined
       })
@@ -743,7 +743,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                 <input type="checkbox" checked={assisted}
                   disabled={busy || !registration || registration.sessionId !== session.id}
                   onChange={(event) => setAssisted(event.target.checked)} />
-                I checked the last recognized area. Use it to prepare the next screenshots automatically.
+                I checked the last recognized area. Use it to prepare the next screenshots automatically. Identical prepared areas may reuse text suggestions; every result still needs review.
               </label>
               <p className="max-w-prose text-xs text-ink-muted">
                 First recognize a selected area manually, then enable this for the current session.
