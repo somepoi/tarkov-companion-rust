@@ -42,7 +42,7 @@ import { MAX_IMPORT_BYTES, buildProgressFile, importProgressFile, parseImportJso
 import { askNotificationPermission, notificationPermission, notify } from '../lib/notify'
 import { formatDateTime, formatRoubles } from '../lib/format'
 import { JSON_API_BASE } from '../api/client'
-import { persister } from '../api/persist'
+import { persister, retryCachePersistence, useCachePersistenceStatus } from '../api/persist'
 import type { DesktopSettings, UpdateMode } from '../shared/desktop-api'
 
 
@@ -309,6 +309,8 @@ function GeneralSection() {
 }
 
 function PricesSection() {
+  const cacheStatus = useCachePersistenceStatus()
+  const [cacheBusy, setCacheBusy] = useState(false)
   const [source, setSource] = usePref('priceSource')
   const [fee, setFee] = usePref('fleaFeeDiscount')
   const [management, setManagement] = usePref('fleaFeeManagement')
@@ -320,6 +322,14 @@ function PricesSection() {
   const [note, setNote] = useState<string | null>(null)
   return (
     <Section id="prices" title="Prices & game data" icon={Database} keywords="price flea trader sell buy value fee intelligence center refresh update data cache offline tarkov.dev new quests content patch check interval">
+      {cacheStatus.error && <div role="alert" className="space-y-2 rounded border border-danger/40 px-4 py-3 text-sm">
+        <p>Offline game data reported a storage error. Free some disk space or check storage access, then try again. Your progress and physical inventory are separate from this catalog cache.</p>
+        <p className="break-words text-xs text-ink-muted">{cacheStatus.error}</p>
+        {cacheStatus.canRetry && <button type="button" className="btn" disabled={cacheBusy} onClick={async () => {
+          setCacheBusy(true)
+          try { await retryCachePersistence() } finally { setCacheBusy(false) }
+        }}>Retry saving offline data</button>}
+      </div>}
       <Row label="Value items by" hint="Used for estimated item values on the flea and ammo tabs. Best = whichever pays more (selling) or costs less (buying).">
         <Segmented value={source} onChange={setSource} label="Value items by" options={[{ value: 'best', label: 'Best of both' }, { value: 'trader', label: 'Traders' }, { value: 'flea', label: 'Flea market' }]} />
       </Row>
@@ -380,11 +390,20 @@ function PricesSection() {
             type="button"
             className="btn"
             title="Deletes the offline copy of tarkov.dev data and downloads it again. Your progress is not touched."
+            disabled={cacheBusy}
             onClick={async () => {
-              queryClient.clear()
-              await Promise.resolve(persister.removeClient()).catch(() => undefined)
-              void queryClient.invalidateQueries()
-              setNote('Cached game data cleared; downloading a fresh copy.')
+              setCacheBusy(true)
+              let removed = false
+              try {
+                await persister.removeClient()
+                removed = true
+                await queryClient.resetQueries()
+                setNote('Cached game data cleared. Active pages are loading a new copy; an online connection is needed.')
+              } catch (cause) {
+                setNote(`${removed ? 'Offline copy cleared, but reloading failed' : 'Could not clear cached game data'}: ${cause instanceof Error ? cause.message : String(cause)}`)
+              } finally {
+                setCacheBusy(false)
+              }
             }}
           >
             <Trash2 className="h-4 w-4" /> Clear cache
