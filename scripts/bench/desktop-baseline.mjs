@@ -37,6 +37,31 @@ const number = (key, fallback, min, max) => {
   if (!Number.isFinite(n) || n < min || n > max) throw new Error(`${key} must be in ${min}..${max}`)
   return n
 }
+const sampling = {
+  durationSeconds: number('--duration', 300, 1, 86400),
+  settleSeconds: number('--settle', 30, 0, 3600),
+  sampleMs: number('--sample-ms', 1000, 250, 60000),
+}
+// Headroom policy for real WebView profiles; this is not a performance budget.
+const minimumFreeBytes = 2 * 1024 ** 3
+const systemRoot = process.env.SystemRoot
+if (!systemRoot || !path.isAbsolute(systemRoot)) throw new Error('Could not establish the Windows system filesystem')
+const roots = [{ purpose: 'temporary-profile', root: os.tmpdir() }, { purpose: 'system', root: systemRoot }]
+const disks = roots.map(({ purpose, root }) => {
+  const canonical = fs.realpathSync(root)
+  const disk = fs.statfsSync(canonical)
+  const freeBytes = disk.bavail * disk.bsize
+  if (!Number.isSafeInteger(freeBytes) || freeBytes < 0) throw new Error('Could not establish filesystem headroom')
+  return { purpose, root: canonical, freeBytes, totalBytes: disk.blocks * disk.bsize }
+})
+for (const disk of disks) {
+  if (disk.freeBytes < minimumFreeBytes) throw new Error(`Measurement not started: ${disk.purpose} filesystem has ${(disk.freeBytes / 1024 ** 3).toFixed(2)} GiB free; ${minimumFreeBytes / 1024 ** 3} GiB required. No profile was created or application launched.`)
+}
+const environment = {
+  recordedAtUtc: new Date().toISOString(), platform: os.platform(), release: os.release(), arch: os.arch(),
+  totalMemoryBytes: os.totalmem(), freeMemoryBytes: os.freemem(), logicalProcessors: os.cpus().length,
+  disks, minimumFreeBytes,
+}
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-desktop-baseline-'))
 const profile = path.join(out, 'profile')
 fs.mkdirSync(profile)
@@ -47,9 +72,7 @@ const config = {
   executableSha256: crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex'),
   profile, profileEnv: profileEnv ?? null, isolationContract: contract, readyFile, catalogReadyFile,
   arguments: launchArgs.map((arg) => arg.replaceAll('{profile}', profile)),
-  durationSeconds: number('--duration', 300, 1, 86400),
-  settleSeconds: number('--settle', 30, 0, 3600),
-  sampleMs: number('--sample-ms', 1000, 250, 60000),
+  ...sampling, environment,
   workloadLabel: values.get('--label') ?? 'unspecified',
   output: path.join(out, 'desktop.json'),
 }

@@ -1,0 +1,32 @@
+{
+  "kind": "real-host-measurement-preflight",
+  "recordedAtUtc": "2026-11-01T20:52:59.536Z",
+  "appSourceCommit": "e45c0cd84a7e6f44ff6f12ff626cb8613be3e987",
+  "nativeRelease": {
+    "sha256": "461996fb2b24d392f5243f40f4c4cd35cadc061ccc184c913f421032b171ddfb",
+    "bytes": 27330560
+  },
+  "memory": {
+    "totalBytes": 33946128384,
+    "freeBytes": 5684576256
+  },
+  "disks": [
+    {
+      "purpose": "temporary-profile",
+      "root": "D:\\TEMP",
+      "freeBytes": 478558539776,
+      "totalBytes": 999520464896
+    },
+    {
+      "purpose": "system",
+      "root": "C:\\Windows",
+      "freeBytes": 141336576,
+      "totalBytes": 250041331712
+    }
+  ],
+  "measurementStarted": false,
+  "reason": "system-volume-below-measurement-headroom-policy",
+  "minimumFreeBytes": 2147483648,
+  "applicationLaunched": false,
+  "profileCreated": false
+}
