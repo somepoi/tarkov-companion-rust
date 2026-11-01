@@ -187,16 +187,24 @@ function adaptObjective(
   mapsById: Record<string, GameMap>,
   questItems: Record<string, QuestItem>,
 ): TaskObjective {
-  const itemIds = raw.items && raw.items.length > 0 ? raw.items : raw.item ? [raw.item] : []
+  const rawIds = raw.type === 'useItem' && raw.useAny !== undefined ? raw.useAny : raw.items && raw.items.length > 0 ? raw.items : raw.item ? [raw.item] : []
+  const conditions = objectiveItemConditions(raw)
+  const validItemId = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !value.includes('\0')
+    && !['__proto__', 'constructor', 'prototype'].includes(value)
+  const itemIds = Array.isArray(rawIds) ? [...new Set(rawIds.filter(validItemId))].slice(0, 256) : []
+  if (!Array.isArray(rawIds) || rawIds.length > 256 || rawIds.some((id) => !validItemId(id)))
+    conditions.planningGaps = [...(conditions.planningGaps ?? []), 'Accepted item alternatives are missing, malformed or exceed the supported bound']
+  if (raw.type === 'useItem' && raw.useAny === undefined)
+    conditions.planningGaps = [...(conditions.planningGaps ?? []), 'Use-item alternatives need review against the current source definition']
   return {
     id: raw.id,
     type: raw.type,
-    planningDefinition: consumesItems(raw) ? canonicalObjectiveDefinition(raw) : undefined,
+    planningDefinition: consumesItems(raw) || ['haveItem', 'useItem'].includes(raw.type) ? canonicalObjectiveDefinition(raw) : undefined,
     description: t(raw.description, raw.type),
     optional: Boolean(raw.optional),
     maps: (raw.maps ?? []).map((id) => mapsById[id]).filter((m): m is GameMap => Boolean(m)),
     count: typeof raw.count === 'number' ? raw.count : null,
-    ...objectiveItemConditions(raw),
+    ...conditions,
     itemIds,
     questItem: raw.questItem ? (questItems[raw.questItem] ?? null) : null,
     foundInRaid: typeof raw.foundInRaid === 'boolean' ? raw.foundInRaid : null,

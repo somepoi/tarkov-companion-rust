@@ -2,7 +2,7 @@ import type { ItemsById, RawItem } from './types'
 
 /** JSON provider's explicit any-dogtag group, never a physical weapon preset. */
 export const ANY_DOGTAG_ID = 'customdogtags12345678910'
-export const PLANNING_CATALOG_SCHEMA = 1
+export const PLANNING_CATALOG_SCHEMA = 2
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)

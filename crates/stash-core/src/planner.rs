@@ -24,6 +24,9 @@ pub enum FirConstraint {
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum RequirementKind {
     Consume,
+    /// Stock that must remain possessed. Reserve separately from consumption;
+    /// no cross-objective concurrent sharing is inferred.
+    Hold,
     /// The caller explicitly asserts this group is sequential, not concurrent.
     /// Different concurrent tools must use different group IDs.
     Reusable {
@@ -685,7 +688,7 @@ fn normalize_requirements(
             reason: requirement.source.clone(),
         };
         match &requirement.kind {
-            RequirementKind::Consume => demands.push(demand),
+            RequirementKind::Consume | RequirementKind::Hold => demands.push(demand),
             RequirementKind::Reusable { group } => {
                 if group.trim().is_empty() {
                     return Err(PlannerError::Invalid(

@@ -37,6 +37,8 @@ export function buildRequirements(input: Input) {
       gaps.push(`${r.source}: unknown quantity, FIR or accepted items`)
     if (r.alternatives.some((id) => !input.items[id]))
       gaps.push(`${r.source}: item missing from the catalog`)
+    if (r.alternatives.some((id) => input.items[id]?.types.includes('preset')))
+      gaps.push(`${r.source}: fitted preset contents require physical build review`)
   }
   const consume = { kind: 'consume' } as const
   const reusable = (group: string) => ({ kind: 'reusable', group }) as const
@@ -61,11 +63,11 @@ export function buildRequirements(input: Input) {
       if (progress?.quantity === 0 && !progress.gap) continue
       if (objective.planningGaps?.length)
         gaps.push(...objective.planningGaps.map((g) => `${source}: ${g}`))
-      if (['giveItem', 'plantItem', 'sellItem'].includes(objective.type)) {
+      if (['giveItem', 'plantItem', 'sellItem', 'haveItem'].includes(objective.type)) {
         add({
           id: `quest:${task.id}:${objective.id}`,
-          source,
-          kind: consume,
+          source: objective.type === 'haveItem' ? `${source} (keep in possession; not a hand-in)` : source,
+          kind: objective.type === 'haveItem' ? { kind: 'hold' } : consume,
           alternatives: objective.itemIds,
           minimumDogtagLevel: objective.minimumDogtagLevel,
           durability: objective.durability,
@@ -76,6 +78,16 @@ export function buildRequirements(input: Input) {
               : objective.foundInRaid === false
                 ? 'any'
                 : 'unknown',
+        })
+      } else if (objective.type === 'useItem') {
+        gaps.push(`${source}: the objective counts uses; remaining charges and the number of physical items needed require review`)
+        add({
+          id: `quest:${task.id}:${objective.id}`,
+          source,
+          kind: consume,
+          alternatives: objective.itemIds,
+          quantity: null,
+          fir: 'unknown',
         })
       } else if (objective.type === 'mark') {
         add({

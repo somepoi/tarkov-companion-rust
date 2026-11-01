@@ -163,7 +163,7 @@ export interface PlanningState {
 export interface Requirement {
   id: string
   source: string
-  kind: { kind: 'consume' } | { kind: 'reusable'; group: string }
+  kind: { kind: 'consume' | 'hold' } | { kind: 'reusable'; group: string }
   alternatives: string[]
   quantity: number | null
   fir: 'any' | 'required' | 'unknown'

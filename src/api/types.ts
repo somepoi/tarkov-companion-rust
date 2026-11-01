@@ -127,6 +127,8 @@ export interface RawTaskObjective {
   count?: number
   /** Accepted item ids (any one of them satisfies the objective). */
   items?: string[]
+  /** useItem counters accept these alternatives; counts describe uses, not physical units. */
+  useAny?: string[]
   /** Single item id on some objective kinds. */
   item?: string
   foundInRaid?: boolean
