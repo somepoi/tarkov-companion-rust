@@ -14,6 +14,8 @@ mod resources;
 mod searchbar;
 #[cfg(feature = "staged-updates")]
 mod staged_download;
+#[cfg(feature = "staged-updates")]
+mod update_signature;
 mod updates;
 
 use desktop::HostState;

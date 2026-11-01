@@ -1,14 +1,12 @@
 //! Bounded signed staging payloads. Nothing in this module executes installers.
-use base64::Engine;
+use crate::update_signature::MAX_UPDATE_BYTES as MAX_BYTES;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     io::Read,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
 };
-const MAX_BYTES: usize = 512 * 1024 * 1024;
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
@@ -47,12 +45,7 @@ impl Candidate {
         self.discovered.elapsed() < Duration::from_secs(600)
     }
 }
-fn signed_text(value: &str) -> Result<String, String> {
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(value)
-        .map_err(|_| "Invalid signature encoding")?;
-    String::from_utf8(bytes).map_err(|_| "Invalid signature text".into())
-}
+
 pub fn download(candidate: Candidate, key: String, root: PathBuf) -> Result<Value, String> {
     let client = reqwest::blocking::Client::builder()
         .https_only(true)
@@ -114,28 +107,7 @@ pub fn download(candidate: Candidate, key: String, root: PathBuf) -> Result<Valu
 }
 
 fn verify_payload(bytes: &[u8], candidate: &Candidate, key: &str) -> Result<String, String> {
-    let public = minisign_verify::PublicKey::decode(&signed_text(key)?)
-        .map_err(|_| "Invalid staging public key")?;
-    let signature = minisign_verify::Signature::decode(&signed_text(&candidate.signature)?)
-        .map_err(|_| "Invalid update signature")?;
-    public
-        .verify(bytes, &signature, true)
-        .map_err(|_| "Update signature verification failed")?;
-    // Read version metadata only after verification of both Minisign signatures.
-    let versions = signature
-        .trusted_comment()
-        .split('\t')
-        .filter_map(|part| part.strip_prefix("version:"))
-        .collect::<Vec<_>>();
-    if versions.len() != 1
-        || versions[0].trim_start_matches('v') != candidate.version.trim_start_matches('v')
-    {
-        return Err(
-            "Signed artifact version is missing or differs from the announced version".into(),
-        );
-    }
-    let digest = format!("{:x}", Sha256::digest(bytes));
-    Ok(digest)
+    crate::update_signature::verify_update(bytes, key, &candidate.signature, &candidate.version)
 }
 
 pub fn read_verified(

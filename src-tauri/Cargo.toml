@@ -1,4 +1,5 @@
 [package]
+default-run = "tarkov-companion-rust"
 name = "tarkov-companion-rust"
 version = "2.13.0"
 edition = "2024"
@@ -46,3 +47,8 @@ tauri-plugin-updater = { version = "2", optional = true, default-features = fals
 windows-registry = "0.6"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_Shell"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi"] }
+
+[[bin]]
+name = "prepare-update"
+path = "src/bin/prepare-update.rs"
+required-features = ["staged-updates"]
