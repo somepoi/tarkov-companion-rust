@@ -1,3 +1,4 @@
+import { decodeScreenshot } from '../scan/imageBudget'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ItemsById } from '../api/types'
 import { recordFromSpot, useLearnedStore } from '../scan/learned'
@@ -30,7 +31,7 @@ export function StackIdentityReview({ stack, observation, items, onChange, onClo
     if (screenshotHash) {
       void readArchivedScreenshot(screenshotHash).then(async (blob) => {
         if (!active) return
-        const bitmap = await createImageBitmap(blob)
+        const bitmap = await decodeScreenshot(blob)
         const { width, height } = bitmap
         bitmap.close()
         if (!active) return

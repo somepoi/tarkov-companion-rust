@@ -1,3 +1,4 @@
+import { screenshotSize } from '../scan/imageBudget'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import type { GameMode } from '../api/client'
 import type { Grid } from '../scan/core'
@@ -235,6 +236,7 @@ export async function inventoryCall<T>(
 }
 
 export async function archiveScreenshot(image: Blob): Promise<string> {
+  await screenshotSize(image)
   return invoke<string>(
     'archive_screenshot',
     new Uint8Array(await image.arrayBuffer()),

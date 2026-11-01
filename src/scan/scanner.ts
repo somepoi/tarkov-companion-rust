@@ -1,3 +1,4 @@
+import { decodeScreenshot } from './imageBudget'
 /**
  * Page-side wrapper around the scan worker: loads the fingerprint files once
  * (from the web server, or through the desktop bridge because Chromium cannot
@@ -127,7 +128,7 @@ export async function scanImage(
   await abortable(ensureWorker(), signal)
   signal?.throwIfAborted()
   const activeWorker = worker
-  const bitmap = await createImageBitmap(image)
+  const bitmap = await decodeScreenshot(image, signal)
   try {
     signal?.throwIfAborted()
     if (worker !== activeWorker) throw new Error("Scanner was reset. Try again.")

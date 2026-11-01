@@ -1,3 +1,4 @@
+import { decodeScreenshot } from '../scan/imageBudget'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Boxes, ImageUp, Plus, Save, Trash2, Undo2 } from 'lucide-react'
 import { useItems } from '../api/hooks'
@@ -334,7 +335,7 @@ function StashManager({ mode }: { mode: GameMode }) {
     const token = generation.current
     const hash = await archiveScreenshot(file)
     if (generation.current !== token) return
-    const bitmap = await createImageBitmap(file)
+    const bitmap = await decodeScreenshot(file)
     const { width, height } = bitmap
     bitmap.close()
     checkedCrop(null, { width, height })
@@ -1052,7 +1053,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                 Save these reviewed facts; unknown values remain uncertain.
               </label>
               <MultiViewPanel key={session.id} session={session} container={selected.container} draft={draft} imageHash={stagedImage?.hash} viewSize={viewSize} busy={busy} validDraft={(value) => !value.stacks.some((stack) => stack.provenance.quantityConfirmed && !quantityFitsCatalog(stack.quantity, catalog.data?.items[stack.itemId ?? '']))} run={(job) => action(job)}
-                onEdit={async (view) => { const token = generation.current; const blob = await readArchivedScreenshot(view.screenshotHash); const bitmap = await createImageBitmap(blob); const { width, height } = bitmap; bitmap.close(); if (generation.current !== token) return; setRegistration(null); setAssisted(false); setViewSize({ columns: view.columns, rows: view.rows }); setStagedImage({ blob, hash: view.screenshotHash, width, height }); changeDraft(structuredClone(view.draft)); setReviewStackId(null) }}
+                onEdit={async (view) => { const token = generation.current; const blob = await readArchivedScreenshot(view.screenshotHash); const bitmap = await decodeScreenshot(blob); const { width, height } = bitmap; bitmap.close(); if (generation.current !== token) return; setRegistration(null); setAssisted(false); setViewSize({ columns: view.columns, rows: view.rows }); setStagedImage({ blob, hash: view.screenshotHash, width, height }); changeDraft(structuredClone(view.draft)); setReviewStackId(null) }}
                 onApply={(next) => { setRegistration(null); setAssisted(false); setViewSize({ columns: selected.container.columns, rows: selected.container.rows }); changeDraft(next) }}
                 onCommitted={async (result) => { setLastCommit(result); setSession(null); setDraft(null); setStagedImage(null); await refresh() }} />
               <div className="flex flex-wrap gap-2">

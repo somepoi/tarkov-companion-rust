@@ -1,3 +1,4 @@
+import { decodeScreenshot } from './imageBudget'
 import type { Item, ItemsById } from '../api/types'
 import type { Detection, Grid, OcrWord } from './core'
 import { checkedCrop, checkedGrid, type ImageCrop, type ImageSize } from './registration'
@@ -123,7 +124,7 @@ export async function readStackQuantities(
   )
   report.eligible = eligible.length
   if (!eligible.length) return report
-  const source = await createImageBitmap(image)
+  const source = await decodeScreenshot(image, signal)
   const regions: Region[] = []
   let atlasWidth = 0
   let atlasHeight = 0

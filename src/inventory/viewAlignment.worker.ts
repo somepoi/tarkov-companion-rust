@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { decodeScreenshot } from '../scan/imageBudget'
 import type { AlignmentAnchor, AlignmentRequest, AlignmentResponse, AlignmentSource } from './alignViewPixels'
 import { checkedCrop, checkedGrid } from '../scan/registration'
 
@@ -8,7 +9,7 @@ const validSize = (source: { columns: number; rows: number }) => integer(source.
 async function patches(source: AlignmentSource, budget: { remaining: number }): Promise<Map<string, AlignmentAnchor>> {
   if (!validSize(source) || source.anchors.length > 128 || source.image.size > 64 * 1024 * 1024)
     throw new Error('Position hint exceeds image or anchor limits. Enter the position manually.')
-  const bitmap = await createImageBitmap(source.image)
+  const bitmap = await decodeScreenshot(source.image)
   try {
     const full = checkedCrop(null, bitmap)
     const canvas = new OffscreenCanvas(1, 1)

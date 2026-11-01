@@ -1,3 +1,4 @@
+import { decodeScreenshot } from './imageBudget'
 /**
  * Reads the short names printed on items (top-right of every slot) with Tesseract,
  * fully offline. The engine and English model ship in /ocr (npm run ocr:assets).
@@ -143,7 +144,7 @@ async function readWordsNow(image: Blob, crop: ImageCrop | null, opts: ReadOptio
     if (opts.signal?.aborted || (opts.isCurrent && !opts.isCurrent())) throw new DOMException('Text read was cancelled', 'AbortError')
   }
   checkCurrent()
-  const bitmap = await createImageBitmap(image)
+  const bitmap = await decodeScreenshot(image, opts.signal)
   let area: ImageCrop
   let src: OffscreenCanvas
   let sctx: OffscreenCanvasRenderingContext2D

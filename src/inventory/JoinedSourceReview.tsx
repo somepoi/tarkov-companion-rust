@@ -1,3 +1,4 @@
+import { decodeScreenshot } from '../scan/imageBudget'
 import { useEffect, useState } from 'react'
 import { checkedCrop } from '../scan/registration'
 import { readArchivedScreenshot, type JoinedSource } from './client'
@@ -29,7 +30,7 @@ function SourceImage({ source: initial, onLoading }: { source: JoinedSource; onL
     let url: string | undefined
     void readArchivedScreenshot(source.screenshotHash).then(async (blob) => {
       if (!active) return
-      const bitmap = await createImageBitmap(blob)
+      const bitmap = await decodeScreenshot(blob)
       const { width, height } = bitmap
       bitmap.close()
       if (!active) return

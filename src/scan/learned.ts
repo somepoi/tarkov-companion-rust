@@ -1,3 +1,4 @@
+import { decodeScreenshot } from './imageBudget'
 /**
  * Corrections the user made in the scanner, kept as extra references.
  *
@@ -175,7 +176,7 @@ export async function recordFromSpot(image: Blob, grid: Grid, det: Detection, w:
   const y0 = Math.max(0, Math.floor(grid.oy + det.row * grid.pitch))
   const wpx = Math.ceil(w * grid.pitch + 1)
   const hpx = Math.ceil(h * grid.pitch + 1)
-  const source = await createImageBitmap(image)
+  const source = await decodeScreenshot(image)
   const inside = grid.ox + det.col * grid.pitch >= 0
     && grid.oy + det.row * grid.pitch >= 0
     && x0 + wpx <= source.width && y0 + hpx <= source.height

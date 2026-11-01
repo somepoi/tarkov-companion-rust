@@ -1,3 +1,4 @@
+import { screenshotSize } from './imageBudget'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Check, Crop, Palette, FolderOpen, ImageUp, Loader2, Minus, Move, Plus, ScanSearch, Search, Trash2, X, Undo2 } from 'lucide-react'
 import { useNeeds } from '../hooks/useNeeds'
@@ -205,18 +206,41 @@ export function ScanDialog() {
   // New image: show it and scan the whole picture.
   useEffect(() => {
     if (!open || !image) return
-    const u = URL.createObjectURL(image)
-    setUrl(u)
+    let active = true
+    let url: string | undefined
+    let probe: HTMLImageElement | undefined
+    const lifecycle = scanLifecycle.current
+    lifecycle.generation++
+    setUrl(null)
+    setResult(null)
+    setRows([])
+    setDets([])
     setCrop(null)
     setApplied(null)
     setUndoNote(null)
     appliedRef.current = false
     setLearnNote(null)
-    const probe = new Image()
-    probe.onload = () => setSize({ w: probe.naturalWidth, h: probe.naturalHeight })
-    probe.src = u
-    void runScan(image, null)
-    return () => URL.revokeObjectURL(u)
+    void screenshotSize(image).then(() => {
+      if (!active) return
+      url = URL.createObjectURL(image)
+      setUrl(url)
+      probe = new Image()
+      probe.onload = () => {
+        if (active && probe) setSize({ w: probe.naturalWidth, h: probe.naturalHeight })
+      }
+      probe.src = url
+      void runScan(image, null)
+    }).catch((cause: unknown) => {
+      if (!active) return
+      setError(cause instanceof Error ? cause.message : String(cause))
+      setStatus('error')
+    })
+    return () => {
+      active = false
+      lifecycle.generation++
+      if (probe) { probe.onload = null; probe.removeAttribute('src') }
+      if (url) URL.revokeObjectURL(url)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonce, open])
 
