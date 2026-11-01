@@ -41,10 +41,11 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "somepoi",
     "targets": ["nsis"],
     "icon": ["icons/icon.ico", "../build/icon.png"],
     "copyright": "Copyright (C) 2026 David04-09. GPL-3.0-or-later. Fork maintained by somepoi.",
     "resources": { "../LICENSE": "LICENSE.txt", "../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt", "../THIRD_PARTY_NOTICES_RUST.txt": "THIRD_PARTY_NOTICES_RUST.txt" },
-    "windows": { "webviewInstallMode": { "type": "downloadBootstrapper" }, "nsis": { "installMode": "currentUser" } }
+    "windows": { "allowDowngrades": false, "webviewInstallMode": { "type": "downloadBootstrapper" }, "nsis": { "installMode": "currentUser" } }
   }
 }
