@@ -1,8 +1,14 @@
 import { useState } from 'react'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { useQuery } from '@tanstack/react-query'
 import { buildRendererBackup } from './rendererBackup'
 
+interface BackupProgress {
+  stage: string
+  bytes: number
+  total: number | null
+}
 interface BackupList {
   backups: { name: string; createdAt: number; path: string }[]
   activeProfile: string
@@ -23,6 +29,7 @@ export function BackupPanel() {
     queryFn: () => call<BackupList>({ operation: 'list' }),
   })
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<BackupProgress | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [recovery, setRecovery] = useState<Recovery | null>(null)
@@ -32,11 +39,19 @@ export function BackupPanel() {
     setBusy(true)
     setError('')
     setMessage('')
+    setProgress(null)
+    let unlisten: UnlistenFn | undefined
     try {
+      // Subscribe before invoking so fast jobs cannot outrun registration.
+      unlisten = await listen<BackupProgress>('backup-progress', (event) => {
+        setProgress(event.payload)
+      })
       await work()
     } catch (e) {
       setError(String(e))
     } finally {
+      unlisten?.()
+      setProgress(null)
       setBusy(false)
     }
   }
@@ -64,6 +79,18 @@ export function BackupPanel() {
         separately at the start of the backup. Keep this app idle until it
         finishes. Save open scan drafts first; unsaved form edits are excluded.
       </p>
+      {busy && (
+        <div role="status" className="space-y-1 text-sm text-ink-muted">
+          <p>{progress?.stage ?? 'Preparing saved interface data…'}</p>
+          {progress?.total != null && (
+            <>
+              <progress className="w-full" aria-label="Current file progress"
+                max={Math.max(1, progress.total)} value={progress.bytes} />
+              <p className="text-xs">Current file: {(progress.bytes / 1048576).toFixed(1)} / {(progress.total / 1048576).toFixed(1)} MiB</p>
+            </>
+          )}
+        </div>
+      )}
       <fieldset disabled={busy} className="space-y-3">
         <div className="flex flex-wrap gap-2">
           <button
@@ -79,7 +106,7 @@ export function BackupPanel() {
               })
             }
           >
-            {busy ? 'Working…' : 'Create full backup'}
+            Create full backup
           </button>
           <button
             className="btn"

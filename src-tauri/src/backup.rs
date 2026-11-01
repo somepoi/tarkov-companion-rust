@@ -14,6 +14,7 @@ use std::{
     },
     time::{SystemTime, UNIX_EPOCH},
 };
+use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -22,6 +23,27 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 const MAX_JSON: u64 = 20 * 1024 * 1024;
 const MAX_FILE: u64 = 1024 * 1024 * 1024;
 const MAX_TOTAL: u64 = 8 * 1024 * 1024 * 1024;
+
+// One reporter per serialized job; updates are scoped to the requesting window.
+struct Progress {
+    window: tauri::WebviewWindow,
+    last: std::time::Instant,
+}
+impl Progress {
+    fn send(&mut self, stage: &str, bytes: u64, total: Option<u64>, force: bool) {
+        if !force && self.last.elapsed() < std::time::Duration::from_millis(150) {
+            return;
+        }
+        self.last = std::time::Instant::now();
+        let _ = self.window.emit(
+            "backup-progress",
+            json!({"stage":stage,"bytes":bytes,"total":total}),
+        );
+    }
+    fn stage(&mut self, stage: &str) {
+        self.send(stage, 0, None, true);
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(
@@ -125,9 +147,25 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
     atomic_write(path, &bytes).map_err(|e| e.to_string())
 }
-fn digest_file(path: &Path, destination: Option<&Path>, limit: u64) -> Result<FileEntry, String> {
+fn digest_file(
+    path: &Path,
+    destination: Option<&Path>,
+    limit: u64,
+    progress: &mut Progress,
+) -> Result<FileEntry, String> {
+    let stage = if destination.is_some() {
+        "Copying file"
+    } else {
+        "Verifying file"
+    };
     let limit = limit.min(MAX_FILE);
     let mut input = File::open(path).map_err(|e| e.to_string())?;
+    let file_bytes = input
+        .metadata()
+        .map_err(|e| e.to_string())?
+        .len()
+        .min(limit);
+    progress.send(stage, 0, Some(file_bytes), false);
     let mut output = destination
         .map(|p| OpenOptions::new().create_new(true).write(true).open(p))
         .transpose()
@@ -149,6 +187,7 @@ fn digest_file(path: &Path, destination: Option<&Path>, limit: u64) -> Result<Fi
             return Err(format!("Backup entry exceeds its {limit}-byte budget"));
         }
         total += n as u64;
+        progress.send(stage, total, Some(file_bytes.max(total)), false);
         digest.update(&buffer[..n]);
         if let Some(output) = &mut output {
             output.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
@@ -157,12 +196,13 @@ fn digest_file(path: &Path, destination: Option<&Path>, limit: u64) -> Result<Fi
     if let Some(output) = &mut output {
         output.sync_all().map_err(|e| e.to_string())?;
     }
+    progress.send(stage, total, Some(total), false);
     Ok(FileEntry {
         bytes: total,
         sha256: format!("{:x}", digest.finalize()),
     })
 }
-fn verify(root: &Path) -> Result<Manifest, String> {
+fn verify(root: &Path, progress: &mut Progress) -> Result<Manifest, String> {
     let manifest: Manifest =
         serde_json::from_value(read_json(&root.join("manifest.json"), 4 * 1024 * 1024)?)
             .map_err(|e| e.to_string())?;
@@ -200,7 +240,7 @@ fn verify(root: &Path) -> Result<Manifest, String> {
         if fs::metadata(&file).map_err(|e| e.to_string())?.len() != expected.bytes {
             return Err(format!("Backup size mismatch: {relative}"));
         }
-        let actual = digest_file(&file, None, expected.bytes)?;
+        let actual = digest_file(&file, None, expected.bytes, progress)?;
         if actual.bytes != expected.bytes || actual.sha256 != expected.sha256 {
             return Err(format!("Backup checksum mismatch: {relative}"));
         }
@@ -213,6 +253,7 @@ fn verify(root: &Path) -> Result<Manifest, String> {
     if !settings.is_object() {
         return Err("Backup settings must be an object".into());
     }
+    progress.stage("Verifying database and saved references");
     for hash in stash_core::Repository::verify_file(source_file(root, "user.sqlite")?)
         .map_err(|e| e.to_string())?
     {
@@ -262,7 +303,8 @@ pub fn active_profile(root: &Path) -> Result<PathBuf, String> {
     }
     Ok(path)
 }
-fn create(state: &HostState, renderer: Value) -> Result<Value, String> {
+fn create(state: &HostState, renderer: Value, progress: &mut Progress) -> Result<Value, String> {
+    progress.stage("Creating database snapshot");
     validate_renderer(&renderer)?;
     let root = backup_root(state);
     fs::create_dir_all(&root).map_err(|e| e.to_string())?;
@@ -288,11 +330,12 @@ fn create(state: &HostState, renderer: Value) -> Result<Value, String> {
         };
         files.insert(
             file.to_owned(),
-            digest_file(&staging.join(file), None, limit)?,
+            digest_file(&staging.join(file), None, limit, progress)?,
         );
     }
     // Bind archive membership to the immutable SQLite snapshot, not the live
     // directory (which can contain later captures or abandoned archive files).
+    progress.stage("Reading saved screenshot references");
     let evidence = stash_core::Repository::verify_file(staging.join("user.sqlite"))
         .map_err(|e| e.to_string())?;
     fs::create_dir(staging.join("screenshots")).map_err(|e| e.to_string())?;
@@ -310,7 +353,7 @@ fn create(state: &HostState, renderer: Value) -> Result<Value, String> {
         if bytes > MAX_TOTAL - total {
             return Err("Backup exceeds supported size".into());
         }
-        let record = digest_file(&input, Some(&staging.join(&relative)), bytes)?;
+        let record = digest_file(&input, Some(&staging.join(&relative)), bytes, progress)?;
         if record.sha256 != file {
             return Err("Archived screenshot checksum is invalid".into());
         }
@@ -330,13 +373,13 @@ fn create(state: &HostState, renderer: Value) -> Result<Value, String> {
             files,
         },
     )?;
-    verify(&staging)?;
+    verify(&staging, progress)?;
     let destination = root.join(&id);
     fs::rename(staging, &destination).map_err(|e| e.to_string())?;
     Ok(json!({"name": id, "path": destination, "bytes": total}))
 }
-fn restore(state: &HostState, source: &Path) -> Result<Value, String> {
-    let manifest = verify(source)?;
+fn restore(state: &HostState, source: &Path, progress: &mut Progress) -> Result<Value, String> {
+    let manifest = verify(source, progress)?;
     let parent = state.profile_root.join("recovered-profiles");
     fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
     let id = name("recovery");
@@ -348,6 +391,7 @@ fn restore(state: &HostState, source: &Path) -> Result<Value, String> {
             &source_file(source, relative)?,
             Some(&staging.join(relative)),
             expected.bytes,
+            progress,
         )?;
         if actual.sha256 != expected.sha256 || actual.bytes != expected.bytes {
             return Err("Backup changed while being restored; original profile retained".into());
@@ -355,6 +399,7 @@ fn restore(state: &HostState, source: &Path) -> Result<Value, String> {
     }
     // A newer schema is rejected before any activation. Older schemas migrate
     // only in this isolated copy, never in the imported backup directory.
+    progress.stage("Preparing recovered database");
     let mut repository =
         stash_core::Repository::open(staging.join("user.sqlite")).map_err(|e| e.to_string())?;
     for profile in repository.list_profiles().map_err(|e| e.to_string())? {
@@ -402,8 +447,10 @@ pub async fn native_backup(
     let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = JOB.try_lock().map_err(|_| "A backup/recovery operation is already running")?;
+        let mut progress = Progress { window, last: std::time::Instant::now() };
+        progress.stage("Preparing backup operation");
         match operation {
-            Operation::Create { renderer_state } => create(&state, renderer_state),
+            Operation::Create { renderer_state } => create(&state, renderer_state, &mut progress),
             Operation::List => {
                 let root = backup_root(&state);
                 let mut list = Vec::new();
@@ -419,17 +466,18 @@ pub async fn native_backup(
                 Ok(json!({"backups":list,"activeProfile":state.data_dir,"originalProfile":state.profile_root,"startupIssues":state.startup_issues,"canRevert":state.profile_root.join("active-profile.json").exists()}))
             }
             Operation::OpenFolder => { let root = backup_root(&state); fs::create_dir_all(&root).map_err(|e| e.to_string())?; app.opener().open_path(root.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())?; Ok(Value::Null) }
-            Operation::Restore { name } => { if !valid_name(&name, "backup") { return Err("Invalid backup name".into()); } restore(&state, &backup_root(&state).join(name)) }
+            Operation::Restore { name } => { if !valid_name(&name, "backup") { return Err("Invalid backup name".into()); } restore(&state, &backup_root(&state).join(name), &mut progress) }
             Operation::Import => match app.dialog().file().set_title("Select a Tarkov Companion Rust backup directory").blocking_pick_folder() {
-                None => Ok(Value::Null), Some(path) => restore(&state, &path.into_path().map_err(|e| e.to_string())?),
+                None => Ok(Value::Null), Some(path) => restore(&state, &path.into_path().map_err(|e| e.to_string())?, &mut progress),
             },
             Operation::Activate { recovery } => {
                 if !valid_name(&recovery, "recovery") { return Err("Invalid recovery name".into()); }
                 let target = state.profile_root.join("recovered-profiles").join(&recovery).canonicalize().map_err(|e| e.to_string())?;
                 if !target.starts_with(&state.profile_root) || !target.join("recovery-ready.json").is_file() { return Err("Recovery is not ready or is outside the profile root".into()); }
-                for hash in stash_core::Repository::verify_file(target.join("user.sqlite")).map_err(|e| e.to_string())? {
+                progress.stage("Verifying database and saved references");
+    for hash in stash_core::Repository::verify_file(target.join("user.sqlite")).map_err(|e| e.to_string())? {
                     let file = source_file(&target, &format!("screenshots/{hash}"))?;
-                    if fs::metadata(&file).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 || digest_file(&file, None, 64 * 1024 * 1024)?.sha256 != hash { return Err("Recovered screenshot evidence is invalid".into()); }
+                    if fs::metadata(&file).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 || digest_file(&file, None, 64 * 1024 * 1024, &mut progress)?.sha256 != hash { return Err("Recovered screenshot evidence is invalid".into()); }
                 }
                 validate_renderer(&read_json(&target.join("renderer-state.json"), MAX_JSON)?)?;
                 write_json(&state.profile_root.join("active-profile.json"), &json!({"recovery":recovery}))?;
