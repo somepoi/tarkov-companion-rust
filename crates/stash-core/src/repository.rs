@@ -70,6 +70,14 @@ impl Repository {
         let repository = Self { connection };
         repository.list_profiles()?;
         let mut hashes = BTreeSet::new();
+        let mut observations = repository
+            .connection
+            .prepare("SELECT payload_json FROM scan_observations")?;
+        for json in observations.query_map([], |r| r.get::<_, String>(0))? {
+            let observation: Observation = serde_json::from_str(&json?)?;
+            digest(&observation.screenshot_hash)?;
+            hashes.insert(observation.screenshot_hash);
+        }
         let mut stacks = repository
             .connection
             .prepare("SELECT payload_json FROM snapshot_stacks")?;

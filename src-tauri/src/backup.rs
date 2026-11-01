@@ -277,31 +277,34 @@ fn create(state: &HostState, renderer: Value) -> Result<Value, String> {
     for file in ["user.sqlite", "renderer-state.json", "settings.json"] {
         files.insert(file.to_owned(), digest_file(&staging.join(file), None)?);
     }
-    let source = state.data_dir.join("screenshots");
+    // Bind archive membership to the immutable SQLite snapshot, not the live
+    // directory (which can contain later captures or abandoned archive files).
+    let evidence = stash_core::Repository::verify_file(staging.join("user.sqlite"))
+        .map_err(|e| e.to_string())?;
     fs::create_dir(staging.join("screenshots")).map_err(|e| e.to_string())?;
     let mut total: u64 = files.values().map(|f| f.bytes).sum();
-    if source.exists() {
-        for entry in fs::read_dir(&source).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let file = entry.file_name().to_string_lossy().into_owned();
-            if !hash_name(&file) {
-                continue;
-            } // Ignore an uncommitted archive temp file.
-            let relative = format!("screenshots/{file}");
-            let input = source_file(&state.data_dir, &relative)?;
-            if fs::metadata(&input).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 {
-                return Err("Screenshot exceeds 64 MiB".into());
-            }
-            let record = digest_file(&input, Some(&staging.join(&relative)))?;
-            if record.sha256 != file {
-                return Err("Archived screenshot checksum is invalid".into());
-            }
-            total += record.bytes;
-            if total > MAX_TOTAL || files.len() >= 50000 {
-                return Err("Backup exceeds supported size".into());
-            }
-            files.insert(relative, record);
+    if total > MAX_TOTAL || evidence.len() > 50000 - files.len() {
+        return Err("Backup exceeds supported size".into());
+    }
+    for file in evidence {
+        let relative = format!("screenshots/{file}");
+        let input = source_file(&state.data_dir, &relative)?;
+        let bytes = fs::metadata(&input).map_err(|e| e.to_string())?.len();
+        if bytes > 64 * 1024 * 1024 {
+            return Err("Screenshot exceeds 64 MiB".into());
         }
+        if bytes > MAX_TOTAL - total {
+            return Err("Backup exceeds supported size".into());
+        }
+        let record = digest_file(&input, Some(&staging.join(&relative)))?;
+        if record.sha256 != file {
+            return Err("Archived screenshot checksum is invalid".into());
+        }
+        total += record.bytes;
+        if total > MAX_TOTAL || files.len() >= 50000 {
+            return Err("Backup exceeds supported size".into());
+        }
+        files.insert(relative, record);
     }
     write_json(
         &staging.join("manifest.json"),
