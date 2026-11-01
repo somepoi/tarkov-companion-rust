@@ -16,6 +16,7 @@ export interface ScanResult {
   detections: Detection[]
   ms: number
   assetWarnings?: string[]
+  regionReuse?: { reused: number; computed: number }
 }
 
 let worker: Worker | null = null
@@ -84,7 +85,7 @@ function ensureWorker(): Promise<number> {
       if (m.type === 'ready') { initialized = true; resolve(m.items); scheduleRelease() }
       else if (m.type === 'progress') pending.get(m.id)?.onProgress?.(m.done / Math.max(1, m.total))
       else if (m.type === 'result') {
-        pending.get(m.id)?.resolve({ grid: m.grid, detections: m.detections, ms: m.ms, assetWarnings })
+        pending.get(m.id)?.resolve({ grid: m.grid, detections: m.detections, ms: m.ms, assetWarnings, regionReuse: m.regionReuse })
         pending.delete(m.id)
       } else if (m.type === 'identified') {
         identifying.get(m.id)?.resolve(m.matches)
@@ -159,6 +160,8 @@ export async function scanImage(
   /** Discover independently, then require agreement before replacing draft suggestions. */
   expectedGrid?: Grid,
   signal?: AbortSignal,
+  /** Explicit experimental pixel reuse, scoped to the current assisted session. */
+  regionReuseScope?: string,
 ): Promise<ScanResult> {
   const release = retainScanner()
   try {
@@ -201,7 +204,7 @@ export async function scanImage(
         reject: (error) => finish(() => reject(error)), onProgress,
       })
       signal?.addEventListener('abort', abort, { once: true })
-      const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words, grid, expectedGrid }
+      const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words, grid, expectedGrid, regionReuseScope }
       try {
         if (!worker) throw new Error('Scanner is unavailable. Try again.')
         worker.postMessage(msg, [bitmap])

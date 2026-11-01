@@ -611,6 +611,8 @@ const CONFIRMED_BONUS = 0.8
 const NOT_RADIUS = 9
 
 export interface ScanOptions {
+  /** Internal worker optimization; must be equivalent to sampleRegion on this image. */
+  sample?: (x: number, y: number, width: number, height: number, outputWidth: number, outputHeight: number) => Float32Array
   /** Accept matches below this error (0..255 per channel). */
   maxError?: number
   /** Only these item ids (e.g. skip presets). */
@@ -999,6 +1001,7 @@ function growGuns(out: Detection[], grid: Grid, labels: Map<string, Label>, inde
 
 /** Looks for items on the grid; returns non-overlapping detections, best first. */
 export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidate[]>, index: FingerprintIndex, opts: ScanOptions = {}, onProgress?: (done: number, total: number) => void): Detection[] {
+  const sample = opts.sample ?? ((x: number, y: number, w: number, h: number, outW: number, outH: number) => sampleRegion(img, x, y, w, h, outW, outH))
   const maxError = opts.maxError ?? 28
   const footprints = [...candidates.keys()].map((k) => k.split('x').map(Number) as [number, number])
   const raw: Detection[] = []
@@ -1030,7 +1033,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
         const gunsOnly = emptyCount > 0
         const x0 = grid.ox + col * grid.pitch
         const y0 = grid.oy + row * grid.pitch
-        const region = sampleRegion(img, x0, y0, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
+        const region = sample(x0, y0, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
         const all = candidates.get(`${w}x${h}`) ?? []
         const list = gunsOnly ? all.filter((c) => c.gun) : all
         if (!list.length) continue
@@ -1128,7 +1131,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
       let covers = false
       for (let y = row; y < grid.rows && !covers; y++) for (let x = col; x < col + w; x++) if (empty[y][x]) covers = true
       if (covers) continue
-      const region = sampleRegion(img, grid.ox + col * grid.pitch, grid.oy + row * grid.pitch, w * grid.pitch + 1, visible * grid.pitch, w * FP, visible * FP)
+      const region = sample(grid.ox + col * grid.pitch, grid.oy + row * grid.pitch, w * grid.pitch + 1, visible * grid.pitch, w * FP, visible * FP)
       const mask = compareMask(w, visible, false)
       for (const c of candidates.get(`${w}x${h}`) ?? []) {
         if (c.negative || c.rotated || !c.name) continue
@@ -1174,7 +1177,7 @@ export function scanGrid(img: Rgba, grid: Grid, candidates: Map<string, Candidat
       if (emptyCount * 2 > w * h) continue
       const list = (candidates.get(`${w}x${h}`) ?? []).filter((c) => !c.negative && sims.has(c.itemId))
       if (!list.length) continue
-      const region = sampleRegion(img, grid.ox + col * grid.pitch, grid.oy + row * grid.pitch, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
+      const region = sample(grid.ox + col * grid.pitch, grid.oy + row * grid.pitch, w * grid.pitch + 1, h * grid.pitch + 1, w * FP, h * FP)
       for (const c of list) {
         const id = `${c.itemId}|${col}|${row}|${w}|${h}`
         if (already.has(id)) continue

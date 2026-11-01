@@ -5,24 +5,25 @@
  */
 import { buildCandidates, chooseGrid, detectGrid, identifyRegion, refineGrid, indexFromParts, scanGrid, withLearned, type Rgba, type Detection, type FingerprintHeader, type FingerprintIndex, type Grid, type LearnedFingerprint, type OcrWord } from './core'
 import { checkedCrop, checkedGrid, checkedRepeatedGrid } from './registration'
+import { prepareRegionReuse, type RegionFrame } from './regionReuse'
 
 export type WorkerRequest =
   | { type: 'init'; header: FingerprintHeader; pixels: ArrayBuffer }
-  | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number; preferredPitch?: number; learned?: LearnedFingerprint[]; words?: OcrWord[]; grid?: Grid; expectedGrid?: Grid }
+  | { type: 'scan'; id: number; bitmap: ImageBitmap; crop: { x: number; y: number; w: number; h: number } | null; pitch?: number; preferredPitch?: number; learned?: LearnedFingerprint[]; words?: OcrWord[]; grid?: Grid; expectedGrid?: Grid; regionReuseScope?: string }
   /** Best items for one box of the last scan (grid cells), for the box editor. */
   | { type: 'identify'; id: number; box: { col: number; row: number; w: number; h: number } }
 
 export type WorkerResponse =
   | { type: 'ready'; items: number }
   | { type: 'progress'; id: number; done: number; total: number }
-  | { type: 'result'; id: number; grid: Grid; detections: Detection[]; ms: number }
+  | { type: 'result'; id: number; grid: Grid; detections: Detection[]; ms: number; regionReuse?: { reused: number; computed: number } }
   | { type: 'identified'; id: number; matches: IdentifyMatch[] }
   | { type: 'error'; id: number; message: string }
 
 let index: FingerprintIndex | null = null
 let candidates: ReturnType<typeof buildCandidates> | null = null
 /** The last scan (cropped image, grid in its coordinates, words, candidates with corrections) for 'identify'. */
-let last: { img: Rgba; grid: Grid; words: OcrWord[]; candidates: ReturnType<typeof buildCandidates> } | null = null
+let last: { img: Rgba; grid: Grid; words: OcrWord[]; candidates: ReturnType<typeof buildCandidates>; regions?: RegionFrame } | null = null
 
 export type IdentifyMatch = ReturnType<typeof identifyRegion>[number]
 
@@ -31,6 +32,7 @@ const post = (msg: WorkerResponse) => (self as unknown as DedicatedWorkerGlobalS
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   const msg = e.data
   if (msg.type === 'init') {
+    last = null
     index = indexFromParts(msg.header, new Uint8Array(msg.pixels))
     candidates = buildCandidates(index)
     post({ type: 'ready', items: index.ids.length })
@@ -39,6 +41,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   if (msg.type === 'scan') {
     try {
       if (!index || !candidates) throw new Error('Scanner data not loaded yet')
+      if (msg.regionReuseScope && (!msg.expectedGrid || msg.regionReuseScope.length > 200)) throw new Error('Region reuse requires a bounded assisted scan session')
       const t0 = performance.now()
       const crop = checkedCrop(msg.crop, msg.bitmap)
       const registered = msg.grid ? checkedGrid(msg.grid, crop) : undefined
@@ -60,12 +63,14 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       if (msg.expectedGrid) checkedRepeatedGrid(
         { ...grid, ox: grid.ox + crop.x, oy: grid.oy + crop.y }, msg.expectedGrid, crop)
       const withMine = withLearned(candidates, msg.learned ?? [])
-      const detections = scanGrid(img, grid, withMine, index, { words }, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
-      last = { img, grid, words, candidates: withMine }
+      const regions = msg.regionReuseScope ? prepareRegionReuse(img, grid, msg.regionReuseScope, last?.regions) : undefined
+      const detections = scanGrid(img, grid, withMine, index, { words, sample: regions?.sample }, (done, total) => post({ type: 'progress', id: msg.id, done, total }))
+      last = { img, grid, words, candidates: withMine, regions: regions?.frame }
       // Report positions in full-screenshot coordinates.
       const shifted: Grid = { ...grid, ox: grid.ox + crop.x, oy: grid.oy + crop.y }
-      post({ type: 'result', id: msg.id, grid: shifted, detections, ms: Math.round(performance.now() - t0) })
+      post({ type: 'result', id: msg.id, grid: shifted, detections, ms: Math.round(performance.now() - t0), regionReuse: regions?.stats })
     } catch (err) {
+      if (last) last.regions = undefined
       post({ type: 'error', id: msg.id, message: err instanceof Error ? err.message : String(err) })
     } finally {
       msg.bitmap.close()
