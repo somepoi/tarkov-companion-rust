@@ -125,7 +125,8 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
     atomic_write(path, &bytes).map_err(|e| e.to_string())
 }
-fn digest_file(path: &Path, destination: Option<&Path>) -> Result<FileEntry, String> {
+fn digest_file(path: &Path, destination: Option<&Path>, limit: u64) -> Result<FileEntry, String> {
+    let limit = limit.min(MAX_FILE);
     let mut input = File::open(path).map_err(|e| e.to_string())?;
     let mut output = destination
         .map(|p| OpenOptions::new().create_new(true).write(true).open(p))
@@ -135,14 +136,19 @@ fn digest_file(path: &Path, destination: Option<&Path>) -> Result<FileEntry, Str
     let mut total = 0_u64;
     let mut buffer = [0_u8; 64 * 1024];
     loop {
-        let n = input.read(&mut buffer).map_err(|e| e.to_string())?;
+        // Read at most one byte beyond the remaining budget to distinguish EOF
+        // from growth. Never hash or copy bytes beyond the caller's limit.
+        let capacity = ((limit - total + 1).min(buffer.len() as u64)) as usize;
+        let n = input
+            .read(&mut buffer[..capacity])
+            .map_err(|e| e.to_string())?;
         if n == 0 {
             break;
         }
-        total += n as u64;
-        if total > MAX_FILE {
-            return Err("Backup entry exceeds 1 GiB".into());
+        if n as u64 > limit - total {
+            return Err(format!("Backup entry exceeds its {limit}-byte budget"));
         }
+        total += n as u64;
         digest.update(&buffer[..n]);
         if let Some(output) = &mut output {
             output.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
@@ -194,8 +200,8 @@ fn verify(root: &Path) -> Result<Manifest, String> {
         if fs::metadata(&file).map_err(|e| e.to_string())?.len() != expected.bytes {
             return Err(format!("Backup size mismatch: {relative}"));
         }
-        let actual = digest_file(&file, None)?;
-        if actual.sha256 != expected.sha256 {
+        let actual = digest_file(&file, None, expected.bytes)?;
+        if actual.bytes != expected.bytes || actual.sha256 != expected.sha256 {
             return Err(format!("Backup checksum mismatch: {relative}"));
         }
     }
@@ -275,7 +281,15 @@ fn create(state: &HostState, renderer: Value) -> Result<Value, String> {
     )?;
     let mut files = BTreeMap::new();
     for file in ["user.sqlite", "renderer-state.json", "settings.json"] {
-        files.insert(file.to_owned(), digest_file(&staging.join(file), None)?);
+        let limit = if file == "user.sqlite" {
+            MAX_FILE
+        } else {
+            MAX_JSON
+        };
+        files.insert(
+            file.to_owned(),
+            digest_file(&staging.join(file), None, limit)?,
+        );
     }
     // Bind archive membership to the immutable SQLite snapshot, not the live
     // directory (which can contain later captures or abandoned archive files).
@@ -296,7 +310,7 @@ fn create(state: &HostState, renderer: Value) -> Result<Value, String> {
         if bytes > MAX_TOTAL - total {
             return Err("Backup exceeds supported size".into());
         }
-        let record = digest_file(&input, Some(&staging.join(&relative)))?;
+        let record = digest_file(&input, Some(&staging.join(&relative)), bytes)?;
         if record.sha256 != file {
             return Err("Archived screenshot checksum is invalid".into());
         }
@@ -333,6 +347,7 @@ fn restore(state: &HostState, source: &Path) -> Result<Value, String> {
         let actual = digest_file(
             &source_file(source, relative)?,
             Some(&staging.join(relative)),
+            expected.bytes,
         )?;
         if actual.sha256 != expected.sha256 || actual.bytes != expected.bytes {
             return Err("Backup changed while being restored; original profile retained".into());
@@ -414,7 +429,7 @@ pub async fn native_backup(
                 if !target.starts_with(&state.profile_root) || !target.join("recovery-ready.json").is_file() { return Err("Recovery is not ready or is outside the profile root".into()); }
                 for hash in stash_core::Repository::verify_file(target.join("user.sqlite")).map_err(|e| e.to_string())? {
                     let file = source_file(&target, &format!("screenshots/{hash}"))?;
-                    if fs::metadata(&file).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 || digest_file(&file, None)?.sha256 != hash { return Err("Recovered screenshot evidence is invalid".into()); }
+                    if fs::metadata(&file).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 || digest_file(&file, None, 64 * 1024 * 1024)?.sha256 != hash { return Err("Recovered screenshot evidence is invalid".into()); }
                 }
                 validate_renderer(&read_json(&target.join("renderer-state.json"), MAX_JSON)?)?;
                 write_json(&state.profile_root.join("active-profile.json"), &json!({"recovery":recovery}))?;
