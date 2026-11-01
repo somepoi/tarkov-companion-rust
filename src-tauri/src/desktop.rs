@@ -93,21 +93,8 @@ pub struct HostState {
 
 impl HostState {
     pub fn open(app: &tauri::AppHandle) -> Result<Self, NativeError> {
-        let args: Vec<_> = std::env::args().collect();
-        let supplied = args
-            .iter()
-            .find_map(|a| a.strip_prefix("--profile-dir=").map(str::to_owned))
-            .or_else(|| {
-                args.windows(2)
-                    .find(|a| a[0] == "--profile-dir")
-                    .map(|a| a[1].clone())
-            });
-        if benchmark_mode() && supplied.is_none() {
-            return Err(error(
-                "benchmark_profile",
-                "Benchmark mode requires an explicit isolated --profile-dir",
-            ));
-        }
+        crate::benchmark_profile::claim().map_err(|e| error("benchmark_profile", e))?;
+        let supplied = crate::benchmark_profile::explicit_profile();
         let data_dir = match supplied {
             Some(value) => {
                 let path = PathBuf::from(value);

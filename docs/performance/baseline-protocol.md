@@ -75,3 +75,9 @@ When supplied, labels produce descriptive one-to-one exact item/box agreement, r
 ## Reporting and preservation
 
 Publish raw JSON, methodology, hashes, sample counts, failures, strata, warm/cold definitions and measurement omissions together. Keep screenshots outside Git unless the owner has reviewed them. Do not publish personal paths or images accidentally. Record deviations between Electron and Tauri hosts; do not claim parity or a Rust/Tauri resource win from an unrun script, debug build or changed workload.
+
+## Fork measurement ownership (2026-11-01)
+
+Both fork hosts now require a fresh empty profile under the standard launcher's temporary directory and validate its launch.json profile/executable binding. They claim a marker before startup and bypass normal single-instance integration only in the explicit measurement mode. Reusing a prior profile or bypassing the measurement launcher is refused; normal application startup retains single-instance behavior. This does not add a warm-profile protocol.
+
+New sampler reports include completion fields for root exit, full-window observation, sampling count and layout/catalog readiness. Incomplete sampling/layout launches return nonzero; inspect the retained raw report/launch record rather than interpreting zero process memory as an idle application. Catalog readiness is separately required for catalog-qualified idle comparisons. These source/build changes were not exercised with actual launches or simulated exits. See `../plans/2026-11-01-measurement-isolation.md`.

@@ -1,5 +1,6 @@
 mod autostart;
 mod backup;
+mod benchmark_profile;
 mod capture;
 mod desktop;
 mod integrations;
@@ -27,15 +28,19 @@ use tauri::{
 };
 
 pub fn run() {
-    tauri::Builder::default()
-        .register_asynchronous_uri_scheme_protocol("tcres", resources::serve)
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+    benchmark_profile::claim().expect("Invalid measurement profile");
+    let mut builder = tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("tcres", resources::serve);
+    if !desktop::benchmark_mode() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-        }))
+        }));
+    }
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![

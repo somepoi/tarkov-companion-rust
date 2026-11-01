@@ -27,6 +27,8 @@ $cpuMax = @{}
 $samples = [Collections.Generic.List[object]]::new()
 $ready = $null
 $catalogReady = $null
+$rootExitedAtMs = $null
+$windowCompleted = $false
 $previousCpu = $null
 $previousAt = $null
 $unavailable = [Collections.Generic.List[string]]::new()
@@ -34,6 +36,7 @@ $endMs = ($config.settleSeconds + $config.durationSeconds) * 1000
 try {
   while ($clock.Elapsed.TotalMilliseconds -lt $endMs) {
     $sampleStart = $clock.Elapsed.TotalMilliseconds
+    if ($launched.HasExited) { $rootExitedAtMs = $sampleStart; break }
     if ($null -eq $ready -and (Test-Path -LiteralPath $config.readyFile -PathType Leaf)) {
       $ready = @{ observedAtMs = $sampleStart; hostPayload = [IO.File]::ReadAllText($config.readyFile) }
     }
@@ -87,10 +90,18 @@ try {
     $remaining = [Math]::Max(1, [int]($config.sampleMs - ($at - $sampleStart)))
     Start-Sleep -Milliseconds $remaining
   }
+  $windowCompleted = ($null -eq $rootExitedAtMs -and $clock.Elapsed.TotalMilliseconds -ge $endMs)
 } finally {
   $result = @{ schema = 1; recordedAtUtc = [DateTime]::UtcNow.ToString('o'); launch = $config; rootProcessId = $launched.Id; launchRequestToProcessHandleMs = $processHandleMs; readySignal = $ready; logicalProcessors = $logical; samples = @($samples.ToArray()); unavailableObservations = @($unavailable.ToArray()); limitations = @('Executable isolation contract is declared by the operator, not verified by the sampler.', 'Launch-to-process-handle is not startup-to-visible-UI.', 'Ready signal semantics, if present, are defined by the measured host.', 'Very short-lived children and children reparented before discovery can be missed.', 'CPU includes observed descendants; terminated process totals retain the last observed value.', 'Working sets may double-count shared pages.', 'Peak memory is a sampled maximum, not an allocation high-water mark.', 'GPU and input latency are not measured.', 'The sampler and CIM queries add overhead.', 'Window visibility/workload is labeled by the operator, not enforced.', 'The launched app is left running; no process or profile cleanup is performed.') }
+  if ($launched.HasExited -and $null -eq $rootExitedAtMs) { $rootExitedAtMs = $clock.Elapsed.TotalMilliseconds }
+  $samplingSamples = @($samples.ToArray() | Where-Object { $_.phase -eq 'sampling' }).Count
+  $result.completion = @{ samplingSamples = $samplingSamples; rootExitedAtMs = $rootExitedAtMs; fullWindowObserved = ($windowCompleted -and $null -eq $rootExitedAtMs -and $samplingSamples -gt 0); layoutReadyObserved = ($null -ne $ready); catalogReadyObserved = ($null -ne $catalogReady) }
   $result.catalogReadySignal = $catalogReady
   $json = $result | ConvertTo-Json -Depth 8
   $stream = [IO.File]::Open($config.output, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
   try { $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json); $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+}
+
+if ($null -ne $rootExitedAtMs -or -not $windowCompleted -or $samplingSamples -eq 0 -or $null -eq $ready) {
+  throw "Measurement incomplete: early root exit, missing readiness, or no complete sampling window. Raw output was retained."
 }

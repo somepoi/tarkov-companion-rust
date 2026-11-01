@@ -9,6 +9,7 @@
 import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, protocol, screen, session, shell } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import fs from 'node:fs'
+import { claimBenchmarkProfile } from './benchmarkProfile'
 import path from 'node:path'
 import type { DesktopSettings, GameEvent, LogStatsData, PlayerPosition, WipeEvent } from '../src/shared/desktop-api'
 import { detectLogsFolder } from './logs/locator'
@@ -38,6 +39,7 @@ app.setName(APP_IDENTITY.name)
 const customUserData = app.commandLine.getSwitchValue('user-data-dir')
 const BENCHMARK_MODE = process.env.TC_BENCH_DISABLE_INTEGRATIONS === '1'
 if (BENCHMARK_MODE && !customUserData) throw new Error('Benchmark mode requires an explicit isolated --user-data-dir')
+if (BENCHMARK_MODE) claimBenchmarkProfile(customUserData)
 app.setPath('userData', customUserData ? path.resolve(customUserData) : forkDataPath(app.getPath('appData')))
 
 let win: BrowserWindow | null = null
@@ -53,10 +55,10 @@ const raidClock = createRaidClock()
 /** The last screenshot position: still known after its file went to the Recycle Bin. */
 let lastPosition: PlayerPosition | null = null
 
-if (!app.requestSingleInstanceLock()) {
+if (!BENCHMARK_MODE && !app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => showWindow())
+  if (!BENCHMARK_MODE) app.on('second-instance', () => showWindow())
   app.whenReady().then(bootstrap)
 }
 
