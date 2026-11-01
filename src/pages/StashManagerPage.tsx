@@ -83,6 +83,8 @@ function StashManager({ mode }: { mode: GameMode }) {
   const [registration, setRegistration] = useState<ScanRegistration | null>(null)
   const [assisted, setAssisted] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [recognizing, setRecognizing] = useState(false)
+  const recognition = useRef<AbortController | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const generation = useRef(0)
@@ -108,6 +110,7 @@ function StashManager({ mode }: { mode: GameMode }) {
       })
     return () => {
       active = false
+      recognition.current?.abort()
       generation.current = token + 1
     }
   }, [mode, available])
@@ -378,106 +381,128 @@ function StashManager({ mode }: { mode: GameMode }) {
   }
   async function recognizeImage(crop: ImageCrop, grid?: Grid, image = stagedImage, expectedGrid?: Grid): Promise<Grid | undefined> {
     if (!session || !draft || !image || !selected) return
+    const controller = new AbortController()
+    recognition.current = controller
+    setRecognizing(true)
     const token = generation.current
-    const { blob: file, hash } = image
-    const [
-      { readWords },
-      { scanImage },
-      { learnedFingerprints, useLearnedStore },
-    ] = await Promise.all([
-      import('../scan/ocr'),
-      import('../scan/scanner'),
-      import('../scan/learned'),
-    ])
-    await useLearnedStore.getState().load()
-    if (generation.current !== token) return
-    let ocrFailed = false
-    const words = await readWords(file, crop, { isCurrent: () => generation.current === token }).catch(() => {
-      ocrFailed = true
-      return undefined
-    })
-    if (generation.current !== token) return
-    const result = await scanImage(
-      file,
-      crop,
-      undefined,
-      learnedFingerprints(useLearnedStore.getState().records),
-      undefined,
-      words,
-      undefined,
-      grid,
-      expectedGrid,
-    )
-    if (generation.current !== token) return
-    if (result.grid.cols !== viewSize.columns || result.grid.rows !== viewSize.rows)
-      throw new Error(`Detected ${result.grid.cols}×${result.grid.rows} cells; this visible view is ${viewSize.columns}×${viewSize.rows}. Adjust the selected area or set the grid manually. Draft rows are unchanged.`)
-    checkedGrid(result.grid, crop)
-    let quantities: QuantityReport | undefined
-    let quantityFailure = ''
+    const isCurrent = () => generation.current === token && !controller.signal.aborted
     try {
-      quantities = await readStackQuantities(file, result.grid, result.detections,
-        catalog.data?.items ?? {}, () => generation.current === token)
-    } catch (cause) {
-      if (generation.current !== token) return
-      quantityFailure = cause instanceof Error ? cause.message : String(cause)
-    }
-    if (generation.current !== token) return
-    setReviewStackId(null)
-    const observations = result.detections.map((det, index) => ({
-      id: crypto.randomUUID(),
-      screenshotHash: hash,
-      location: {
-        column: det.col,
-        row: det.row,
-        width: det.w,
-        height: det.h,
-        rotated: det.rotated,
-      },
-      candidates: [
-        { itemId: det.itemId, error: det.error },
-        ...det.alternatives,
-      ],
-      quantity: quantities?.readings.get(index)?.quantity ?? null,
-      quantityEvidence: quantities?.readings.get(index)?.evidence,
-      fir: 'unknown' as const,
-      reviewed: false,
-      sourceGrid: result.grid,
-    }))
-    changeDraft({
-      ...draft,
-      fullCoverageConfirmed: false,
-      reviewConfirmed: false,
-      capturedAt: captureTime(),
-      algorithmVersion: `${ocrFailed ? 'rgb12-image-only-v1' : 'rgb12-ocr-v1'}+quantity-v1`,
-      catalogVersion: catalog.dataUpdatedAt ? String(catalog.dataUpdatedAt) : 'unknown',
-      observations,
-      stacks: observations.map((observation) => ({
-        ...unknown(),
-        itemId: observation.candidates[0]?.itemId ?? null,
-        quantity: observation.quantity,
-        location: observation.location,
-        provenance: {
-          identityConfirmed: false,
-          quantityConfirmed: false,
-          method: 'screenshot',
-          screenshotHash: hash,
-          observationId: observation.id,
-          corrected: false,
+      const { blob: file, hash } = image
+      const [
+        { readWords },
+        { scanImage },
+        { learnedFingerprints, useLearnedStore },
+      ] = await Promise.all([
+        import('../scan/ocr'),
+        import('../scan/scanner'),
+        import('../scan/learned'),
+      ])
+      await useLearnedStore.getState().load()
+      if (!isCurrent()) return
+      let ocrFailed = false
+      const words = await readWords(file, crop, { isCurrent, signal: controller.signal }).catch(() => {
+        ocrFailed = true
+        return undefined
+      })
+      if (!isCurrent()) return
+      const result = await scanImage(
+        file,
+        crop,
+        undefined,
+        learnedFingerprints(useLearnedStore.getState().records),
+        undefined,
+        words,
+        undefined,
+        grid,
+        expectedGrid,
+        controller.signal,
+      )
+      if (!isCurrent()) return
+      if (result.grid.cols !== viewSize.columns || result.grid.rows !== viewSize.rows)
+        throw new Error(`Detected ${result.grid.cols}×${result.grid.rows} cells; this visible view is ${viewSize.columns}×${viewSize.rows}. Adjust the selected area or set the grid manually. Draft rows are unchanged.`)
+      checkedGrid(result.grid, crop)
+      let quantities: QuantityReport | undefined
+      let quantityFailure = ''
+      try {
+        quantities = await readStackQuantities(file, result.grid, result.detections,
+          catalog.data?.items ?? {}, isCurrent, controller.signal)
+      } catch (cause) {
+        if (!isCurrent()) return
+        quantityFailure = cause instanceof Error ? cause.message : String(cause)
+      }
+      if (!isCurrent()) return
+      setReviewStackId(null)
+      const observations = result.detections.map((det, index) => ({
+        id: crypto.randomUUID(),
+        screenshotHash: hash,
+        location: {
+          column: det.col,
+          row: det.row,
+          width: det.w,
+          height: det.h,
+          rotated: det.rotated,
         },
-      })),
-    })
-    const quantitySummary = quantityFailure
-      ? `Quantity OCR failed: ${quantityFailure}. Amounts remain unknown. `
-      : quantities?.eligible
-        ? `Quantity OCR: ${quantities.suggested} suggested, ${quantities.attempted - quantities.suggested} unread/ambiguous and ${quantities.skipped} skipped by geometry/resource limits (${quantities.eligible} eligible stacks). All amounts require confirmation. `
-        : 'No eligible stackable footprints; amounts remain unknown. '
-    setNotice(`${result.assetWarnings?.join(' ') ?? ''} ${ocrFailed ? 'Name OCR was unavailable; image matching was used. ' : ''}${quantitySummary}Review each identity and amount. FIR remains unknown until confirmed. Verify the entire container before saving.`)
-    if (!expectedGrid) {
-      setRegistration({ sessionId: session.id, width: image.width, height: image.height,
-        crop: { ...crop }, grid: { ...result.grid }, lastHash: hash })
-      setAssisted(false)
+        candidates: [
+          { itemId: det.itemId, error: det.error },
+          ...det.alternatives,
+        ],
+        quantity: quantities?.readings.get(index)?.quantity ?? null,
+        quantityEvidence: quantities?.readings.get(index)?.evidence,
+        fir: 'unknown' as const,
+        reviewed: false,
+        sourceGrid: result.grid,
+      }))
+      changeDraft({
+        ...draft,
+        fullCoverageConfirmed: false,
+        reviewConfirmed: false,
+        capturedAt: captureTime(),
+        algorithmVersion: `${ocrFailed ? 'rgb12-image-only-v1' : 'rgb12-ocr-v1'}+quantity-v1`,
+        catalogVersion: catalog.dataUpdatedAt ? String(catalog.dataUpdatedAt) : 'unknown',
+        observations,
+        stacks: observations.map((observation) => ({
+          ...unknown(),
+          itemId: observation.candidates[0]?.itemId ?? null,
+          quantity: observation.quantity,
+          location: observation.location,
+          provenance: {
+            identityConfirmed: false,
+            quantityConfirmed: false,
+            method: 'screenshot',
+            screenshotHash: hash,
+            observationId: observation.id,
+            corrected: false,
+          },
+        })),
+      })
+      const quantitySummary = quantityFailure
+        ? `Quantity OCR failed: ${quantityFailure}. Amounts remain unknown. `
+        : quantities?.eligible
+          ? `Quantity OCR: ${quantities.suggested} suggested, ${quantities.attempted - quantities.suggested} unread/ambiguous and ${quantities.skipped} skipped by geometry/resource limits (${quantities.eligible} eligible stacks). All amounts require confirmation. `
+          : 'No eligible stackable footprints; amounts remain unknown. '
+      setNotice(`${result.assetWarnings?.join(' ') ?? ''} ${ocrFailed ? 'Name OCR was unavailable; image matching was used. ' : ''}${quantitySummary}Review each identity and amount. FIR remains unknown until confirmed. Verify the entire container before saving.`)
+      if (!expectedGrid) {
+        setRegistration({ sessionId: session.id, width: image.width, height: image.height,
+          crop: { ...crop }, grid: { ...result.grid }, lastHash: hash })
+        setAssisted(false)
+      }
+      return result.grid
+    } catch (cause) {
+      if (!controller.signal.aborted) throw cause
+      return undefined
+    } finally {
+      if (recognition.current === controller) {
+        recognition.current = null
+        if (generation.current === token) {
+          setRecognizing(false)
+          if (controller.signal.aborted) {
+            setRegistration(null)
+            setAssisted(false)
+            setNotice('Recognition cancelled. Existing draft rows are unchanged; the imported image remains available.')
+          }
+        }
+      }
     }
-    return result.grid
   }
 
   // Install the current draft closure after each render; cleanup releases it on
@@ -522,6 +547,12 @@ function StashManager({ mode }: { mode: GameMode }) {
         <p role="status" className="text-sm text-ink-muted">
           {notice}
         </p>
+      )}
+      {recognizing && (
+        <div role="status" className="flex items-center gap-3 text-sm text-ink-muted">
+          <span>Preparing recognition suggestions…</span>
+          <button className="btn" onClick={() => recognition.current?.abort()}>Cancel recognition</button>
+        </div>
       )}
       {profile && <ExportPanel key={profile.id} profile={profile} busy={busy} run={(job) => action(job)} />}
       {!profile ? (

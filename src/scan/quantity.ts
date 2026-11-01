@@ -111,9 +111,10 @@ export async function readStackQuantities(
   detections: Detection[],
   items: ItemsById,
   isCurrent: () => boolean = () => true,
+  signal?: AbortSignal,
 ): Promise<QuantityReport> {
   const checkCurrent = () => {
-    if (!isCurrent()) throw new DOMException('Quantity read was cancelled', 'AbortError')
+    if (signal?.aborted || !isCurrent()) throw new DOMException('Quantity read was cancelled', 'AbortError')
   }
   checkCurrent()
   const report: QuantityReport = { readings: new Map(), eligible: 0, attempted: 0, skipped: 0, suggested: 0 }
@@ -164,7 +165,7 @@ export async function readStackQuantities(
   checkCurrent()
   const atlas = await canvas.convertToBlob({ type: 'image/png' })
   const { readWords } = await import('./ocr')
-  const words = await readWords(atlas, null, { scale: 1, isCurrent })
+  const words = await readWords(atlas, null, { scale: 1, isCurrent, signal })
   checkCurrent()
   for (const region of regions) {
     // Padding separates strips. A word crossing the source strip is ambiguous.

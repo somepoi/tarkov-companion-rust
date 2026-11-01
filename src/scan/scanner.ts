@@ -5,6 +5,7 @@
  */
 import type { Detection, Grid, LearnedFingerprint, OcrWord } from './core'
 import type { IdentifyMatch, WorkerRequest, WorkerResponse } from './scan.worker'
+import { abortable } from './abort'
 import ScanWorker from './scan.worker?worker'
 import { checkedCrop, checkedGrid } from './registration'
 import { fingerprintHeader, scannerManifest, MAX_FINGERPRINT_BYTES, MAX_FINGERPRINT_HEADER_BYTES } from './assets'
@@ -120,10 +121,16 @@ export async function scanImage(
   grid?: Grid,
   /** Discover independently, then require agreement before replacing draft suggestions. */
   expectedGrid?: Grid,
+  signal?: AbortSignal,
 ): Promise<ScanResult> {
-  await ensureWorker()
+  signal?.throwIfAborted()
+  await abortable(ensureWorker(), signal)
+  signal?.throwIfAborted()
+  const activeWorker = worker
   const bitmap = await createImageBitmap(image)
   try {
+    signal?.throwIfAborted()
+    if (worker !== activeWorker) throw new Error("Scanner was reset. Try again.")
     const area = checkedCrop(crop, bitmap)
     if (grid) checkedGrid(grid, area)
     if (expectedGrid) checkedGrid(expectedGrid, area)
@@ -134,12 +141,32 @@ export async function scanImage(
   }
   const id = nextId++
   return new Promise<ScanResult>((resolve, reject) => {
-    pending.set(id, { resolve, reject, onProgress })
+    const finish = (work: () => void) => {
+      signal?.removeEventListener('abort', abort)
+      work()
+    }
+    const abort = () => {
+      // Only terminate when this is the sole admitted operation. Other callers
+      // retain their worker; this result is discarded in that case.
+      if (worker === activeWorker && pending.size === 1 && identifying.size === 0) {
+        activeWorker?.terminate()
+        worker = null
+        ready = null
+      }
+      pending.delete(id)
+      finish(() => reject(new DOMException('Recognition cancelled', 'AbortError')))
+    }
+    pending.set(id, {
+      resolve: (value) => finish(() => resolve(value)),
+      reject: (error) => finish(() => reject(error)), onProgress,
+    })
+    signal?.addEventListener('abort', abort, { once: true })
     const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words, grid, expectedGrid }
     try {
       if (!worker) throw new Error('Scanner is unavailable. Try again.')
       worker.postMessage(msg, [bitmap])
     } catch (error) {
+      signal?.removeEventListener('abort', abort)
       pending.delete(id)
       bitmap.close()
       reject(error instanceof Error ? error : new Error(String(error)))

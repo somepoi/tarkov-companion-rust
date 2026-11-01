@@ -6,6 +6,7 @@
  */
 import { createWorker, OEM, PSM } from 'tesseract.js'
 import type { OcrWord } from './core'
+import { abortable } from './abort'
 import { checkedCrop, type ImageCrop } from './registration'
 
 type TessWorker = Awaited<ReturnType<typeof createWorker>>
@@ -121,6 +122,7 @@ interface ReadOptions {
   /** Quantity strips have already been enlarged in their atlas. */
   scale?: 1 | 2 | 4
   isCurrent?: () => boolean
+  signal?: AbortSignal
 }
 
 let ocrQueue = Promise.resolve()
@@ -128,16 +130,17 @@ let queuedReads = 0
 
 /** One executing read and at most one waiting read share the offline engine. */
 export function readWords(image: Blob, crop: ImageCrop | null, opts: ReadOptions = {}): Promise<OcrWord[]> {
+  if (opts.signal?.aborted) return Promise.reject(new DOMException('Text read was cancelled', 'AbortError'))
   if (queuedReads >= 2) return Promise.reject(new Error('The text reader is busy. Finish the current scan and try again.'))
   queuedReads++
   const read = ocrQueue.then(() => readWordsNow(image, crop, opts))
   ocrQueue = read.then(() => undefined, () => undefined)
-  return read.finally(() => { queuedReads-- })
+  return abortable(read.finally(() => { queuedReads-- }), opts.signal)
 }
 
 async function readWordsNow(image: Blob, crop: ImageCrop | null, opts: ReadOptions): Promise<OcrWord[]> {
   const checkCurrent = () => {
-    if (opts.isCurrent && !opts.isCurrent()) throw new DOMException('Text read was cancelled', 'AbortError')
+    if (opts.signal?.aborted || (opts.isCurrent && !opts.isCurrent())) throw new DOMException('Text read was cancelled', 'AbortError')
   }
   checkCurrent()
   const bitmap = await createImageBitmap(image)
@@ -183,12 +186,27 @@ async function readWordsNow(image: Blob, crop: ImageCrop | null, opts: ReadOptio
   ctx.putImageData(out, PAD, PAD)
   const png = await canvas.convertToBlob({ type: 'image/png' })
   checkCurrent()
-  const worker = await getWorker()
+  const worker = await abortable(getWorker(), opts.signal)
   checkCurrent()
-  const { data } = await worker.recognize(png, {}, { blocks: true }).catch(async (error: unknown) => {
-    workerPromise = null
-    await worker.terminate().catch(() => undefined)
-    throw error
+  const currentPromise = workerPromise
+  const result = worker.recognize(png, {}, { blocks: true })
+  const { data } = await new Promise<Awaited<typeof result>>((resolve, reject) => {
+    const clear = () => opts.signal?.removeEventListener('abort', abort)
+    const reset = () => {
+      if (workerPromise === currentPromise) workerPromise = null
+      void worker.terminate().catch(() => undefined)
+    }
+    const abort = () => {
+      clear()
+      reset()
+      reject(new DOMException('Text read was cancelled', 'AbortError'))
+    }
+    opts.signal?.addEventListener('abort', abort, { once: true })
+    result.then((value) => { clear(); resolve(value) }, (error: unknown) => {
+      clear()
+      reset()
+      reject(error)
+    })
   })
   checkCurrent()
   const words: OcrWord[] = []
