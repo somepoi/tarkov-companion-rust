@@ -1,0 +1,5 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tarkov Companion Rust Dev",
+  "identifier": "io.github.somepoi.tarkov-companion-rust.dev"
+}

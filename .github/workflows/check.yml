@@ -21,8 +21,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run check:content
-      - run: npm run build
-      - run: npm run build:desktop
+      - run: npm run build:web
+      - run: npm run build:electron
       - run: npm run build:tauri-ui
       - run: rustup show active-toolchain
       - run: cargo fmt --all -- --check

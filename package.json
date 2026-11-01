@@ -4,14 +4,14 @@
   "version": "2.13.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "npm run dev:tauri --",
+    "build": "npm run build:tauri --",
     "lint": "oxlint",
     "preview": "vite preview",
     "tiles:lighthouse": "node scripts/tile-lighthouse.mjs",
-    "dev:desktop": "vite --mode desktop",
-    "build:desktop": "tsc -b && vite build --mode desktop",
-    "dist:desktop": "npm run assets:check && npm run packs && npm run build:desktop && electron-builder --win nsis portable --publish never",
+    "dev:desktop": "npm run dev:tauri --",
+    "build:desktop": "npm run build:tauri --",
+    "dist:desktop": "npm run build:tauri --",
     "test": "vitest run",
     "scan:logs": "tsx scripts/scan-logs.ts",
     "tiles:fetch": "node scripts/fetch-lighthouse-source.mjs",
@@ -26,7 +26,7 @@
     "packs": "node scripts/build-packs.mjs",
     "dev:tauri-ui": "vite --mode tauri --port 1420 --strictPort",
     "build:tauri-ui": "tsc -b && vite build --mode tauri",
-    "dev:tauri": "node scripts/native.mjs tauri dev",
+    "dev:tauri": "node scripts/native.mjs tauri dev --config src-tauri/tauri.dev.conf.json",
     "build:tauri": "npm run assets:check && npm run notices && npm run notices:rust && node scripts/native.mjs tauri build",
     "build:tauri:staged": "node scripts/build-staged-updates.mjs",
     "build:tauri:offline": "npm run build:tauri -- --config src-tauri/tauri.offline.conf.json --bundles nsis --ci",
@@ -36,7 +36,12 @@
     "lint:rust": "node scripts/native.mjs cargo clippy --workspace -- -D warnings",
     "bench:desktop": "node scripts/bench/desktop-baseline.mjs",
     "bench:scan": "tsx scripts/bench/scan-baseline.ts",
-    "icons:windows": "node scripts/build-windows-icon.mjs"
+    "icons:windows": "node scripts/build-windows-icon.mjs",
+    "dev:web": "vite",
+    "build:web": "tsc -b && vite build",
+    "dev:electron": "vite --mode desktop",
+    "build:electron": "tsc -b && vite build --mode desktop",
+    "dist:electron": "npm run assets:check && npm run packs && npm run build:electron && electron-builder --win nsis portable --publish never"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"

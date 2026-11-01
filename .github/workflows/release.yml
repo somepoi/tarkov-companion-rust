@@ -31,8 +31,8 @@ jobs:
         run: npm run lint
       - name: Third-party notices
         run: npm run notices
-      - name: Build isolated fork packages
-        run: npm run dist:desktop
+      - name: Build Electron reference packages
+        run: npm run dist:electron
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Prepare pinned native dependencies
