@@ -106,11 +106,7 @@ pub async fn check_staged_update(
             .map_err(|e| e.to_string())?;
         Ok(match update {
             Some(update) => {
-                let candidate = crate::staged_download::Candidate::new(
-                    update.version,
-                    update.download_url,
-                    update.signature,
-                )?;
+                let candidate = crate::staged_download::Candidate::new(update)?;
                 let result = json!({"state":"candidate","id":candidate.id,"version":candidate.version,"signatureVerified":false,"installable":false});
                 *CANDIDATE
                     .lock()
@@ -203,4 +199,142 @@ pub async fn prepare_staged_update(
         .await
         .map_err(|e| e.to_string())?
     }
+}
+
+pub(crate) fn installation_enabled() -> bool {
+    cfg!(all(windows, feature = "staged-updates"))
+        && option_env!("TC_STAGED_INSTALL_ENABLED") == Some("1")
+}
+
+#[tauri::command]
+pub async fn install_staged_update(
+    _state: tauri::State<'_, std::sync::Arc<crate::desktop::HostState>>,
+    window: tauri::WebviewWindow,
+    id: String,
+    sha256: String,
+    version: String,
+    renderer_state: Value,
+    saved_drafts: bool,
+) -> Result<Value, String> {
+    if !installation_enabled() {
+        return Err("Installer execution is disabled in this build".into());
+    }
+    if window.label() != "main" || crate::desktop::benchmark_mode() || !saved_drafts {
+        return Err(
+            "Save open drafts and install only from the main window outside benchmark mode".into(),
+        );
+    }
+    let _ = (&id, &sha256, &version, &renderer_state);
+    #[cfg(not(feature = "staged-updates"))]
+    return Err("Updater staging is not included".into());
+    #[cfg(feature = "staged-updates")]
+    {
+        if renderer_state.to_string().len() > 20 * 1024 * 1024 {
+            return Err("Recovery state exceeds 20 MiB".into());
+        }
+        let job = JOB
+            .try_lock()
+            .map_err(|_| "An update operation is already running")?;
+        let candidate = CANDIDATE
+            .lock()
+            .map_err(|_| "Update state is unavailable")?
+            .clone()
+            .filter(|candidate| {
+                candidate.id == id && candidate.version == version && candidate.fresh()
+            })
+            .ok_or("Update candidate expired or changed; check the channel again")?;
+        let (_, key) = configuration()?.ok_or("Staging channel is not configured")?;
+        let exclusive = crate::jobs::exclusive().map_err(str::to_owned)?;
+        let state = std::sync::Arc::clone(_state.inner());
+        tauri::async_runtime::spawn_blocking(move || {
+            let _job = job;
+            let _exclusive = exclusive;
+            let bytes = crate::staged_download::read_verified(
+                &candidate,
+                &key,
+                &state.profile_root.join("updater-staging"),
+                &sha256,
+            )?;
+            let backup = crate::backup::recovery_copy(&state, renderer_state, window)?;
+            let receipt =
+                json!({"version":candidate.version,"backup":backup["name"],"sha256":sha256});
+            crate::desktop::atomic_write(
+                &state.profile_root.join("pending-staged-update.json"),
+                &serde_json::to_vec(&receipt).map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            candidate.update.install(&bytes).map_err(|e| {
+                format!(
+                    "Installer did not start: {e}. Recovery copy retained at {}",
+                    backup["path"]
+                )
+            })?;
+            Ok(json!({"state":"installing"}))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+}
+
+/// Main-window startup consumes a bounded receipt once; it never runs an installer.
+pub(crate) fn outcome(state: &crate::desktop::HostState) -> Result<Value, String> {
+    use std::io::Read;
+    static OUTCOME: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+    let mut cached = OUTCOME
+        .lock()
+        .map_err(|_| "Update outcome state unavailable")?;
+    if let Some(value) = cached.as_ref() {
+        return Ok(value.clone());
+    }
+    let path = state.profile_root.join("pending-staged-update.json");
+    let mut input = match std::fs::File::open(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            *cached = Some(Value::Null);
+            return Ok(Value::Null);
+        }
+        result => result.map_err(|e| e.to_string())?,
+    };
+    let mut bytes = Vec::new();
+    input
+        .by_ref()
+        .take(16 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 16 * 1024 {
+        return Err("Update outcome receipt is too large".into());
+    }
+    let receipt: Value =
+        serde_json::from_slice(&bytes).map_err(|_| "Invalid update outcome receipt")?;
+    let version = receipt["version"]
+        .as_str()
+        .filter(|v| v.len() <= 128)
+        .ok_or("Missing update version")?;
+    let expected = semver::Version::parse(version.trim_start_matches('v'))
+        .map_err(|_| "Invalid update version")?;
+    let current = semver::Version::parse(env!("CARGO_PKG_VERSION")).map_err(|e| e.to_string())?;
+    let backup = receipt["backup"]
+        .as_str()
+        .filter(|v| {
+            v.strip_prefix("backup-").is_some_and(|suffix| {
+                !suffix.is_empty()
+                    && suffix.len() <= 80
+                    && suffix.bytes().all(|b| b.is_ascii_digit() || b == b'-')
+            })
+        })
+        .ok_or("Invalid recovery copy name")?;
+    drop(input);
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    std::fs::rename(
+        path,
+        state
+            .profile_root
+            .join(format!("staged-update-outcome-{at}.json")),
+    )
+    .map_err(|e| e.to_string())?;
+    let value = json!({"ok":current >= expected,"version":version,"native":true,"recoveryBackup":state.profile_root.join("full-backups").join(backup)});
+    *cached = Some(value.clone());
+    Ok(value)
 }

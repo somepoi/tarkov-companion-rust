@@ -22,6 +22,7 @@ fn main() {
             }
         }
     }
+    println!("cargo:rerun-if-env-changed=TC_STAGED_INSTALL_ENABLED");
     println!("cargo:rerun-if-env-changed=TC_STAGED_UPDATE_ENDPOINT");
     println!("cargo:rerun-if-env-changed=TC_STAGED_UPDATE_PUBLIC_KEY");
     let manifest = std::path::Path::new("../electron/packs.generated.json");

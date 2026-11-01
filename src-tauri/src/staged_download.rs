@@ -18,6 +18,7 @@ pub struct Candidate {
     url: tauri::Url,
     signature: String,
     discovered: Instant,
+    pub update: tauri_plugin_updater::Update,
 }
 fn permitted(url: &tauri::Url) -> bool {
     url.scheme() == "https"
@@ -26,7 +27,10 @@ fn permitted(url: &tauri::Url) -> bool {
         && matches!(url.host(), Some(url::Host::Domain(host)) if host.contains('.') && !host.ends_with(".localhost"))
 }
 impl Candidate {
-    pub fn new(version: String, url: tauri::Url, signature: String) -> Result<Self, String> {
+    pub fn new(update: tauri_plugin_updater::Update) -> Result<Self, String> {
+        let version = update.version.clone();
+        let url = update.download_url.clone();
+        let signature = update.signature.clone();
         if version.len() > 128 || signature.len() > 16 * 1024 || !permitted(&url) {
             return Err("Invalid staging candidate metadata".into());
         }
@@ -36,6 +40,7 @@ impl Candidate {
             url,
             signature,
             discovered: Instant::now(),
+            update,
         })
     }
     pub fn fresh(&self) -> bool {
@@ -63,7 +68,7 @@ pub fn download(candidate: Candidate, key: String, root: PathBuf) -> Result<Valu
         .build()
         .map_err(|_| "Could not initialize update transport")?;
     let mut response = client
-        .get(candidate.url)
+        .get(candidate.url.clone())
         .send()
         .map_err(|_| "Staging download failed")?
         .error_for_status()
@@ -99,12 +104,22 @@ pub fn download(candidate: Candidate, key: String, root: PathBuf) -> Result<Valu
     if bytes.is_empty() {
         return Err("Update payload is empty".into());
     }
-    let public = minisign_verify::PublicKey::decode(&signed_text(&key)?)
+    let digest = verify_payload(&bytes, &candidate, &key)?;
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    let path = root.join(format!("{digest}.verified-update"));
+    crate::desktop::atomic_write(&path, &bytes).map_err(|e| e.to_string())?;
+    Ok(
+        json!({"state":"verified","id":candidate.id,"version":candidate.version,"bytes":bytes.len(),"sha256":digest,"path":path,"signatureVerified":true,"installable":false,"installEnabled":crate::updates::installation_enabled()}),
+    )
+}
+
+fn verify_payload(bytes: &[u8], candidate: &Candidate, key: &str) -> Result<String, String> {
+    let public = minisign_verify::PublicKey::decode(&signed_text(key)?)
         .map_err(|_| "Invalid staging public key")?;
     let signature = minisign_verify::Signature::decode(&signed_text(&candidate.signature)?)
         .map_err(|_| "Invalid update signature")?;
     public
-        .verify(&bytes, &signature, true)
+        .verify(bytes, &signature, true)
         .map_err(|_| "Update signature verification failed")?;
     // Read version metadata only after verification of both Minisign signatures.
     let versions = signature
@@ -119,11 +134,54 @@ pub fn download(candidate: Candidate, key: String, root: PathBuf) -> Result<Valu
             "Signed artifact version is missing or differs from the announced version".into(),
         );
     }
-    let digest = format!("{:x}", Sha256::digest(&bytes));
-    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    Ok(digest)
+}
+
+pub fn read_verified(
+    candidate: &Candidate,
+    key: &str,
+    root: &std::path::Path,
+    digest: &str,
+) -> Result<Vec<u8>, String> {
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err("Invalid staged payload checksum".into());
+    }
     let path = root.join(format!("{digest}.verified-update"));
-    crate::desktop::atomic_write(&path, &bytes).map_err(|e| e.to_string())?;
-    Ok(
-        json!({"state":"verified","id":candidate.id,"version":candidate.version,"bytes":bytes.len(),"sha256":digest,"path":path,"signatureVerified":true,"installable":false}),
-    )
+    let metadata = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_BYTES as u64 {
+        return Err("Staged payload must be a bounded regular file".into());
+    }
+    let canonical = path.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical.starts_with(root.canonicalize().map_err(|e| e.to_string())?) {
+        return Err("Staged payload escapes its directory".into());
+    }
+    let mut input = std::fs::File::open(canonical).map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let remaining = MAX_BYTES - bytes.len();
+        let capacity = (remaining + 1).min(buffer.len());
+        let n = input
+            .read(&mut buffer[..capacity])
+            .map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        if n > remaining {
+            return Err("Staged payload grew beyond its size budget".into());
+        }
+        bytes
+            .try_reserve(n)
+            .map_err(|_| "Not enough memory to verify this update")?;
+        bytes.extend_from_slice(&buffer[..n]);
+    }
+    if verify_payload(&bytes, candidate, key)? != digest {
+        return Err("Staged payload checksum changed".into());
+    }
+    Ok(bytes)
 }

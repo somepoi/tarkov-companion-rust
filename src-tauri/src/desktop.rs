@@ -605,7 +605,7 @@ pub async fn desktop_call(
     }
     let lease = if matches!(
         channel.as_str(),
-        "settings:set" | "packs:ensure" | "backup:write" | "watcher:pickFolder"
+        "settings:set" | "packs:ensure" | "backup:write" | "watcher:pickFolder" | "update:outcome"
     ) {
         Some(crate::jobs::enter().map_err(|e| error("update_busy", e))?)
     } else {
@@ -1089,6 +1089,9 @@ fn dispatch(
         "update:status" | "update:check" => Ok(
             json!({"state":"disabled","message":"Fork updates are disabled until the release channel is verified."}),
         ),
+        "update:outcome" if _window.label() == "main" => {
+            crate::updates::outcome(state).map_err(|e| error("update_outcome", e))
+        }
         "update:outcome" | "cleanup:last" => Ok(Value::Null),
         _ => Err(error(
             "migration_pending",

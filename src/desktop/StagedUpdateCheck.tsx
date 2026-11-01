@@ -3,6 +3,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 
 interface StagingResult {
   state: 'candidate' | 'none' | 'disabled' | 'verified' | 'prepared'
+  installEnabled?: boolean
   id?: string
   path?: string
   sha256?: string
@@ -20,7 +21,7 @@ export function StagedUpdateCheck() {
   if (!isTauri() || import.meta.env.VITE_STAGED_UPDATES !== '1') return null
   return <section className="space-y-2 border-t border-line pt-3">
     <h3 className="text-sm font-semibold">Update channel preview</h3>
-    <p className="text-xs text-ink-muted">Checks the configured preview channel. Downloading requires a separate click and verifies the signature and signed version. Installation remains disabled. Files are limited to 512 MiB and kept until you remove them.</p>
+    <p className="text-xs text-ink-muted">Checks the configured preview channel. Downloading requires a separate click and verifies the signature and signed version. Installation is available only in explicitly enabled preview builds, after a fresh recovery copy. Files are limited to 512 MiB and kept until you remove them.</p>
     <button className="btn text-xs" disabled={busy} onClick={async () => {
       setBusy(true)
       setMessage('')
@@ -41,7 +42,7 @@ export function StagedUpdateCheck() {
       setMessage('Downloading and verifying the selected version…')
       try {
         const result = await invoke<StagingResult>('download_staged_update', { id: candidate.id })
-        setMessage(`Version ${result.version} passed signature and signed-version verification. Saved at ${result.path}. SHA-256: ${result.sha256}. Installation remains disabled.`)
+        setMessage(`Version ${result.version} passed signature and signed-version verification. Saved at ${result.path}. SHA-256: ${result.sha256}.${result.installEnabled ? " Installation requires a fresh recovery copy below." : " Installation remains disabled."}`)
         setCandidate(null)
         setVerified(result)
         setSavedDrafts(false)
@@ -53,7 +54,7 @@ export function StagedUpdateCheck() {
         <input type="checkbox" checked={savedDrafts} disabled={busy} onChange={(event) => setSavedDrafts(event.target.checked)} />
         I saved all open drafts and will keep the app idle while its recovery copy is created.
       </label>
-      <button className="btn text-xs" disabled={busy || !savedDrafts} onClick={async () => {
+      {!verified.installEnabled && <button className="btn text-xs" disabled={busy || !savedDrafts} onClick={async () => {
         setBusy(true)
         setMessage('Saving a full recovery copy. Native data changes are paused…')
         try {
@@ -65,7 +66,19 @@ export function StagedUpdateCheck() {
           setVerified(null)
         } catch (cause) { setMessage(`Update preparation failed: ${String(cause)}`) }
         finally { setBusy(false) }
-      }}>Save recovery copy before updating</button>
+      }}>Save recovery copy before updating</button>}
+      {verified.installEnabled && <button className="btn text-xs" disabled={busy || !savedDrafts} onClick={async () => {
+        setBusy(true)
+        setMessage('Verifying the staged file and saving a fresh recovery copy. The app will close when installation starts…')
+        try {
+          const { buildRendererBackup } = await import('../inventory/rendererBackup')
+          await invoke('install_staged_update', {
+            id: verified.id, sha256: verified.sha256, version: verified.version,
+            rendererState: await buildRendererBackup(), savedDrafts,
+          })
+        } catch (cause) { setMessage(`Installation did not start: ${String(cause)}`) }
+        finally { setBusy(false) }
+      }}>Back up, close and install {verified.version}</button>}
     </div>}
     {message && <p role="status" className="break-words text-xs text-ink-muted">{message}</p>}
   </section>

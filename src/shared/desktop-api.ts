@@ -139,6 +139,8 @@ export type UpdateStatus =
 
 /** What became of the last "Restart to update" (checked once at the next launch). */
 export interface UpdateOutcome {
+  native?: boolean
+  recoveryBackup?: string
   ok: boolean
   /** Version that was being installed. */
   version: string

@@ -49,6 +49,7 @@ pub fn run() {
             updates::check_staged_update,
             updates::download_staged_update,
             updates::prepare_staged_update,
+            updates::install_staged_update,
             integrations::take_scan_capture,
             integrations::pending_scan_capture_id
         ])

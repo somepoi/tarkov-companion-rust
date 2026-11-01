@@ -21,6 +21,7 @@ minisign-verify = "0.3"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+semver = "1"
 base64 = { version = "0.23", optional = true }
 minisign-verify = { version = "0.3", optional = true }
 tauri = { version = "2", features = ["tray-icon"] }

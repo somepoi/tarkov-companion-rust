@@ -3897,6 +3897,7 @@ dependencies = [
  "notify",
  "percent-encoding",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
