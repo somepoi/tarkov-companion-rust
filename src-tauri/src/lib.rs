@@ -4,6 +4,7 @@ mod capture;
 mod desktop;
 mod integrations;
 mod inventory;
+mod jobs;
 mod log_locator;
 mod logs;
 mod navigation;
@@ -47,6 +48,7 @@ pub fn run() {
             backup::native_backup,
             updates::check_staged_update,
             updates::download_staged_update,
+            updates::prepare_staged_update,
             integrations::take_scan_capture,
             integrations::pending_scan_capture_id
         ])

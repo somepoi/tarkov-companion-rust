@@ -126,6 +126,9 @@ fn register(app: &tauri::AppHandle, key: Shortcut) -> Result<(), String> {
             let app = app.clone();
             let key = *key;
             tauri::async_runtime::spawn_blocking(move || {
+                let Ok(_lease) = crate::jobs::enter() else {
+                    return;
+                };
                 let Some(state) = app.try_state::<Arc<HostState>>() else {
                     return;
                 };
@@ -150,12 +153,16 @@ fn capture(app: &tauri::AppHandle) {
     let Some(state) = app.try_state::<Arc<HostState>>() else {
         return;
     };
+    let Ok(lease) = crate::jobs::enter() else {
+        return;
+    };
     let state = Arc::clone(state.inner());
     if state.integrations.capturing.swap(true, Ordering::AcqRel) {
         return;
     }
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
         let result = crate::capture::capture_screen_under_cursor().and_then(|bytes| {
             if bytes.len() > 64 * 1024 * 1024 {
                 return Err("Capture exceeds 64 MiB; import a smaller screenshot".into());

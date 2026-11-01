@@ -136,6 +136,7 @@ pub async fn download_staged_update(
     return Err("Updater staging is not included in this build".into());
     #[cfg(feature = "staged-updates")]
     {
+        let lease = crate::jobs::enter().map_err(str::to_owned)?;
         let _job = JOB
             .try_lock()
             .map_err(|_| "An update operation is already running")?;
@@ -150,7 +151,54 @@ pub async fn download_staged_update(
         tauri::async_runtime::spawn_blocking(move || {
             // Keep serialization with the actual IO even if the caller goes away.
             let _job = _job;
+            let _lease = lease;
             crate::staged_download::download(candidate, key, root)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+}
+
+/// Capture a recovery point under exclusive IO admission. This never installs.
+#[tauri::command]
+pub async fn prepare_staged_update(
+    _state: tauri::State<'_, std::sync::Arc<crate::desktop::HostState>>,
+    window: tauri::WebviewWindow,
+    id: String,
+    renderer_state: Value,
+    saved_drafts: bool,
+) -> Result<Value, String> {
+    if window.label() != "main" || crate::desktop::benchmark_mode() || !saved_drafts {
+        return Err(
+            "Save open drafts and prepare from the main window outside benchmark mode".into(),
+        );
+    }
+    let _ = (&id, &renderer_state);
+    #[cfg(not(feature = "staged-updates"))]
+    return Err("Updater staging is not included in this build".into());
+    #[cfg(feature = "staged-updates")]
+    {
+        if renderer_state.to_string().len() > 20 * 1024 * 1024 {
+            return Err("Recovery state exceeds 20 MiB".into());
+        }
+        let job = JOB
+            .try_lock()
+            .map_err(|_| "An update operation is already running")?;
+        let valid = CANDIDATE
+            .lock()
+            .map_err(|_| "Update state is unavailable")?
+            .as_ref()
+            .is_some_and(|candidate| candidate.id == id && candidate.fresh());
+        if !valid {
+            return Err("Update candidate expired or changed; check the channel again".into());
+        }
+        let exclusive = crate::jobs::exclusive().map_err(str::to_owned)?;
+        let state = std::sync::Arc::clone(_state.inner());
+        tauri::async_runtime::spawn_blocking(move || {
+            let _job = job;
+            let _exclusive = exclusive;
+            let backup = crate::backup::recovery_copy(&state, renderer_state, window)?;
+            Ok(json!({"state":"prepared","backup":backup,"installable":false}))
         })
         .await
         .map_err(|e| e.to_string())?

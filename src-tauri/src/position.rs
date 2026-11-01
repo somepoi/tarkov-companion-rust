@@ -868,6 +868,9 @@ fn run(
             };
             job.last = observed;
             if job.stable >= 2 {
+                let Ok(_lease) = crate::jobs::enter() else {
+                    continue;
+                };
                 // Last scope/identity/time/settings checks are immediately before
                 // Shell's recycle-only operation. No permanent-delete fallback.
                 if current(&inner, &config, &stop)

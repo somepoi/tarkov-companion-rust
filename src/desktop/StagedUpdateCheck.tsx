@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 
 interface StagingResult {
-  state: 'candidate' | 'none' | 'disabled' | 'verified'
+  state: 'candidate' | 'none' | 'disabled' | 'verified' | 'prepared'
   id?: string
   path?: string
   sha256?: string
+  backup?: { path: string }
   version?: string
   message?: string
 }
@@ -13,6 +14,8 @@ interface StagingResult {
 export function StagedUpdateCheck() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [verified, setVerified] = useState<StagingResult | null>(null)
+  const [savedDrafts, setSavedDrafts] = useState(false)
   const [candidate, setCandidate] = useState<StagingResult | null>(null)
   if (!isTauri() || import.meta.env.VITE_STAGED_UPDATES !== '1') return null
   return <section className="space-y-2 border-t border-line pt-3">
@@ -22,6 +25,8 @@ export function StagedUpdateCheck() {
       setBusy(true)
       setMessage('')
       setCandidate(null)
+      setVerified(null)
+      setSavedDrafts(false)
       try {
         const result = await invoke<StagingResult>('check_staged_update')
         if (result.state === 'candidate') setCandidate(result)
@@ -38,9 +43,30 @@ export function StagedUpdateCheck() {
         const result = await invoke<StagingResult>('download_staged_update', { id: candidate.id })
         setMessage(`Version ${result.version} passed signature and signed-version verification. Saved at ${result.path}. SHA-256: ${result.sha256}. Installation remains disabled.`)
         setCandidate(null)
+        setVerified(result)
+        setSavedDrafts(false)
       } catch (cause) { setMessage(`Download or signature verification failed: ${String(cause)}`) }
       finally { setBusy(false) }
     }}>Download and verify {candidate.version}</button>}
+    {verified?.id && <div className="space-y-2">
+      <label className="flex items-start gap-2 text-xs">
+        <input type="checkbox" checked={savedDrafts} disabled={busy} onChange={(event) => setSavedDrafts(event.target.checked)} />
+        I saved all open drafts and will keep the app idle while its recovery copy is created.
+      </label>
+      <button className="btn text-xs" disabled={busy || !savedDrafts} onClick={async () => {
+        setBusy(true)
+        setMessage('Saving a full recovery copy. Native data changes are paused…')
+        try {
+          const { buildRendererBackup } = await import('../inventory/rendererBackup')
+          const result = await invoke<StagingResult>('prepare_staged_update', {
+            id: verified.id, rendererState: await buildRendererBackup(), savedDrafts,
+          })
+          setMessage(`Recovery copy saved at ${result.backup?.path}. Installation remains disabled. Save any further changes before preparing again.`)
+          setVerified(null)
+        } catch (cause) { setMessage(`Update preparation failed: ${String(cause)}`) }
+        finally { setBusy(false) }
+      }}>Save recovery copy before updating</button>
+    </div>}
     {message && <p role="status" className="break-words text-xs text-ink-muted">{message}</p>}
   </section>
 }

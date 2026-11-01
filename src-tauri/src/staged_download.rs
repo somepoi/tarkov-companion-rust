@@ -124,6 +124,6 @@ pub fn download(candidate: Candidate, key: String, root: PathBuf) -> Result<Valu
     let path = root.join(format!("{digest}.verified-update"));
     crate::desktop::atomic_write(&path, &bytes).map_err(|e| e.to_string())?;
     Ok(
-        json!({"state":"verified","version":candidate.version,"bytes":bytes.len(),"sha256":digest,"path":path,"signatureVerified":true,"installable":false}),
+        json!({"state":"verified","id":candidate.id,"version":candidate.version,"bytes":bytes.len(),"sha256":digest,"path":path,"signatureVerified":true,"installable":false}),
     )
 }

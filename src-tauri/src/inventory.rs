@@ -251,6 +251,7 @@ pub async fn inventory_call(
     if window.label() != "main" {
         return Err("Inventory operations require the main application window".into());
     }
+    let lease = crate::jobs::enter().map_err(str::to_owned)?;
     if operation.to_string().len() > 8 * 1024 * 1024 {
         return Err("Inventory request exceeds the 8 MiB limit".into());
     }
@@ -270,6 +271,7 @@ pub async fn inventory_call(
     );
     let state = std::sync::Arc::clone(state.inner());
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
         state
             .inventory
             .as_ref()

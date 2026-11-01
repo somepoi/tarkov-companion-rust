@@ -515,9 +515,11 @@ pub async fn native_backup(
     if operation.to_string().len() as u64 > MAX_JSON {
         return Err("Backup request exceeds 20 MiB".into());
     }
+    let lease = crate::jobs::enter().map_err(str::to_owned)?;
     let operation: Operation = serde_json::from_value(operation).map_err(|e| e.to_string())?;
     let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
         let _guard = JOB
             .try_lock()
             .map_err(|_| "A backup/recovery operation is already running")?;
@@ -648,4 +650,19 @@ pub async fn native_backup(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Privileged caller holds the exclusive IO gate; do not acquire a shared lease.
+#[cfg(feature = "staged-updates")]
+pub(crate) fn recovery_copy(
+    state: &HostState,
+    renderer: Value,
+    window: tauri::WebviewWindow,
+) -> Result<Value, String> {
+    let _job = JOB.try_lock().map_err(|_| "A backup is already running")?;
+    let mut progress = Progress {
+        window,
+        last: std::time::Instant::now(),
+    };
+    create(state, renderer, &backup_root(state), &mut progress)
 }

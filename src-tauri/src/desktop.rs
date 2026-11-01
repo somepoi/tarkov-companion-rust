@@ -603,10 +603,21 @@ pub async fn desktop_call(
     if !["main", "searchbar"].contains(&window.label()) {
         return Err(error("window", "Unrecognized application window"));
     }
+    let lease = if matches!(
+        channel.as_str(),
+        "settings:set" | "packs:ensure" | "backup:write" | "watcher:pickFolder"
+    ) {
+        Some(crate::jobs::enter().map_err(|e| error("update_busy", e))?)
+    } else {
+        None
+    };
     let state = Arc::clone(state.inner());
-    tauri::async_runtime::spawn_blocking(move || dispatch(&app, &window, &state, &channel, &args))
-        .await
-        .map_err(|e| error("native_job", e.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
+        dispatch(&app, &window, &state, &channel, &args)
+    })
+    .await
+    .map_err(|e| error("native_job", e.to_string()))?
 }
 
 fn safe_app_route(to: &str) -> bool {
@@ -1161,7 +1172,9 @@ pub async fn read_game_screenshot(
 
 #[tauri::command]
 pub async fn capture_screen() -> Result<tauri::ipc::Response, NativeError> {
-    tauri::async_runtime::spawn_blocking(|| {
+    let lease = crate::jobs::enter().map_err(|e| error("update_busy", e))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
         crate::capture::capture_screen_under_cursor()
             .map(tauri::ipc::Response::new)
             .map_err(|message| error("capture", message))
@@ -1175,6 +1188,7 @@ pub async fn archive_screenshot(
     state: tauri::State<'_, Arc<HostState>>,
     request: tauri::ipc::Request<'_>,
 ) -> Result<String, NativeError> {
+    let lease = crate::jobs::enter().map_err(|e| error("update_busy", e))?;
     use sha2::{Digest, Sha256};
     let bytes = match request.body() {
         tauri::ipc::InvokeBody::Raw(bytes)
@@ -1191,6 +1205,7 @@ pub async fn archive_screenshot(
     };
     let dir = state.data_dir.join("screenshots");
     tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
         // Inspect dimensions before decoding to bound hostile/imported images.
         let reader = image::ImageReader::new(std::io::Cursor::new(&bytes))
             .with_guessed_format()
