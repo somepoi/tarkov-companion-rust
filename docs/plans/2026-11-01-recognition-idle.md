@@ -1,0 +1,13 @@
+# Recognition worker idle lifecycle
+
+Goal: stop retaining the matcher catalog/last decoded screenshot and Tesseract engine indefinitely after recognition is no longer in use. This implements the audit's worker-idle-release candidate without claiming a measured memory improvement.
+
+The matcher owns a single 60-second idle timeout. Public warm-up/scan/identify operations retain it across asynchronous asset loading, bitmap decoding, request submission and completion. Release is idempotent and runs in finally, including initialization/decoding/postMessage failure. A ready worker is released only with no retained users or pending scan/identify requests; in-progress initialization is not terminated by the idle path. Late messages from an obsolete worker are ignored. Termination clears cached catalog warnings/readiness and worker-local catalog/last pixels. The next operation initializes again.
+
+The legacy scanner dialog retains a separate lease while open because manual identifyBox operations depend on its last image. Closing/unmounting releases that lease; active operations keep their own lease until completion. Stash Manager reviews archived evidence independently and does not require pinning the last matcher image.
+
+Tesseract uses one 60-second timeout after warm-up or the last admitted OCR read settles. Running and queued reads cancel/postpone release. The timeout checks exact engine-promise identity and queue state, detaches the old promise before asynchronous termination and never clears a newer engine. Reopening/reading initializes the engine again. Preprocessing workers already terminate per job; no polling loop is added.
+
+Sixty seconds is a retention policy, not a measured optimal interval or release-time guarantee. Browser timer throttling can delay cleanup, and OS/process memory accounting may retain freed pages. Model reload/asset verification adds a cold-start cost to later work. Performance, runtime timer/race acceptance and accuracy equivalence remain open.
+
+Verification on 2026-11-01: clean oxlint, TypeScript, Tauri frontend production build, Electron frontend/main/preload production build, embedded native custom-protocol development build (22.20s) and whitespace checks exited 0. Source review traced lease/finally ownership, pending initialization, active decode, aborted jobs, late worker messages, open-editor preservation, queue/engine identity and asynchronous termination. Synchronous warm-up constructor failure now also releases its lease. No tests, simulated timers, images, screenshots or game workflows were created or run. Existing installer artifacts were not refreshed.

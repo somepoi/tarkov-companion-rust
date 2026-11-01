@@ -9,7 +9,7 @@ import { isDesktop } from '../desktop/useDesktop'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
 import type { Detection } from './core'
-import { identifyBox, scanImage, warmUpScanner, type IdentifyMatch, type ScanResult } from './scanner'
+import { identifyBox, scanImage, warmUpScanner, retainScanner, type IdentifyMatch, type ScanResult } from './scanner'
 import { cellAt, covers, moveBox, overlaps, resizeBox, sameCells, spanCells, type Cells, type Corner } from './boxEdit'
 import { rememberCellSize, rememberedCellSize } from './cellSize'
 import { learnedFingerprints, recordFromCorrection, recordFromSpot, useLearnedStore } from './learned'
@@ -171,6 +171,7 @@ export function ScanDialog() {
 
   useEffect(() => {
     if (!open) return
+    const release = retainScanner()
     void warmUpScanner().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
     warmUpOcr()
     if (isDesktop()) void window.desktop?.listGameScreenshots().then(setShots)
@@ -179,7 +180,7 @@ export function ScanDialog() {
       if (img) openWith(img)
     }
     window.addEventListener('paste', onPaste)
-    return () => window.removeEventListener('paste', onPaste)
+    return () => { window.removeEventListener('paste', onPaste); release() }
   }, [open, openWith])
 
   useEffect(() => {

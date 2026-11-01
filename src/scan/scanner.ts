@@ -25,6 +25,39 @@ let assetWarnings: string[] = []
 const pending = new Map<number, { resolve: (r: ScanResult) => void; reject: (e: Error) => void; onProgress?: (p: number) => void }>()
 const identifying = new Map<number, { resolve: (m: IdentifyMatch[]) => void; reject: (e: Error) => void }>()
 
+let users = 0
+let initialized = false
+let idle: ReturnType<typeof setTimeout> | undefined
+
+function scheduleRelease() {
+  clearTimeout(idle)
+  idle = undefined
+  if (users || !initialized || !worker) return
+  idle = setTimeout(() => {
+    idle = undefined
+    if (users || pending.size || identifying.size || !initialized) return
+    worker?.terminate()
+    worker = null
+    ready = null
+    initialized = false
+    assetWarnings = []
+  }, 60_000)
+}
+
+/** Pin the last scan while the legacy editor needs identifyBox's pixel state. */
+export function retainScanner(): () => void {
+  clearTimeout(idle)
+  idle = undefined
+  users++
+  let retained = true
+  return () => {
+    if (!retained) return
+    retained = false
+    users--
+    scheduleRelease()
+  }
+}
+
 async function loadFile(name: string): Promise<ArrayBuffer> {
   if (window.desktop?.readAppResource) {
     // Installed app: the scanner data is a content pack downloaded on first use.
@@ -46,8 +79,9 @@ function ensureWorker(): Promise<number> {
   ready = new Promise<number>((resolve, reject) => {
     const w = worker as Worker
     w.onmessage = (e: MessageEvent<WorkerResponse>) => {
+      if (worker !== w) return
       const m = e.data
-      if (m.type === 'ready') resolve(m.items)
+      if (m.type === 'ready') { initialized = true; resolve(m.items); scheduleRelease() }
       else if (m.type === 'progress') pending.get(m.id)?.onProgress?.(m.done / Math.max(1, m.total))
       else if (m.type === 'result') {
         pending.get(m.id)?.resolve({ grid: m.grid, detections: m.detections, ms: m.ms, assetWarnings })
@@ -75,6 +109,7 @@ function ensureWorker(): Promise<number> {
       identifying.clear()
       worker = null
       ready = null
+      initialized = false
     }
     w.onerror = (e) => fail(e.message || 'The scanner stopped unexpectedly. Try again, or scan a smaller part of the screenshot.')
     w.onmessageerror = () => fail('The scanner could not read its data. Try again.')
@@ -103,8 +138,9 @@ function ensureWorker(): Promise<number> {
 }
 
 /** Loads the scanner data in the background (call when the scan screen opens). */
-export function warmUpScanner(): Promise<number> {
-  return ensureWorker()
+export async function warmUpScanner(): Promise<number> {
+  const release = retainScanner()
+  try { return await ensureWorker() } finally { release() }
 }
 
 export async function scanImage(
@@ -124,66 +160,79 @@ export async function scanImage(
   expectedGrid?: Grid,
   signal?: AbortSignal,
 ): Promise<ScanResult> {
-  signal?.throwIfAborted()
-  await abortable(ensureWorker(), signal)
-  signal?.throwIfAborted()
-  const activeWorker = worker
-  const bitmap = await decodeScreenshot(image, signal)
+  const release = retainScanner()
   try {
     signal?.throwIfAborted()
-    if (worker !== activeWorker) throw new Error("Scanner was reset. Try again.")
-    const area = checkedCrop(crop, bitmap)
-    if (grid) checkedGrid(grid, area)
-    if (expectedGrid) checkedGrid(expectedGrid, area)
-    if (grid && expectedGrid) throw new Error('Repeated recognition requires independent grid discovery.')
-  } catch (error) {
-    bitmap.close()
-    throw error
-  }
-  const id = nextId++
-  return new Promise<ScanResult>((resolve, reject) => {
-    const finish = (work: () => void) => {
-      signal?.removeEventListener('abort', abort)
-      work()
-    }
-    const abort = () => {
-      // Only terminate when this is the sole admitted operation. Other callers
-      // retain their worker; this result is discarded in that case.
-      if (worker === activeWorker && pending.size === 1 && identifying.size === 0) {
-        activeWorker?.terminate()
-        worker = null
-        ready = null
-      }
-      pending.delete(id)
-      finish(() => reject(new DOMException('Recognition cancelled', 'AbortError')))
-    }
-    pending.set(id, {
-      resolve: (value) => finish(() => resolve(value)),
-      reject: (error) => finish(() => reject(error)), onProgress,
-    })
-    signal?.addEventListener('abort', abort, { once: true })
-    const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words, grid, expectedGrid }
+    await abortable(ensureWorker(), signal)
+    signal?.throwIfAborted()
+    const activeWorker = worker
+    const bitmap = await decodeScreenshot(image, signal)
     try {
-      if (!worker) throw new Error('Scanner is unavailable. Try again.')
-      worker.postMessage(msg, [bitmap])
+      signal?.throwIfAborted()
+      if (worker !== activeWorker) throw new Error("Scanner was reset. Try again.")
+      const area = checkedCrop(crop, bitmap)
+      if (grid) checkedGrid(grid, area)
+      if (expectedGrid) checkedGrid(expectedGrid, area)
+      if (grid && expectedGrid) throw new Error('Repeated recognition requires independent grid discovery.')
     } catch (error) {
-      signal?.removeEventListener('abort', abort)
-      pending.delete(id)
       bitmap.close()
-      reject(error instanceof Error ? error : new Error(String(error)))
+      throw error
     }
-  })
+    const id = nextId++
+    return await new Promise<ScanResult>((resolve, reject) => {
+      const finish = (work: () => void) => {
+        signal?.removeEventListener('abort', abort)
+        work()
+      }
+      const abort = () => {
+        // Only terminate when this is the sole admitted operation. Other callers
+        // retain their worker; this result is discarded in that case.
+        if (worker === activeWorker && pending.size === 1 && identifying.size === 0) {
+          activeWorker?.terminate()
+          worker = null
+          ready = null
+          initialized = false
+        }
+        pending.delete(id)
+        finish(() => reject(new DOMException('Recognition cancelled', 'AbortError')))
+      }
+      pending.set(id, {
+        resolve: (value) => finish(() => resolve(value)),
+        reject: (error) => finish(() => reject(error)), onProgress,
+      })
+      signal?.addEventListener('abort', abort, { once: true })
+      const msg: WorkerRequest = { type: 'scan', id, bitmap, crop, learned, pitch, preferredPitch, words, grid, expectedGrid }
+      try {
+        if (!worker) throw new Error('Scanner is unavailable. Try again.')
+        worker.postMessage(msg, [bitmap])
+      } catch (error) {
+        signal?.removeEventListener('abort', abort)
+        pending.delete(id)
+        bitmap.close()
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
+    })
+  } finally { release() }
 }
 
 export type { IdentifyMatch }
 
 /** Best items for a box (grid cells of the last scan), e.g. after the user moved or drew it. */
 export async function identifyBox(box: { col: number; row: number; w: number; h: number }): Promise<IdentifyMatch[]> {
-  await ensureWorker()
-  const id = nextId++
-  return new Promise<IdentifyMatch[]>((resolve, reject) => {
-    identifying.set(id, { resolve, reject })
-    const msg: WorkerRequest = { type: 'identify', id, box }
-    worker?.postMessage(msg)
-  })
+  const release = retainScanner()
+  try {
+    await ensureWorker()
+    const id = nextId++
+    return await new Promise<IdentifyMatch[]>((resolve, reject) => {
+      identifying.set(id, { resolve, reject })
+      const msg: WorkerRequest = { type: 'identify', id, box }
+      try {
+        if (!worker) throw new Error('Scanner is unavailable. Scan a screenshot again.')
+        worker.postMessage(msg)
+      } catch (cause) {
+        identifying.delete(id)
+        reject(cause instanceof Error ? cause : new Error(String(cause)))
+      }
+    })
+  } finally { release() }
 }

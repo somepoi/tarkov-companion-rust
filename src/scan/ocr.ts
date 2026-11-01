@@ -20,6 +20,22 @@ function assetBase(): string {
 
 let workerPromise: Promise<TessWorker> | null = null
 
+let idle: ReturnType<typeof setTimeout> | undefined
+
+function scheduleRelease() {
+  clearTimeout(idle)
+  idle = undefined
+  if (queuedReads || !workerPromise) return
+  const candidate = workerPromise
+  idle = setTimeout(() => {
+    idle = undefined
+    if (queuedReads || workerPromise !== candidate) return
+    // Detach before asynchronous termination so a fresh read gets a new engine.
+    workerPromise = null
+    void candidate.then((worker) => worker.terminate()).catch(() => undefined)
+  }, 60_000)
+}
+
 function getWorker(): Promise<TessWorker> {
   if (!workerPromise) {
     workerPromise = (async () => {
@@ -38,6 +54,7 @@ function getWorker(): Promise<TessWorker> {
         await worker.terminate().catch(() => undefined)
         throw error
       }
+      scheduleRelease()
       return worker
     })().catch((err: unknown) => {
       workerPromise = null
@@ -49,7 +66,9 @@ function getWorker(): Promise<TessWorker> {
 
 /** Starts loading the reader in the background (the model is ~3 MB). */
 export function warmUpOcr(): void {
-  void getWorker().catch(() => undefined)
+  clearTimeout(idle)
+  idle = undefined
+  void getWorker().then(() => scheduleRelease()).catch(() => undefined)
 }
 
 /**
@@ -72,10 +91,12 @@ let queuedReads = 0
 export function readWords(image: Blob, crop: ImageCrop | null, opts: ReadOptions = {}): Promise<OcrWord[]> {
   if (opts.signal?.aborted) return Promise.reject(new DOMException('Text read was cancelled', 'AbortError'))
   if (queuedReads >= 2) return Promise.reject(new Error('The text reader is busy. Finish the current scan and try again.'))
+  clearTimeout(idle)
+  idle = undefined
   queuedReads++
   const read = ocrQueue.then(() => readWordsNow(image, crop, opts))
   ocrQueue = read.then(() => undefined, () => undefined)
-  return abortable(read.finally(() => { queuedReads-- }), opts.signal)
+  return abortable(read.finally(() => { queuedReads--; scheduleRelease() }), opts.signal)
 }
 
 async function readWordsNow(image: Blob, crop: ImageCrop | null, opts: ReadOptions): Promise<OcrWord[]> {
