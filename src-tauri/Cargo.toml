@@ -13,11 +13,16 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = []
 custom-protocol = ["tauri/custom-protocol"]
+staged-updates = ["dep:tauri-plugin-updater", "dep:base64", "dep:minisign-verify"]
 
 [build-dependencies]
+base64 = "0.23"
+minisign-verify = "0.3"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+base64 = { version = "0.23", optional = true }
+minisign-verify = { version = "0.3", optional = true }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-opener = "2"
@@ -34,6 +39,7 @@ notify = "8"
 encoding_rs = "0.8"
 percent-encoding = "2"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls", "system-proxy"] }
+tauri-plugin-updater = { version = "2", optional = true, default-features = false, features = ["native-tls"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"

@@ -11,6 +11,7 @@ mod packs;
 mod position;
 mod resources;
 mod searchbar;
+mod updates;
 
 use desktop::HostState;
 use std::sync::Arc;
@@ -42,10 +43,12 @@ pub fn run() {
             desktop::read_archived_screenshot,
             inventory::inventory_call,
             backup::native_backup,
+            updates::check_staged_update,
             integrations::take_scan_capture,
             integrations::pending_scan_capture_id
         ])
         .setup(|app| {
+            updates::initialize(app.handle())?;
             app.handle()
                 .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
             let mut state = HostState::open(app.handle())?;

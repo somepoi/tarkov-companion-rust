@@ -1,6 +1,6 @@
 Tarkov Companion Rust — native dependency notices
 
-Cargo.lock SHA-256 (LF): 52190a4cd1667fd6217f50f08e337577301839d47defaa8047bf580992e508fd
+Cargo.lock SHA-256 (LF): 6f356b3234f928566a453a12b7a1ae71be7d3ca0b0bcc83583cfcdbe93877a83
 Target: x86_64-pc-windows-msvc. Includes build-time dependencies from the resolved graph.
 Identical license texts are included once and referenced by content hash.
 The application remains GPL-3.0-or-later; each dependency retains its own license.
@@ -884,6 +884,12 @@ Source: https://github.com/hyperium/mime
 LICENSE-APACHE: text 954f335b8baf5e1a
 LICENSE-MIT: text a302dc760d97dc62
 
+minisign-verify 0.3.0
+License expression: MIT
+Authors: Frank Denis <github@pureftpd.org>
+Source: https://github.com/jedisct1/rust-minisign-verify
+LICENSE: text 58f66933c7bba2f4
+
 miniz_oxide 0.8.9
 License expression: MIT OR Zlib OR Apache-2.0
 Authors: Frommi <daniil.liferenko@gmail.com>, oyvindln <oyvindln@users.noreply.github.com>, Rich Geldreich richgel99@gmail.com
@@ -1551,6 +1557,14 @@ LICENSE.spdx: text eb8a6c84630461b3
 LICENSE_APACHE-2.0: text 4bf96504d6e83ce5
 LICENSE_MIT: text b7f455413bfe5f9d
 
+tauri-plugin-updater 2.14.1
+License expression: Apache-2.0 OR MIT
+Authors: Tauri Programme within The Commons Conservancy
+Source: https://github.com/tauri-apps/plugins-workspace
+LICENSE.spdx: text eb8a6c84630461b3
+LICENSE_APACHE-2.0: text 4bf96504d6e83ce5
+LICENSE_MIT: text 89ff9689dcf9dd53
+
 tauri-plugin 2.7.2
 License expression: Apache-2.0 OR MIT
 Authors: Tauri Programme within The Commons Conservancy
@@ -1593,6 +1607,13 @@ Authors: Tauri Programme within The Commons Conservancy
 Source: https://github.com/tauri-apps/tauri
 LICENSE-APACHE-2.0: text 4bf96504d6e83ce5
 LICENSE-MIT: text 89ff9689dcf9dd53
+
+tempfile 3.27.0
+License expression: MIT OR Apache-2.0
+Authors: Steven Allen <steven@stebalien.com>, The Rust Project Developers, Ashley Mannix <ashleymannix@live.com.au>, Jason White <me@jasonwhite.io>
+Source: https://github.com/Stebalien/tempfile
+LICENSE-APACHE: text 954f335b8baf5e1a
+LICENSE-MIT: text 7bdd5c5e8ad0c973
 
 tendril 0.5.1
 License expression: MIT OR Apache-2.0
@@ -5498,6 +5519,69 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ==============================================================================
+License text 58f66933c7bba2f4
+------------------------------------------------------------------------------
+Copyright (c) 2019-2025 Frank Denis
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+--
+
+Code in the src/crypto folder is derived from the rust-crypto project:
+https://github.com/DaGenix/rust-crypto
+
+Original ISC license follows:
+
+Copyright (c) 2006-2009 Graydon Hoare
+Copyright (c) 2009-2013 Mozilla Foundation
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+==============================================================================
 License text 5a7d13c6710cdec2
 ------------------------------------------------------------------------------
 The MIT License (MIT)
@@ -7593,6 +7677,35 @@ Apache License
 License text 7a8093fb4a93f23e
 ------------------------------------------------------------------------------
 Copyright (c) 2013-2025 The rust-url developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+==============================================================================
+License text 7bdd5c5e8ad0c973
+------------------------------------------------------------------------------
+Copyright (c) 2015 Steven Allen
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated

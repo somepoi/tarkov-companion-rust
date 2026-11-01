@@ -7,7 +7,7 @@ import { nativeToolchain } from './lib/native-toolchain.mjs'
 
 const toolchain = nativeToolchain()
 const metadata = JSON.parse(execFileSync(toolchain.cargo, [
-  'metadata', '--locked', '--offline', '--format-version', '1', '--filter-platform', 'x86_64-pc-windows-msvc',
+  'metadata', '--locked', '--offline', '--all-features', '--format-version', '1', '--filter-platform', 'x86_64-pc-windows-msvc',
 ], { env: toolchain.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true }))
 const nodes = new Map(metadata.resolve.nodes.map((node) => [node.id, node]))
 const reachable = new Set()

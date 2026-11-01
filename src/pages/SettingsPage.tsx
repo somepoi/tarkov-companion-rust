@@ -1,3 +1,4 @@
+import { StagedUpdateCheck } from '../desktop/StagedUpdateCheck'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -593,6 +594,7 @@ function DesktopAppSection() {
       <Row label="Start minimized to tray">
         <Switch checked={startMin} onChange={setStartMin} label="Start minimized" />
       </Row>
+      <StagedUpdateCheck />
       <Row label="Updates" hint="Automatic downloads new versions in the background and asks before restarting. 'Only tell me' shows a Download button instead. Off never checks by itself (About → Check for updates still works).">
         <Segmented value={updates} onChange={setUpdates} label="Updates" options={[{ value: 'auto', label: 'Automatic' }, { value: 'notify', label: 'Only tell me' }, { value: 'off', label: 'Off' }]} />
       </Row>

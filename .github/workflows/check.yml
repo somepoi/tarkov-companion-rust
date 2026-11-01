@@ -27,5 +27,6 @@ jobs:
       - run: rustup show active-toolchain
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --workspace -- -D warnings
+      - run: cargo clippy --locked --workspace --features custom-protocol,staged-updates -- -D warnings
       - run: npm run notices:rust
       - run: cargo build --locked -p tarkov-companion-rust --features custom-protocol
