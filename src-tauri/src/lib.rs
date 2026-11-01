@@ -11,6 +11,8 @@ mod packs;
 mod position;
 mod resources;
 mod searchbar;
+#[cfg(feature = "staged-updates")]
+mod staged_download;
 mod updates;
 
 use desktop::HostState;
@@ -44,6 +46,7 @@ pub fn run() {
             inventory::inventory_call,
             backup::native_backup,
             updates::check_staged_update,
+            updates::download_staged_update,
             integrations::take_scan_capture,
             integrations::pending_scan_capture_id
         ])

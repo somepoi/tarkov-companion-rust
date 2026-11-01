@@ -1,5 +1,11 @@
-//! Read-only updater staging. Production install/download channels stay disabled.
+//! Explicit updater staging. Production update/install channels stay disabled.
 use serde_json::{Value, json};
+
+#[cfg(feature = "staged-updates")]
+static JOB: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+#[cfg(feature = "staged-updates")]
+static CANDIDATE: std::sync::Mutex<Option<crate::staged_download::Candidate>> =
+    std::sync::Mutex::new(None);
 
 #[cfg(feature = "staged-updates")]
 fn configuration() -> Result<Option<(tauri::Url, String)>, String> {
@@ -76,10 +82,12 @@ pub async fn check_staged_update(
     #[cfg(feature = "staged-updates")]
     {
         use tauri_plugin_updater::UpdaterExt;
-        static JOB: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
         let _job = JOB
             .try_lock()
             .map_err(|_| "An update check is already running")?;
+        *CANDIDATE
+            .lock()
+            .map_err(|_| "Update state is unavailable")? = None;
         let Some((endpoint, key)) = configuration()? else {
             return Ok(
                 json!({"state":"disabled","message":"No fork staging endpoint/public key was compiled into this build"}),
@@ -98,9 +106,53 @@ pub async fn check_staged_update(
             .map_err(|e| e.to_string())?;
         Ok(match update {
             Some(update) => {
-                json!({"state":"candidate","version":update.version,"signatureVerified":false,"installable":false})
+                let candidate = crate::staged_download::Candidate::new(
+                    update.version,
+                    update.download_url,
+                    update.signature,
+                )?;
+                let result = json!({"state":"candidate","id":candidate.id,"version":candidate.version,"signatureVerified":false,"installable":false});
+                *CANDIDATE
+                    .lock()
+                    .map_err(|_| "Update state is unavailable")? = Some(candidate);
+                result
             }
             None => json!({"state":"none"}),
         })
+    }
+}
+
+#[tauri::command]
+pub async fn download_staged_update(
+    _state: tauri::State<'_, std::sync::Arc<crate::desktop::HostState>>,
+    window: tauri::WebviewWindow,
+    id: String,
+) -> Result<Value, String> {
+    if window.label() != "main" || crate::desktop::benchmark_mode() {
+        return Err("Update downloads require the main window outside benchmark mode".into());
+    }
+    let _ = &id;
+    #[cfg(not(feature = "staged-updates"))]
+    return Err("Updater staging is not included in this build".into());
+    #[cfg(feature = "staged-updates")]
+    {
+        let _job = JOB
+            .try_lock()
+            .map_err(|_| "An update operation is already running")?;
+        let candidate = CANDIDATE
+            .lock()
+            .map_err(|_| "Update state is unavailable")?
+            .clone()
+            .filter(|candidate| candidate.id == id && candidate.fresh())
+            .ok_or("Update candidate expired or changed; check the channel again")?;
+        let (_, key) = configuration()?.ok_or("Staging channel is not configured")?;
+        let root = _state.profile_root.join("updater-staging");
+        tauri::async_runtime::spawn_blocking(move || {
+            // Keep serialization with the actual IO even if the caller goes away.
+            let _job = _job;
+            crate::staged_download::download(candidate, key, root)
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
 }
