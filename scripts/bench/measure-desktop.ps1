@@ -26,6 +26,7 @@ function Same-CreationTime($First, $Second) { return [Math]::Abs(($First.ToUnive
 $cpuMax = @{}
 $samples = [Collections.Generic.List[object]]::new()
 $ready = $null
+$catalogReady = $null
 $previousCpu = $null
 $previousAt = $null
 $unavailable = [Collections.Generic.List[string]]::new()
@@ -35,6 +36,9 @@ try {
     $sampleStart = $clock.Elapsed.TotalMilliseconds
     if ($null -eq $ready -and (Test-Path -LiteralPath $config.readyFile -PathType Leaf)) {
       $ready = @{ observedAtMs = $sampleStart; hostPayload = [IO.File]::ReadAllText($config.readyFile) }
+    }
+    if ($null -eq $catalogReady -and $config.catalogReadyFile -and (Test-Path -LiteralPath $config.catalogReadyFile -PathType Leaf)) {
+      $catalogReady = @{ observedAtMs = $sampleStart; hostPayload = [IO.File]::ReadAllText($config.catalogReadyFile) }
     }
     # Enumerate parent relationships only; inspect metrics only for this launched process tree.
     $inventory = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate)
@@ -85,6 +89,7 @@ try {
   }
 } finally {
   $result = @{ schema = 1; recordedAtUtc = [DateTime]::UtcNow.ToString('o'); launch = $config; rootProcessId = $launched.Id; launchRequestToProcessHandleMs = $processHandleMs; readySignal = $ready; logicalProcessors = $logical; samples = @($samples.ToArray()); unavailableObservations = @($unavailable.ToArray()); limitations = @('Executable isolation contract is declared by the operator, not verified by the sampler.', 'Launch-to-process-handle is not startup-to-visible-UI.', 'Ready signal semantics, if present, are defined by the measured host.', 'Very short-lived children and children reparented before discovery can be missed.', 'CPU includes observed descendants; terminated process totals retain the last observed value.', 'Working sets may double-count shared pages.', 'Peak memory is a sampled maximum, not an allocation high-water mark.', 'GPU and input latency are not measured.', 'The sampler and CIM queries add overhead.', 'Window visibility/workload is labeled by the operator, not enforced.', 'The launched app is left running; no process or profile cleanup is performed.') }
+  $result.catalogReadySignal = $catalogReady
   $json = $result | ConvertTo-Json -Depth 8
   $stream = [IO.File]::Open($config.output, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
   try { $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json); $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }

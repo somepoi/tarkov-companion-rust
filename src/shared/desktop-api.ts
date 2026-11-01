@@ -222,6 +222,8 @@ export interface PackProgress {
 export interface DesktopApi {
   /** Optional instrumentation: marks React layout mounted in an isolated benchmark run. */
   reportUiReady?: () => Promise<void>
+  benchmarkMode?: boolean
+  reportCatalogReady?: (summary: import('./benchmark').BenchmarkCatalogReady) => Promise<void>
   onScanCaptureError?: (cb: (message: string) => void) => () => void
   platform: string
   appVersion: string

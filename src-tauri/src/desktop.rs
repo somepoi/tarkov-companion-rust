@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::VecDeque,
@@ -14,6 +14,22 @@ use tauri_plugin_opener::OpenerExt;
 
 const DEFAULTS: &str = include_str!("../../config/desktop-defaults.json");
 const MAX_JSON_BYTES: usize = 20 * 1024 * 1024;
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BenchmarkCatalogQuery {
+    root: String,
+    count: u32,
+    data_updated_at: u64,
+    sha256: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct BenchmarkCatalogSummary {
+    mode: String,
+    queries: Vec<BenchmarkCatalogQuery>,
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -573,7 +589,7 @@ fn backup_list(state: &HostState) -> Result<Value, NativeError> {
 
 #[tauri::command]
 pub fn desktop_metadata(window: tauri::WebviewWindow) -> Value {
-    json!({"platform": if cfg!(windows) {"win32"} else {std::env::consts::OS}, "appVersion": env!("CARGO_PKG_VERSION"), "windowKind": if window.label()=="searchbar" {"searchbar"} else {"main"}})
+    json!({"platform": if cfg!(windows) {"win32"} else {std::env::consts::OS}, "appVersion": env!("CARGO_PKG_VERSION"), "windowKind": if window.label()=="searchbar" {"searchbar"} else {"main"}, "benchmarkMode": benchmark_mode()})
 }
 
 #[tauri::command]
@@ -739,6 +755,66 @@ fn dispatch(
                     let _ = app.emit("pack-progress", progress);
                 })
                 .map_err(|e| error("packs", e))?;
+            Ok(Value::Null)
+        }
+        "benchmark:catalog-ready" => {
+            if !benchmark_mode() || _window.label() != "main" {
+                return Ok(Value::Null);
+            }
+            if first["queries"].as_array().map(Vec::len) != Some(3) {
+                return Err(error("benchmark_catalog", "Expected three catalog queries"));
+            }
+            let summary: BenchmarkCatalogSummary = serde_json::from_value(first.clone())
+                .map_err(|_| error("benchmark_catalog", "Invalid catalog summary"))?;
+            let mut roots: Vec<_> = summary.queries.iter().map(|q| q.root.as_str()).collect();
+            roots.sort_unstable();
+            if !["pve", "regular"].contains(&summary.mode.as_str())
+                || roots != ["gameData", "hideout", "items"]
+                || summary.queries.iter().any(|q| {
+                    q.count > 10_000_000
+                        || q.data_updated_at == 0
+                        || q.data_updated_at > 8_640_000_000_000_000
+                        || q.sha256.len() != 64
+                        || !q
+                            .sha256
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                })
+            {
+                return Err(error("benchmark_catalog", "Invalid catalog diagnostics"));
+            }
+            let ready = PathBuf::from(
+                std::env::var("TC_BENCH_READY_FILE")
+                    .map_err(|_| error("benchmark_output", "Missing benchmark output"))?,
+            );
+            let root = state
+                .data_dir
+                .parent()
+                .ok_or_else(|| error("benchmark_output", "No measurement directory"))?
+                .canonicalize()?;
+            if !ready.is_absolute()
+                || ready.parent().and_then(|p| p.canonicalize().ok()).as_ref() != Some(&root)
+            {
+                return Err(error(
+                    "benchmark_output",
+                    "Invalid benchmark output directory",
+                ));
+            }
+            let output = root.join("catalog-ready.json");
+            static CATALOG_WRITE: Mutex<()> = Mutex::new(());
+            let _guard = CATALOG_WRITE
+                .lock()
+                .map_err(|_| error("benchmark_output", "Catalog output lock unavailable"))?;
+            if !output.exists() {
+                atomic_write(
+                    &output,
+                    &serde_json::to_vec(&json!({
+                        "milestone": "catalog-queries-success-idle", "at": now_ms(),
+                        "mode": summary.mode, "queries": summary.queries
+                    }))
+                    .map_err(|e| error("benchmark_output", e.to_string()))?,
+                )?;
+            }
             Ok(Value::Null)
         }
         "ui:ready" => {

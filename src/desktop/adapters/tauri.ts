@@ -32,6 +32,7 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     platform: string
     appVersion: string
     windowKind: 'main' | 'searchbar'
+    benchmarkMode: boolean
   }>('desktop_metadata')
   const logs = metadata.windowKind === 'main' ? nativeLogBridge() : null
   const overlaySubscriptions: Promise<void>[] = []
@@ -86,6 +87,8 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
   }
   const api: DesktopApi = {
     reportUiReady: () => call('ui:ready'),
+    benchmarkMode: metadata.benchmarkMode,
+    reportCatalogReady: (summary) => call('benchmark:catalog-ready', summary),
     platform: metadata.platform,
     appVersion: metadata.appVersion,
     windowKind: metadata.windowKind,

@@ -9,6 +9,8 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 
 const api: DesktopApi = {
   reportUiReady: () => ipcRenderer.invoke('ui:ready'),
+  benchmarkMode: process.argv.includes('--tc-benchmark'),
+  reportCatalogReady: (summary) => ipcRenderer.invoke('benchmark:catalog-ready', summary),
   platform: process.platform,
   appVersion: process.argv.find((a) => a.startsWith('--tc-version='))?.slice('--tc-version='.length) ?? '',
   windowKind: process.argv.includes('--tc-window=searchbar') ? 'searchbar' : 'main',

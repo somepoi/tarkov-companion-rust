@@ -6,6 +6,7 @@ import { Layout } from './components/Layout'
 import { NAV_ITEMS } from './config/nav'
 import { DesktopBridge, isDesktop } from './desktop/useDesktop'
 import { lazy } from 'react'
+import { BenchmarkCatalogObserver } from './desktop/BenchmarkCatalogObserver'
 
 const AlignPage = lazy(() => import('./pages/AlignPage').then((m) => ({ default: m.AlignPage })))
 const FeaturesPage = lazy(() => import('./pages/FeaturesPage').then((m) => ({ default: m.FeaturesPage })))
@@ -16,6 +17,7 @@ export default function App() {
   const Router = isDesktop() ? HashRouter : BrowserRouter
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions(queryClient)}>
+      {window.desktop?.benchmarkMode && window.desktop.windowKind === 'main' && <BenchmarkCatalogObserver />}
       <Router>
         {isDesktop() && <DesktopBridge />}
         <Routes>

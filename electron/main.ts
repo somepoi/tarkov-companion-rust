@@ -29,6 +29,7 @@ import { cleanLeftovers, sizeOf } from './cleanup'
 import type { CleanupResult } from '../src/shared/desktop-api'
 import type { PackName } from '../src/shared/desktop-api'
 import { APP_IDENTITY, forkDataPath, forkUpdaterCachePath } from './appIdentity'
+import { validBenchmarkCatalog } from '../src/shared/benchmark'
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL
 // Isolate browser storage and the instance lock before any startup side effect.
@@ -272,7 +273,7 @@ function createWindow(show: boolean) {
       allowRunningInsecureContent: false,
       webviewTag: false,
       devTools: !app.isPackaged,
-      additionalArguments: ['--tc-window=main', `--tc-version=${app.getVersion()}`],
+      additionalArguments: ['--tc-window=main', `--tc-version=${app.getVersion()}`, ...(BENCHMARK_MODE ? ['--tc-benchmark'] : [])],
     },
   })
   if (b.maximized) win.maximize()
@@ -643,6 +644,20 @@ function registerIpc() {
     const relative = path.relative(path.dirname(app.getPath('userData')), readyFile)
     if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Benchmark output must be inside its isolated measurement directory')
     if (!fs.existsSync(readyFile)) fs.writeFileSync(readyFile, JSON.stringify({ milestone: 'react-layout-mounted', at: Date.now() }), { flag: 'wx' })
+  })
+  handle('benchmark:catalog-ready', (event, summary: unknown) => {
+    if (!BENCHMARK_MODE || !win || event.sender !== win.webContents) return
+    if (!validBenchmarkCatalog(summary)) throw new Error('Invalid benchmark catalog summary')
+    const readyFile = process.env.TC_BENCH_READY_FILE
+    if (!readyFile || !path.isAbsolute(readyFile)) throw new Error('Missing benchmark output')
+    const root = fs.realpathSync(path.dirname(app.getPath('userData')))
+    if (fs.realpathSync(path.dirname(readyFile)) !== root) throw new Error('Invalid benchmark output directory')
+    const output = path.join(root, 'catalog-ready.json')
+    if (!fs.existsSync(output)) {
+      const pending = path.join(root, 'catalog-ready.pending')
+      fs.writeFileSync(pending, JSON.stringify({ milestone: 'catalog-queries-success-idle', at: Date.now(), ...summary }), { flag: 'wx' })
+      fs.renameSync(pending, output)
+    }
   })
   handle('searchbar:size', (e, width: unknown, height: unknown) => {
     // Only the search bar itself says how big it is.

@@ -41,10 +41,11 @@ const out = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-desktop-baseline-'))
 const profile = path.join(out, 'profile')
 fs.mkdirSync(profile)
 const readyFile = path.join(out, 'ready.json')
+const catalogReadyFile = path.join(out, 'catalog-ready.json')
 const config = {
   schema: 1, executable: fs.realpathSync(exe),
   executableSha256: crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex'),
-  profile, profileEnv: profileEnv ?? null, isolationContract: contract, readyFile,
+  profile, profileEnv: profileEnv ?? null, isolationContract: contract, readyFile, catalogReadyFile,
   arguments: launchArgs.map((arg) => arg.replaceAll('{profile}', profile)),
   durationSeconds: number('--duration', 300, 1, 86400),
   settleSeconds: number('--settle', 30, 0, 3600),
