@@ -73,7 +73,8 @@ export function BackupPanel() {
         Includes every native profile, container, scan history, reserves,
         archived screenshots, settings and saved interface data with recognition
         corrections. Game-data caches are downloaded again. These backups are
-        kept until you remove them yourself. The list reads backup manifests;
+        kept until you remove them yourself. Export to another disk or folder
+        to keep a copy outside the app data directory. The list reads backup manifests;
         full checksums and database validation run when preparing recovery.
       </p>
       <p className="text-xs text-ink-muted">
@@ -117,6 +118,20 @@ export function BackupPanel() {
             }
           >
             Create full backup
+          </button>
+          <button
+            className="btn"
+            onClick={() =>
+              void act(async () => {
+                const result = await call<{ path: string } | null>({
+                  operation: 'export',
+                  rendererState: await buildRendererBackup(),
+                })
+                if (result) setMessage(`Full backup exported: ${result.path}. Use Restore from a folder to recover it.`)
+              })
+            }
+          >
+            Export full backup…
           </button>
           <button
             className="btn"

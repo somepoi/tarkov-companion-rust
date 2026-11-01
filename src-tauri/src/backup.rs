@@ -54,6 +54,7 @@ impl Progress {
 )]
 pub enum Operation {
     Create { renderer_state: Value },
+    Export { renderer_state: Value },
     List,
     OpenFolder,
     Restore { name: String },
@@ -314,11 +315,15 @@ pub fn active_profile(root: &Path) -> Result<PathBuf, String> {
     }
     Ok(path)
 }
-fn create(state: &HostState, renderer: Value, progress: &mut Progress) -> Result<Value, String> {
+fn create(
+    state: &HostState,
+    renderer: Value,
+    root: &Path,
+    progress: &mut Progress,
+) -> Result<Value, String> {
     progress.stage("Creating database snapshot");
     validate_renderer(&renderer)?;
-    let root = backup_root(state);
-    fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    fs::create_dir_all(root).map_err(|e| e.to_string())?;
     let id = name("backup");
     let staging = root.join(format!(".incomplete-{id}"));
     fs::create_dir(&staging).map_err(|e| e.to_string())?;
@@ -522,7 +527,32 @@ pub async fn native_backup(
         };
         progress.stage("Preparing backup operation");
         match operation {
-            Operation::Create { renderer_state } => create(&state, renderer_state, &mut progress),
+            Operation::Create { renderer_state } => {
+                create(&state, renderer_state, &backup_root(&state), &mut progress)
+            }
+            Operation::Export { renderer_state } => {
+                validate_renderer(&renderer_state)?;
+                progress.stage("Choose an export folder");
+                match app
+                    .dialog()
+                    .file()
+                    .set_title("Choose a folder for the full backup")
+                    .blocking_pick_folder()
+                {
+                    None => Ok(Value::Null),
+                    Some(path) => {
+                        let root = path
+                            .into_path()
+                            .map_err(|e| e.to_string())?
+                            .canonicalize()
+                            .map_err(|e| e.to_string())?;
+                        if !root.is_dir() {
+                            return Err("Export destination must be an existing directory".into());
+                        }
+                        create(&state, renderer_state, &root, &mut progress)
+                    }
+                }
+            }
             Operation::List => list(&state),
             Operation::OpenFolder => {
                 let root = backup_root(&state);

@@ -1,0 +1,9 @@
+# Full backup export to a selected folder
+
+Goal: satisfy the migration's portable full-export workflow without requiring users to locate and manually copy the application data directory.
+
+Design: add an Export operation to the main-window-only serialized native backup command. Obtain the destination through the native folder picker; the renderer never supplies a filesystem path. Cancellation returns null and writes nothing. Require an existing directory, then pass it to the same snapshot-bound, checksummed, bounded backup creator used by local copies. Create one uniquely named staging child and finalize it only after complete verification. Do not overwrite/delete existing copies or prune source evidence. Failed exports retain an explicitly incomplete child as existing backup behavior does. Restore from a folder accepts the completed portable bundle; external copies are not tracked or managed in the local list.
+
+The interface captures its saved-state export before the destination picker, separately from the transactional SQLite snapshot. Keep the app idle for the whole operation, as the existing backup explanation requires. No cross-store atomicity, disk-full recovery guarantee, automatic external retention or schema change is introduced. Choosing another volume does not itself prove the copy will survive that volume's failure.
+
+Verification on 2026-11-01: frontend production build/type checking, oxlint, strict custom-protocol workspace Clippy, native embedded build (23.71s), formatting and whitespace checks exited 0. Source review traced native-picker-only destinations, cancellation before creator entry, shared final verification and failure staging, main-window validation and job serialization. No tests, fixtures or actual export/restore exercises were created or run. Runtime export/cancellation/recovery and release acceptance remain open; installers were not refreshed.
