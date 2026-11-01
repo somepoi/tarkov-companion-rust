@@ -1,29 +1,33 @@
 # Privacy
 
-Tarkov Companion has no accounts, no tracking, no analytics and no advertising. It never sends anything about you, your game or your progress to the project or to anyone else.
+Tarkov Companion Rust has no app accounts, advertising, analytics or telemetry. Normal workflows do not upload progress, game logs, screenshots or physical inventory. Remote requests and external links disclose information described below.
 
-## What stays on your computer
+## Local data
 
-Everything you enter or the app works out: quests, level and faction, item collection, keys, hideout, drawings, story progress, raid log, settings, backups and what the stash scanner learned. It is stored in the app's own folder (`%APPDATA%\Tarkov Companion` for the desktop app) or in your browser's storage (web version). You can export, back up and delete it from Settings.
+Quests, level/faction, checklist counts, keys, hideout, drawings, story progress, raid history, settings and recognition corrections stay locally. Stash Manager additionally stores SQLite inventory, container snapshots, saved drafts and retained screenshot evidence. Pictures may contain account names or other personal information.
 
-The desktop app reads Escape from Tarkov's own log files and the names of your in-game screenshots on your computer. What it reads from them (quest hand-ins, raids, your in-game position) is only used inside the app.
+The native application uses the data directory associated with `io.github.somepoi.tarkov-companion-rust`; Stash Manager displays the active directory. Development uses the separate `.dev` identifier. The Electron reference has its own `Tarkov Companion Rust` user-data directory. The original application's directory is not migrated in place. Interface stores and cached catalogs also use the host's browser storage.
 
-## What the app downloads
+Settings progress exports/daily JSON backups cover interface progress stores. Stash Manager's full recovery bundles also include the database, retained evidence, settings and corrections. Unsaved edits are not saved-state backups. Exported copies remain in the chosen destination until you manage them. Profiles and backups are not encrypted by the app: treat them as personal files, especially on shared or cloud-synced disks.
 
-To work, the app connects to these services. Like any website visit, they see your IP address and that a copy of the app is asking; the app sends them nothing else about you.
+Desktop integrations read ordinary game text logs and screenshot filenames for local quest/raid/position tracking. Imported or user-triggered captured screenshots are processed locally. Position-screenshot recycling is separate from stash evidence and remains opt-in. No game-memory access, injection, traffic interception or gameplay input is implemented.
 
-| Service | Why |
+## Remote requests
+
+Remote services see ordinary request information, including IP address, requested URL and HTTP client headers. Their retention policies are outside this application's control.
+
+| Service | Purpose |
 | --- | --- |
-| `json.tarkov.dev`, `assets.tarkov.dev` | Game data (quests, items, prices, maps) and pictures |
-| `escapefromtarkov.fandom.com`, `static.wikia.nocookie.net` | Quest guides, story chapters and key pictures from the EFT Wiki |
-| `github.com` (this project's releases) | Checking for and downloading updates (Settings → Updates can turn this off), and the Lighthouse map and stash scanner data the first time you need them |
+| `json.tarkov.dev`, `assets.tarkov.dev` | Game catalogs, prices, maps and pictures |
+| `escapefromtarkov.fandom.com`, `static.wikia.nocookie.net` | Wiki guides, story content and pictures |
+| GitHub and its release/CDN infrastructure | Fork content packs when requested; links opened in your browser |
 
-## Things that only happen when you click
+Normal in-app updates are disabled. Explicit experimental update-preview builds can contact their configured HTTPS channel and download a selected signed installer. This is separate from ordinary local builds; personal progress/screenshots are not attached. Fresh installations are not guaranteed to contain all offline game/map resources.
 
-- **View public profile on tarkov.dev** opens your browser at `tarkov.dev/players/…/<your account id>`: the account id comes from your game logs and is part of that address.
-- Links to the wiki, tarkov.dev or GitHub open in your normal browser.
-- The stash scanner looks at screenshots you paste or capture with its hotkey. The picture is processed on your computer and is not uploaded.
+## Actions you choose
 
-## Questions
+- Opening a public tarkov.dev player profile puts the account ID from local game logs in the browser URL, disclosing it to that destination.
+- External links open in your browser, which has its own cookies, history and privacy settings.
+- Sharing backups, screenshots or optional local benchmark reports discloses their contents. Inspect files before attaching them to an issue.
 
-Open an issue on [GitHub](https://github.com/David04-09/tarkov-companion/issues).
+Questions about this fork belong in its [issue tracker](https://github.com/somepoi/tarkov-companion-rust/issues). Avoid posting personal files publicly.

@@ -2,31 +2,31 @@
 
 ## Reporting a problem
 
-If you find a security problem (for example a way for a web page, a map file or an imported file to run code, read files or reach the internet beyond the list below), please **do not open a public issue**. Use GitHub's private reporting instead: the repository's **Security** tab → **Report a vulnerability**. You will get an answer within a few days, and a fixed version is released through the normal auto-update.
+Report vulnerabilities to the maintainer of [this fork](https://github.com/somepoi/tarkov-companion-rust), rather than the original application. Use GitHub's **Security → Report a vulnerability** if private reporting is available. Otherwise arrange private contact before sharing exploit details or personal files. This fork does not promise a response deadline or automatic delivery of fixes.
 
-## What the app promises
+## Native application boundaries
 
-- It never touches Escape from Tarkov: no access to the game process or its memory, no injection, no input sent to the game, no reading of network traffic, nothing written to the game folder, nothing drawn inside the game. The optional search bar (off by default) is an ordinary always-on-top window of the app's own, like Discord's; its see-through parts pass clicks to the game. Quest tracking reads the game's own text logs, read-only.
-- It only talks to: `json.tarkov.dev` and `assets.tarkov.dev` (game data and pictures), `escapefromtarkov.fandom.com` and `static.wikia.nocookie.net` (wiki guides and pictures), and GitHub (updates). Nothing about you is uploaded anywhere.
-- Your progress stays on your computer (browser storage, or `%APPDATA%\Tarkov Companion` for the desktop app).
+Tauri hosts the React interface in Windows WebView2, without a permanent Node sidecar. The retained Electron reference has separate runtime protections.
 
-## How the desktop app is protected
-
-| Layer | What it does |
+| Boundary | Current implementation |
 | --- | --- |
-| Sandboxed page | `contextIsolation`, `sandbox`, no Node in the page, no `<webview>`, web security on. The page reaches Windows only through a small fixed API (`electron/preload.ts`). |
-| Checked requests | Every request from the page is refused unless it comes from the app's own page (`electron/security.ts`). Settings are filtered to known fields with valid values; folder paths must be real local folders (a program can never be "opened" as a folder); links only open if they are `http(s)`; only the app's own scanner/OCR files and plain screenshot names can be read. |
-| Content-Security-Policy | The page may only run its own code and connect to the services listed above (`vite.config.ts`). |
-| Navigation lock | The window can only show the app's own `index.html`; other pages open in your normal browser, pop-ups are refused. |
-| Permissions | Only notifications are allowed; camera, microphone, location, screen capture from the page, USB/HID/serial are always refused. |
-| Electron fuses | Installed builds ignore `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and `--inspect`, load code only from the packaged `app.asar`, and check its integrity. Developer tools and the reload menu are off. |
-| Remote map drawings | SVG maps from tarkov.dev are rebuilt from an allow-list of drawing elements (no scripts, event handlers or external links) before they are shown (`src/lib/sanitizeSvg.ts`). |
-| Wiki content | Story and guide pages are rebuilt from an allow-list of plain HTML tags; no scripts, styles or attributes are copied (`src/api/storyWiki.ts`). |
-| Imported files | Progress, backup and scanner-correction files are size-limited, parsed without object-tampering keys and validated field by field. |
-| Builds | Released by GitHub Actions from tagged commits; third-party actions are pinned to exact commits; the bundled text-recognition model is checked against a fixed SHA-256. Code signing through SignPath Foundation, with every release approved by hand (see the README's code signing policy). |
-| Content packs | The Lighthouse map tiles and the stash scanner data are separate downloads from this version's GitHub release. Their SHA-256 is compiled into the (signed) program; a pack that does not match exactly is refused and nothing is installed. Packs contain only pictures and numbers, never code. |
+| Native commands | Fixed commands validate calling window, operation, arguments and scoped paths. Main-only operations are refused from the searchbar. Frontend capabilities do not grant general filesystem, shell or updater access. See `src-tauri/src/desktop.rs` and `src-tauri/capabilities/main.json`. |
+| Navigation | Both native windows restrict top-level navigation to the embedded app origin; the configured development origin is accepted only in development mode. External links use the validated system-browser route. See `src-tauri/src/navigation.rs`. |
+| Content policy | `src-tauri/tauri.conf.json` restricts scripts, workers, images and connections, with explicit blob/WASM allowances for local workers/OCR. Renderer CSP does not govern native HTTP clients; those have separate checks. |
+| Resources | Native resource routes validate paths. Packs have expected checksums and scoped extraction. Checksums detect mismatches; they do not establish redistribution rights or protect against a compromised build source. |
+| Remote content | SVG maps and wiki HTML use existing allow-list sanitizers (`src/lib/sanitizeSvg.ts`, `src/api/storyWiki.ts`). |
+| Saved inventory | SQLite migrations, revisions and commit replay checks protect saved facts. Screenshot writes are separate from database transactions. Recovery verifies retained evidence and prepares a separate profile while retaining the source. |
+| Imports/backups | Progress, corrections and recovery bundles are bounded and validated. Keep independent backups; in-process rollback does not prove power-loss safety. |
+| Updates/identity | Default update routes are disabled. Experimental signed updates require explicit build configuration, signature/version checks and recovery preparation before permitted installation. Fork identifiers are separate from the original. |
 
-## Known limits
+Integrations use ordinary local game logs, screenshot filenames and user-triggered Windows capture. No game-memory access, injection, traffic interception, gameplay input or automatic selling is implemented. The optional searchbar is a separate always-on-top window. These choices do not establish game-policy or anti-cheat approval.
 
-- **Until signing is live, builds are unsigned.** Downloads come over HTTPS from this repository's GitHub Releases and are checked against the release's SHA-512 list, so their safety rests on the GitHub account. Windows SmartScreen may warn about an unsigned installer.
-- The web version runs in your normal browser and is protected by the same Content-Security-Policy.
+## Distribution and limits
+
+- Current local native installers are unsigned. No certificate, SignPath arrangement, published channel or release guarantees from the original are inherited.
+- The manually dispatched staging workflow builds artifacts without publishing releases. Successful compilation does not prove signed distribution or update/recovery safety.
+- Installation/uninstallation, interrupted update/recovery, Windows 10/11, mixed DPI and full feature parity retain open gates in the [feature inventory](docs/performance/feature-parity.md) and [execution ledger](docs/plans/2026-10-27-implementation-progress.md).
+- Profiles/backups are not app-encrypted. Another process with the same user's filesystem permissions can access or alter them.
+- Electron's reference build retains preload isolation, request validation and packaging fuses. Those Electron mechanisms are not claims about WebView2. The web reference uses the browser's security model.
+
+See [PRIVACY.md](PRIVACY.md) for storage, remote requests and explicitly shared information.

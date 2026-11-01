@@ -1,0 +1,9 @@
+# Native settings and public documentation
+
+Source inspection found that the native host forces ordinary updates and post-update cleanup off and rejects attempts to enable them. Manual update cleanup is also not implemented. The shared Settings page nevertheless offered those controls and mounted the cleanup panel. This exposed actions that could only fail.
+
+The native Settings page now retains the labels with explicit read-only availability explanations instead of unsupported switches/actions. Position-screenshot recycling keeps its separate controls. The experimental update-preview section is unchanged and remains an explicit opt-in build feature. Electron reference controls remain available for comparison; this change does not implement cleanup or close its parity gate.
+
+PRIVACY.md and SECURITY.md now describe the fork and native host: separate native/development data identities, physical database/drafts/evidence, unencrypted recovery exports, remote request disclosures, native command/navigation/resource boundaries and incomplete installation/recovery acceptance. Inherited original profile paths, guaranteed response/release delivery and SignPath signing claims no longer describe this fork. About credits now include native dependencies and point library notices to this repository while retaining the upstream/game/data attribution.
+
+Verification: clean frontend lint, TypeScript/native frontend build, explicit Electron frontend/main/preload build, local documentation links and whitespace passed. The embedded native development build exited 0 (36.90s). No tests were created or run; no application, installer, cleanup, backup, update or game workflow was executed. The earlier release installer documented in `2026-11-02-native-primary.md` predates these UI-only changes and has not been refreshed by this task.
