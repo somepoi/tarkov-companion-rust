@@ -2,6 +2,11 @@
 name: Windows staging package
 on:
   workflow_dispatch:
+    inputs:
+      offline_webview2:
+        description: Embed the WebView2 offline installer in the native package
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -35,13 +40,19 @@ jobs:
           rustup show active-toolchain
           node scripts/native.mjs cargo fetch --locked
       - name: Build native staging installer
+        if: ${{ !inputs.offline_webview2 }}
         run: npm run build:tauri -- --ci
+        env:
+          CARGO_BUILD_JOBS: '2'
+      - name: Build native staging installer with offline WebView2
+        if: ${{ inputs.offline_webview2 }}
+        run: npm run build:tauri:offline
         env:
           CARGO_BUILD_JOBS: '2'
       - name: Upload native staging installer
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: tarkov-companion-rust-native-windows-staging
+          name: tarkov-companion-rust-native-windows-staging-${{ inputs.offline_webview2 && 'offline-webview2' || 'bootstrapper' }}
           path: target/release/bundle/nsis/*.exe
           if-no-files-found: error
       - name: Upload staging artifacts

@@ -28,6 +28,7 @@
     "build:tauri-ui": "tsc -b && vite build --mode tauri",
     "dev:tauri": "node scripts/native.mjs tauri dev",
     "build:tauri": "npm run assets:check && npm run notices && npm run notices:rust && node scripts/native.mjs tauri build",
+    "build:tauri:offline": "npm run build:tauri -- --config src-tauri/tauri.offline.conf.json --bundles nsis --ci",
     "notices:rust": "node scripts/build-rust-notices.mjs",
     "check:rust": "node scripts/native.mjs cargo check --workspace",
     "lint:rust": "node scripts/native.mjs cargo clippy --workspace -- -D warnings",

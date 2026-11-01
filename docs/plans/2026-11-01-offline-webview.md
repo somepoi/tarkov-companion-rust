@@ -1,0 +1,17 @@
+# Offline WebView2 packaging plan
+
+Goal: offer a native NSIS variant embedding the WebView2 runtime installer, without changing application identity, data paths, publisher, downgrade policy or runtime installation on the build machine.
+
+Use a minimal additive Tauri config overlay with webviewInstallMode.type offlineInstaller, supported by the installed CLI 2.12.4 schema and [official documentation](https://v2.tauri.app/distribute/windows-installer/#webview2-installation-options). Add build:tauri:offline through the existing assets/notices/full-build pipeline. Add a boolean input to the existing manual staging workflow; exactly one native variant builds and its artifact name identifies the choice. Keep contents:read, no publishing and the Electron reference path.
+
+Build the variant locally, inspect the generated NSIS mode and embedded runtime file instructions, and record size/checksum/signature status. The generic local NSIS filename is reused by the bundler: this replaces the prior ignored staging artifact, with a new checksum. Both variants identify the same application; do not give the offline variant a new product/data namespace merely to change its filename.
+
+This addresses runtime delivery only. New live game catalogs, prices and remote maps still require their normal source/cache workflows. A build may download the Microsoft runtime installer; it must not execute it. No tests, fixtures, actual install/uninstall/upgrade, screenshots or network-disconnected runtime exercise will be run. Offline installation acceptance remains unverified until independently observed. Review sources, parse workflow/configs, inspect actual packaging output and retain original copyright/license resources.
+
+## Evidence, 2026-11-01
+
+`npm run build:tauri:offline` exited 0. Asset integrity passed (5309 references, five OCR files), notices generation left tracked notices unchanged, the frontend production hook passed, optimized native compilation took 3m06s, and makensis produced one x64 bundle. Both the workflow YAML and overlay JSON parsed; independent source review found no P1/P2 issue. Remote workflow execution remains unverified.
+
+Generated NSIS definitions confirm INSTALLWEBVIEW2MODE offlineInstaller, the embedded MicrosoftEdgeWebView2RuntimeInstallerX64.exe file instruction, publisher somepoi, original fork BUNDLEID and ALLOWDOWNGRADES false. The downloaded runtime installer is 215,017,168 bytes; SHA-256 `62863F0F0611A16CCF124B4F15650C3B66624504EBA74D7CDE1E2AE5D951249B`. Authenticode inspection returned Valid with signer Microsoft Corporation. Its installer ProductVersion is 1.3.307.15; this is not an independently established WebView2 browser runtime version. The file was downloaded through the bundler's Microsoft redirect URL and was not executed.
+
+Replacement local artifact: `target/release/bundle/nsis/Tarkov Companion Rust_2.13.0_x64-setup.exe`, 232,822,453 bytes (222.04 MiB), SHA-256 `3592288F3DB2CDD94576E20A124676C4D34F2A6B954EFDEB20EE25A5B7F856FD`. App installer Authenticode status: NotSigned. This replaces the earlier smaller bootstrapper artifact at that ignored path; historical checksums in the prior installer plan describe prior files, not this replacement. Nothing was installed or published. No tests, fixtures, disconnected installation, upgrade/uninstall or game interaction were exercised. Build and packaging-source evidence do not prove an offline installation or full offline application acceptance.
