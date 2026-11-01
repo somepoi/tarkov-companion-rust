@@ -109,7 +109,7 @@ const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every
 function parseProfile(raw: unknown, label: string): Profile {
   if (typeof raw !== 'object' || raw === null) throw new Error(`Missing "${label}" profile.`)
   const p = raw as Record<string, unknown>
-  if (typeof p.playerLevel !== 'number') throw new Error(`"${label}.playerLevel" must be a number.`)
+  if (typeof p.playerLevel !== 'number' || !Number.isFinite(p.playerLevel)) throw new Error(`"${label}.playerLevel" must be a number.`)
   if (!isFaction(p.faction)) throw new Error(`"${label}.faction" must be USEC or BEAR.`)
   if (!isStringArray(p.completedTaskIds)) throw new Error(`"${label}.completedTaskIds" must be a list of task ids.`)
   return {

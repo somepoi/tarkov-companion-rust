@@ -1,0 +1,11 @@
+# Legacy progress import validation and rollback
+
+Goal: address the audit P2 finding that progress import changes quest state before validating optional sections and shallowly merges inventory/raid records. Daily JSON restore and Settings import share this path, including in the native app.
+
+Preflight the progress parser and every optional section before changing a store. Validate integer/nonnegative collection/station/trader facts, key arrays, drawing shapes/finite geometry, chapter counters/timers, raid entry enums/notes, manual raid records/duplicate keys and hidden lists. Reject malformed present sections instead of silently treating them as absent. Keep missing legacy optional sections compatible and preserve existing partial per-mode inventory merge behavior. Reject nonfinite imported player levels. The normal JSON size/prototype-key filter remains in parseImportJson.
+
+Capture each of the five affected store states and exact existing persisted values before applying. Reject reentrant imports. On synchronous application/persistence/subscriber failure, attempt every store rollback and restoration of every saved localStorage value, even when one rollback fails. Report partial rollback/storage failure explicitly and retain the input backup. Successful input remains on the same incumbent stores; physical stash data is not mutated.
+
+This improves validation and in-process recoverability, but does not make five localStorage keys a crash-safe transaction or hide intermediate notifications from another window. The native full recovery path remains the separate-profile/SQLite mechanism. Power loss, cross-window concurrent writes, quota failure and recovery acceptance are not proven by source checks.
+
+Verification on 2026-11-01: clean oxlint, TypeScript, Tauri frontend production build, Electron frontend/main/preload production build, embedded native custom-protocol development build (13.73s) and whitespace checks exited 0. Source review traced validation before the first mutation, actual persisted key names, optional legacy fields, state snapshots, reentrancy and independent rollback attempts. No tests, malformed fixtures, store-import executions or recovery/screenshot workflows were created or run. Existing installer artifacts were not refreshed.
