@@ -284,6 +284,71 @@ impl Packs {
         self.manifest.contains_key(name)
     }
 
+    /// Keep installation excluded through discovery and any confirmed recycling.
+    pub fn with_cleanup<T>(
+        &self,
+        run: impl FnOnce(Vec<PathBuf>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let _guard = self
+            .install
+            .try_lock()
+            .map_err(|_| "Content-pack installation is busy; retry cleanup later")?;
+        if self.requests.load(Ordering::Acquire) != 0 {
+            return Err("Content-pack requests are pending; retry cleanup later".into());
+        }
+        let mut candidates = Vec::new();
+        if let Some(root) = self.root(false)? {
+            let installed = self
+                .installed
+                .lock()
+                .map_err(|_| "Pack state unavailable")?;
+            for (index, entry) in fs::read_dir(&root).map_err(io)?.enumerate() {
+                if index >= 4096 {
+                    return Err("Content-pack cache exceeds cleanup inspection budget".into());
+                }
+                let entry = entry.map_err(io)?;
+                if candidates.len() >= 128 {
+                    return Err("Too many old packs; cleanup was not started".into());
+                }
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let partial = name.starts_with(".partial-");
+                let body = name.strip_prefix(".partial-").unwrap_or(&name);
+                let Some((kind, rest)) = body.split_once('-') else {
+                    continue;
+                };
+                if !known(kind) {
+                    continue;
+                }
+                let pieces: Vec<_> = rest.split('-').collect();
+                let hex = |s: &str| {
+                    !s.is_empty()
+                        && s.len() <= 32
+                        && s.bytes()
+                            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+                };
+                let valid = if partial {
+                    pieces.len() == 3 && pieces.iter().all(|s| hex(s))
+                } else {
+                    pieces.len() == 4 && pieces[0].len() == 16 && pieces.iter().all(|s| hex(s))
+                };
+                if !valid
+                    || (!partial
+                        && self
+                            .manifest
+                            .get(kind)
+                            .is_some_and(|info| pieces[0] == &info.sha256[..16]))
+                    || installed
+                        .values()
+                        .any(|pack| pack.directory == entry.path())
+                {
+                    continue;
+                }
+                candidates.push(entry.path());
+            }
+        }
+        run(candidates)
+    }
+
     fn root(&self, create: bool) -> Result<Option<PathBuf>, String> {
         if !self.root.exists() {
             if !create {

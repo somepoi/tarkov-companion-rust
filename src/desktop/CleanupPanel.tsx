@@ -18,7 +18,7 @@ export function CleanupPanel() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void window.desktop?.lastCleanup().then((r) => r && setDone(r))
+    void window.desktop?.lastCleanup().then((r) => r && setDone(r)).catch((cause: unknown) => setError(String(cause)))
   }, [])
 
   const run = (dry: boolean) => {
@@ -33,7 +33,7 @@ export function CleanupPanel() {
           setDone(r)
         }
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e: unknown) => { setPreview(null); setError(e instanceof Error ? e.message : String(e)) })
       .finally(() => setBusy(false))
   }
 
@@ -53,9 +53,11 @@ export function CleanupPanel() {
             <button type="button" className="btn" disabled={busy} onClick={() => setPreview(null)}>Cancel</button>
           </>
         )}
-        {preview && preview.items.length === 0 && <span className="text-ink-muted">Nothing left over from older versions.</span>}
+        {preview && preview.items.length === 0 && <span className="text-ink-muted">No eligible leftovers found.</span>}
+        {preview && <button type="button" className="btn" disabled={busy} onClick={() => run(true)}>Check again</button>}
         {error && <span className="text-red-400">{error}</span>}
       </div>
+      {(preview ?? done)?.warnings?.length ? <ul role="status" className="space-y-1 text-ink-muted">{(preview ?? done)!.warnings!.map((warning, index) => <li key={index}>{warning}</li>)}</ul> : null}
       {preview && preview.items.length > 0 && (
         <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded border border-line bg-surface p-2 text-ink-muted">
           {preview.items.map((i) => (
@@ -65,7 +67,7 @@ export function CleanupPanel() {
       )}
       {done && !preview && (
         <p className="text-ink-dim">
-          {done.items.length ? `Removed ${formatBytes(done.bytes)} (${done.items.length} item${done.items.length === 1 ? '' : 's'})` : 'Nothing needed removing'} · {formatDateTime(done.at)}
+          {done.items.length ? `Removed ${formatBytes(done.bytes)} (${done.items.length} item${done.items.length === 1 ? '' : 's'})` : 'No files were removed'} · {formatDateTime(done.at)}
         </p>
       )}
     </div>

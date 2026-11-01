@@ -89,6 +89,7 @@ pub struct HostState {
     pub searchbar: crate::searchbar::SearchBar,
     overlay: Mutex<OverlayState>,
     pub packs: Result<crate::packs::Packs, String>,
+    pub cleanup: crate::cleanup::Cleanup,
 }
 
 impl HostState {
@@ -192,6 +193,7 @@ impl HostState {
             positions: crate::position::Positions::default(),
             searchbar: crate::searchbar::SearchBar::default(),
             overlay: Mutex::new(OverlayState::default()),
+            cleanup: crate::cleanup::Cleanup::default(),
         })
     }
 
@@ -266,7 +268,7 @@ impl HostState {
             if key == "cleanAfterUpdate" && value == true {
                 return Err(error(
                     "migration_pending",
-                    "Screenshot cleanup is disabled during native migration",
+                    "Automatic update cleanup is unavailable in this native build",
                 ));
             }
             if key == "backupKeep" && !value.as_u64().is_some_and(|n| (1..=30).contains(&n)) {
@@ -592,7 +594,12 @@ pub async fn desktop_call(
     }
     let lease = if matches!(
         channel.as_str(),
-        "settings:set" | "packs:ensure" | "backup:write" | "watcher:pickFolder" | "update:outcome"
+        "settings:set"
+            | "packs:ensure"
+            | "backup:write"
+            | "watcher:pickFolder"
+            | "update:outcome"
+            | "cleanup:run"
     ) {
         Some(crate::jobs::enter().map_err(|e| error("update_busy", e))?)
     } else {
@@ -630,6 +637,31 @@ fn dispatch(
     args: &[Value],
 ) -> Result<Value, NativeError> {
     let first = args.first().unwrap_or(&Value::Null);
+    if channel.starts_with("cleanup:") {
+        if _window.label() != "main" {
+            return Err(error(
+                "window",
+                "Only the main window can inspect or recycle app leftovers",
+            ));
+        }
+        return match channel {
+            "cleanup:last" if args.is_empty() => {
+                serde_json::to_value(state.cleanup.last().map_err(|e| error("cleanup", e))?)
+                    .map_err(|e| error("cleanup", e.to_string()))
+            }
+            "cleanup:run" if args.len() == 1 && first.is_boolean() => {
+                let packs = state.packs.as_ref().map_err(|e| error("cleanup", e))?;
+                serde_json::to_value(
+                    state
+                        .cleanup
+                        .run(app, packs, first.as_bool().unwrap())
+                        .map_err(|e| error("cleanup", e))?,
+                )
+                .map_err(|e| error("cleanup", e.to_string()))
+            }
+            _ => Err(error("cleanup", "Invalid cleanup request")),
+        };
+    }
     if matches!(
         channel,
         "settings:set"
@@ -1079,7 +1111,7 @@ fn dispatch(
         "update:outcome" if _window.label() == "main" => {
             crate::updates::outcome(state).map_err(|e| error("update_outcome", e))
         }
-        "update:outcome" | "cleanup:last" => Ok(Value::Null),
+        "update:outcome" => Ok(Value::Null),
         _ => Err(error(
             "migration_pending",
             format!(

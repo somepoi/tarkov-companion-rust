@@ -121,6 +121,7 @@ export interface CleanupResult {
   bytes: number
   dry: boolean
   at: number
+  warnings?: string[]
 }
 
 export type UpdateMode = 'auto' | 'notify' | 'off'

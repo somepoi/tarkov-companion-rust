@@ -18,6 +18,7 @@ Tauri hosts the React interface in Windows WebView2, without a permanent Node si
 | Saved inventory | SQLite migrations, revisions and commit replay checks protect saved facts. Screenshot writes are separate from database transactions. Recovery verifies retained evidence and prepares a separate profile while retaining the source. |
 | Imports/backups | Progress, corrections and recovery bundles are bounded and validated. Keep independent backups; in-process rollback does not prove power-loss safety. |
 | Updates/identity | Default update routes are disabled. Experimental signed updates require explicit build configuration, signature/version checks and recovery preparation before permitted installation. Fork identifiers are separate from the original. |
+| Manual cleanup | Only the main window can preview/confirm cleanup. Native-owned previews expire, bind target identities/metadata and scope, and are checked again before recycle-only Shell operations. Pack installation is excluded during cleanup. Backups, stash evidence, prepared updates and active resources are outside the target set. |
 
 Integrations use ordinary local game logs, screenshot filenames and user-triggered Windows capture. No game-memory access, injection, traffic interception, gameplay input or automatic selling is implemented. The optional searchbar is a separate always-on-top window. These choices do not establish game-policy or anti-cheat approval.
 

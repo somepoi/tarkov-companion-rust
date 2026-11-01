@@ -48,6 +48,8 @@ The retained interface includes Dashboard, quests/tree, Story, Maps/drawings/rou
 
 The legacy Item Collection remains separately labeled checklist data. Its counts are not silently converted into physical stacks. Quest/hideout progression and existing exports remain available.
 
+Settings → Clean up now previews eligible older fork installers in Downloads and unused native content packs. Confirmation sends only unchanged previewed targets to the Windows Recycle Bin. Active resources, stash evidence, backups, prepared updates and browser caches are retained; automatic update cleanup remains disabled.
+
 Tauri uses its separate app identifier `io.github.somepoi.tarkov-companion-rust` and application-data directory. The active directory is displayed in Stash Manager. Do not point it at the original application's profile or assume an original installation is migrated in place.
 
 - Settings progress JSON/daily backups cover the existing interface progress stores.

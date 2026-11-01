@@ -2,6 +2,7 @@ mod autostart;
 mod backup;
 mod benchmark_profile;
 mod capture;
+mod cleanup;
 mod desktop;
 mod integrations;
 mod inventory;
@@ -11,6 +12,7 @@ mod logs;
 mod navigation;
 mod packs;
 mod position;
+mod recycle;
 mod resources;
 mod searchbar;
 #[cfg(feature = "staged-updates")]

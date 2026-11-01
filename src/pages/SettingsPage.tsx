@@ -602,16 +602,14 @@ function DesktopAppSection() {
       </Row> : <Row label="Updates" hint="Automatic downloads new versions in the background and asks before restarting. 'Only tell me' shows a Download button instead. Off never checks by itself (About → Check for updates still works).">
         <Segmented value={updates} onChange={setUpdates} label="Updates" options={[{ value: 'auto', label: 'Automatic' }, { value: 'notify', label: 'Only tell me' }, { value: 'off', label: 'Off' }]} />
       </Row>}
-      {native ? <Row label="Clean up after updates" hint="Automatic update cleanup is unavailable in this build. Downloaded installers and older resource packs are retained.">
+      {native ? <Row label="Clean up after updates" hint="Automatic update cleanup is unavailable in this build. Use Clean up now to review eligible older installers and resource packs yourself.">
         <span className="text-sm text-ink-muted">Off in this build</span>
       </Row> : <Row label="Clean up after updates" hint="A minute after a new version starts, removes what older versions left behind: downloaded update installers, old map and scanner packs, crash reports and compiled code. Older Tarkov Companion installers in your Downloads folder go to the Recycle Bin. Your progress, settings and backups are never touched.">
         <Switch checked={cleanAfter} onChange={setCleanAfter} label="Clean up after updates" />
       </Row>}
-      {native ? <Row label="Clean up now" hint="Manual update cleanup is unavailable in this build. Position-screenshot recycling has its own separate setting below.">
-        <span className="text-sm text-ink-muted">Unavailable</span>
-      </Row> : <Row label="Clean up now" hint="Shows what would be removed first; nothing goes until you click Remove.">
+      <Row label="Clean up now" hint={native ? "Lists old fork installers in Downloads and unused native resource packs. Only the previewed, unchanged files go to the Recycle Bin after you confirm. Backups, stash evidence, browser caches and prepared updates are retained." : "Shows what would be removed first; nothing goes until you click Remove."}>
         <CleanupPanel />
-      </Row>}
+      </Row>
       <Row label="Stash scanner hotkey" hint="Captures the screen the game is on and opens the scanner with it.">
         <HotkeyRecorder />
       </Row>
