@@ -1,6 +1,6 @@
 # Reproducible desktop and scanner measurements
 
-Status: measurement tooling prepared. Preliminary isolated hidden Electron/Tauri release observations are recorded in [2026-10-30/README.md](2026-10-30/README.md); controlled comparable-workload acceptance remains open. No tests or accuracy suite were run, and no performance target or speedup is claimed. These commands are opt-in developer operations, not CI checks.
+Status: measurement tooling prepared. Preliminary observations are recorded in [2026-10-30/README.md](2026-10-30/README.md), and a fresh release pair with matching catalog snapshots is recorded in [2026-11-01/README.md](2026-11-01/README.md). Repeated controlled-workload acceptance remains open. No tests or accuracy suite were run, and no performance target or speedup is claimed. These commands are opt-in developer operations, not CI checks.
 
 ## Environment record
 

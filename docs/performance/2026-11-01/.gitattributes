@@ -1,0 +1,2 @@
+# Preserve the original sampler bytes and Windows line endings.
+*-hidden.json -text whitespace=cr-at-eol
