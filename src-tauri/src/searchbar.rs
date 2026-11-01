@@ -102,14 +102,7 @@ impl SearchBar {
             .maximizable(false)
             .skip_taskbar(true)
             .always_on_top(true)
-            .on_navigation(|url| {
-                matches!(url.scheme(), "tauri" | "asset")
-                    || (url.scheme() == "http"
-                        && matches!(
-                            url.host_str(),
-                            Some("tauri.localhost" | "localhost" | "127.0.0.1")
-                        ))
-            })
+            .on_navigation(crate::navigation::guard(app))
             .build()
             .map_err(err)?;
         // Until a bounded DOM mask arrives no input surface is exposed.

@@ -6,6 +6,7 @@ mod integrations;
 mod inventory;
 mod log_locator;
 mod logs;
+mod navigation;
 mod packs;
 mod position;
 mod resources;
@@ -69,14 +70,7 @@ pub fn run() {
             let window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
                     .data_directory(data_dir.join("webview"))
-                    .on_navigation(|url| {
-                        matches!(url.scheme(), "tauri" | "asset")
-                            || (url.scheme() == "http"
-                                && matches!(
-                                    url.host_str(),
-                                    Some("tauri.localhost" | "localhost" | "127.0.0.1")
-                                ))
-                    })
+                    .on_navigation(navigation::guard(app.handle()))
                     .build()?;
             if !minimized {
                 window.show()?;
