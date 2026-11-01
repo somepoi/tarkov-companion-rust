@@ -1,6 +1,6 @@
 import { fetchJson, type GameMode } from '../api/client'
 
-export const RECIPE_PLANNING_SCHEMA = 1
+export const RECIPE_PLANNING_SCHEMA = 2
 
 /** Validated planning view of the JSON API. Never invent missing input counts. */
 export interface Recipe {
@@ -8,6 +8,9 @@ export interface Recipe {
   outputId: string
   stationId: string | null
   stationLevel: number | null
+  traderId?: string | null
+  minimumTraderLevel?: number | null
+  taskUnlock?: string | null
   inputs: { itemId: string; quantity: number | null; tool: boolean; minimumDogtagLevel?: number }[]
   gaps: string[]
 }
@@ -46,6 +49,15 @@ function parse(document: unknown, kind: 'craft' | 'barter'): Recipe[] {
       throw new Error(`Invalid or duplicate ${kind} identifier`)
     ids.add(recipeId)
     const gaps: string[] = []
+    const taskUnlock = raw.taskUnlock == null ? null : id(raw.taskUnlock)
+    if (raw.taskUnlock != null && !taskUnlock) gaps.push('Invalid quest unlock condition')
+    if (kind === 'barter' && !Object.hasOwn(raw, 'taskUnlock')) gaps.push('Quest unlock coverage is unknown')
+    if (kind === 'craft' && (!Array.isArray(raw.gameEditions) || raw.gameEditions.length))
+      gaps.push('Game edition access is unknown or restricted')
+    const traderId = kind === 'barter' ? id(raw.trader) : null
+    const minimumTraderLevel = kind === 'barter' ? count(raw.minTraderLevel) : null
+    if (kind === 'barter' && (!traderId || minimumTraderLevel === null || minimumTraderLevel > 8))
+      gaps.push('Trader loyalty requirement is unknown or unsupported')
     if (!Array.isArray(raw.requiredItems))
       throw new Error(`Missing ${kind} inputs`)
     const inputs = raw.requiredItems.map((v) => {
@@ -108,6 +120,7 @@ function parse(document: unknown, kind: 'craft' | 'barter'): Recipe[] {
       inputs: [...inputs.filter((r) => !r.tool), ...tools.values()],
       stationId,
       stationLevel,
+      traderId, minimumTraderLevel, taskUnlock,
       gaps,
     }
   })

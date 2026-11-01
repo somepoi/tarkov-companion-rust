@@ -106,6 +106,7 @@ function PlannerEditor({
   const [recipeSearch, setRecipeSearch] = useState('')
   const [recipeKind, setRecipeKind] = useState<'crafts' | 'barters'>('crafts')
   const [recipeId, setRecipeId] = useState('')
+  const [traderLoyalty, setTraderLoyalty] = useState<Record<string, { level: number; confirmed: boolean }>>({})
   const [expired, setExpired] = useState(false)
   useEffect(() => {
     const invalidate = () => {
@@ -113,7 +114,7 @@ function PlannerEditor({
       setEpoch((n) => n + 1)
     }
     const stop = subscribe('inventory-changed', invalidate)
-    const stopWipe = subscribe('wipe-detected', invalidate)
+    const stopWipe = subscribe('wipe-detected', () => { setTraderLoyalty({}); invalidate() })
     window.addEventListener('blur', invalidate)
     return () => {
       stop()
@@ -136,6 +137,8 @@ function PlannerEditor({
         preferences,
         recipes: recipes.data,
         items: items.data?.items ?? {},
+        traders: game.data?.traders,
+        traderLoyalty,
       }),
     [
       game.data,
@@ -146,6 +149,7 @@ function PlannerEditor({
       preferences,
       recipes.data,
       items.data,
+      traderLoyalty,
     ],
   )
   const catalogVersion = `${mode}:items@${items.dataUpdatedAt}:quests@${game.dataUpdatedAt}:hideout@${hideout.dataUpdatedAt}:recipes@${recipes.dataUpdatedAt}`
@@ -169,6 +173,7 @@ function PlannerEditor({
     catalogVersion,
     progressionRevision,
     normalized,
+    traderLoyalty,
     revisions,
     base.revision,
     preferences,
@@ -428,6 +433,25 @@ function PlannerEditor({
             sequential crafts and reserved at the largest simultaneous quantity.
             This does not guarantee trader access or availability.
           </p>
+          <p className="my-2 text-xs text-ink-muted">Quest unlocks use recorded completions. Loyalty is confirmed only for this session; it is not inferred from player level. Locked recipes remain reserved as future plans. Restock stock and purchase limits still need checking in game.</p>
+          {(game.data?.traders ?? []).filter((trader) => recipes.data?.barters.some((recipe) => recipe.traderId === trader.id && preferences.barterBatches[recipe.id] > 0)).map((trader) => (
+            <div key={trader.id} className="my-2 flex flex-wrap items-center gap-3">
+              <label className="text-sm">{trader.name} loyalty{' '}
+                <select className={inputClass} value={traderLoyalty[trader.id]?.level ?? ''}
+                  onChange={(event) => setTraderLoyalty((current) => {
+                    const next = { ...current }
+                    if (!event.target.value) delete next[trader.id]
+                    else next[trader.id] = { level: Number(event.target.value), confirmed: false }
+                    return next
+                  })}>
+                  <option value="">Unknown</option>
+                  {Array.from({ length: Number.isSafeInteger(trader.maxLevel) && trader.maxLevel >= 0 && trader.maxLevel <= 8 ? trader.maxLevel + 1 : 0 }, (_, level) => <option key={level} value={level}>{level}</option>)}
+                </select>
+              </label>
+              <label className="flex gap-2 text-sm"><input type="checkbox" checked={traderLoyalty[trader.id]?.confirmed ?? false} disabled={!traderLoyalty[trader.id]}
+                onChange={(event) => setTraderLoyalty((current) => ({ ...current, [trader.id]: { ...current[trader.id], confirmed: event.target.checked } }))} />Checked for the current character</label>
+            </div>
+          ))}
           <div className="flex flex-wrap items-center gap-2">
             <select
               aria-label="Recipe type"

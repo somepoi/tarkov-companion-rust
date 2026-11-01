@@ -1,4 +1,4 @@
-import type { HideoutStation, ItemsById, Task } from '../api/types'
+import type { HideoutStation, ItemsById, Task, Trader } from '../api/types'
 import type { Profile } from '../store/progress'
 import { isFactionEligible } from '../lib/taskStatus'
 import type { PlanningPreferences, Requirement } from './client'
@@ -14,6 +14,8 @@ interface Input {
   preferences: PlanningPreferences
   recipes: RecipeCatalog | undefined
   items: ItemsById
+  traders?: Trader[]
+  traderLoyalty?: Record<string, { level: number; confirmed: boolean }>
 }
 
 /** No inferred completion or aggregate collected counts are subtracted. They do
@@ -184,6 +186,21 @@ export function buildRequirements(input: Input) {
         continue
       }
       const name = input.items[recipe.outputId]?.name ?? recipe.outputId
+      if (recipe.taskUnlock) {
+        const task = input.tasks.find((task) => task.id === recipe.taskUnlock)
+        if (!task) gaps.push(`${kind}: ${name} · unlock quest is missing from the catalog`)
+        else if (!input.profile.completedTaskIds.has(task.id))
+          gaps.push(`${kind}: ${name} · complete ${task.name} to unlock this recipe`)
+      }
+      if (kind === 'barter') {
+        const trader = input.traders?.find((trader) => trader.id === recipe.traderId)
+        const fact = recipe.traderId ? input.traderLoyalty?.[recipe.traderId] : undefined
+        if (!trader || !Number.isSafeInteger(trader.maxLevel) || trader.maxLevel < 0 || trader.maxLevel > 8)
+          gaps.push(`Barter: ${name} · trader metadata is unavailable or unsupported`)
+        else if (recipe.minimumTraderLevel != null && recipe.minimumTraderLevel > 0
+          && (!fact?.confirmed || !Number.isSafeInteger(fact.level) || fact.level < recipe.minimumTraderLevel || fact.level > trader.maxLevel))
+          gaps.push(`Barter: ${name} · confirm ${trader.name} loyalty ${recipe.minimumTraderLevel} or higher for the current character`)
+      }
       if (
         kind === 'craft' &&
         recipe.stationId &&
