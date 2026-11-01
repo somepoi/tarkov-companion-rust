@@ -202,7 +202,13 @@ fn digest_file(
         sha256: format!("{:x}", digest.finalize()),
     })
 }
-fn verify(root: &Path, progress: &mut Progress) -> Result<Manifest, String> {
+fn read_manifest(root: &Path) -> Result<Manifest, String> {
+    if !fs::symlink_metadata(root.join("manifest.json"))
+        .map_err(|e| e.to_string())?
+        .is_file()
+    {
+        return Err("Manifest must be a regular file".into());
+    }
     let manifest: Manifest =
         serde_json::from_value(read_json(&root.join("manifest.json"), 4 * 1024 * 1024)?)
             .map_err(|e| e.to_string())?;
@@ -217,6 +223,11 @@ fn verify(root: &Path, progress: &mut Progress) -> Result<Manifest, String> {
             return Err(format!("Backup is missing {required}"));
         }
     }
+    Ok(manifest)
+}
+
+fn verify(root: &Path, progress: &mut Progress) -> Result<Manifest, String> {
+    let manifest = read_manifest(root)?;
     let mut total = 0;
     for (relative, expected) in &manifest.files {
         if expected.bytes > MAX_FILE || !hash_name(&expected.sha256) {
@@ -430,6 +441,62 @@ fn restore(state: &HostState, source: &Path, progress: &mut Progress) -> Result<
     Ok(json!({"recovery":id,"path":destination}))
 }
 
+/// Discovery validates manifest structure only. Restore verifies every byte and
+/// database reference again; a listed bundle is never implicitly trusted.
+fn list(state: &HostState) -> Result<Value, String> {
+    let root = backup_root(state);
+    let mut backups = Vec::new();
+    let mut issues = Vec::new();
+    let mut skipped = 0_usize;
+    match fs::read_dir(&root) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+        Ok(entries) => {
+            for (index, entry) in entries.enumerate() {
+                if index >= 10_000 {
+                    issues.push("Backup listing stopped at 10,000 directory entries. Use Restore from a folder to select an omitted backup.".to_owned());
+                    break;
+                }
+                let result = (|| -> Result<Option<Value>, String> {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if !valid_name(&name, "backup") {
+                        return Ok(None);
+                    }
+                    let candidate = (|| -> Result<Value, String> {
+                        if !entry.file_type().map_err(|e| e.to_string())?.is_dir() {
+                            return Err("Backup must be a regular directory".into());
+                        }
+                        let path = entry.path();
+                        let manifest = read_manifest(&path)?;
+                        Ok(json!({"name":name,"createdAt":manifest.created_at,"path":path}))
+                    })();
+                    candidate.map(Some).map_err(|e| format!("{name}: {e}"))
+                })();
+                match result {
+                    Ok(Some(backup)) => backups.push(backup),
+                    Ok(None) => {}
+                    Err(e) => {
+                        skipped += 1;
+                        if issues.len() < 100 {
+                            issues.push(e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if skipped > 100 {
+        issues.push(format!(
+            "{skipped} unreadable entries were skipped; only the first 100 errors are shown."
+        ));
+    }
+    backups.sort_by_key(|v| std::cmp::Reverse(v["createdAt"].as_u64().unwrap_or(0)));
+    Ok(
+        json!({"backups":backups,"issues":issues,"activeProfile":state.data_dir,"originalProfile":state.profile_root,"startupIssues":state.startup_issues,"canRevert":state.profile_root.join("active-profile.json").exists()}),
+    )
+}
+
 #[tauri::command]
 pub async fn native_backup(
     app: tauri::AppHandle,
@@ -446,53 +513,109 @@ pub async fn native_backup(
     let operation: Operation = serde_json::from_value(operation).map_err(|e| e.to_string())?;
     let state = Arc::clone(state.inner());
     tauri::async_runtime::spawn_blocking(move || {
-        let _guard = JOB.try_lock().map_err(|_| "A backup/recovery operation is already running")?;
-        let mut progress = Progress { window, last: std::time::Instant::now() };
+        let _guard = JOB
+            .try_lock()
+            .map_err(|_| "A backup/recovery operation is already running")?;
+        let mut progress = Progress {
+            window,
+            last: std::time::Instant::now(),
+        };
         progress.stage("Preparing backup operation");
         match operation {
             Operation::Create { renderer_state } => create(&state, renderer_state, &mut progress),
-            Operation::List => {
+            Operation::List => list(&state),
+            Operation::OpenFolder => {
                 let root = backup_root(&state);
-                let mut list = Vec::new();
-                if root.exists() { for entry in fs::read_dir(&root).map_err(|e| e.to_string())? {
-                    let entry = entry.map_err(|e| e.to_string())?;
-                    let name = entry.file_name().to_string_lossy().into_owned();
-                    if !valid_name(&name, "backup") || !entry.file_type().map_err(|e| e.to_string())?.is_dir() { continue; }
-                    let path = entry.path();
-                    let value = read_json(&path.join("manifest.json"), 4 * 1024 * 1024)?;
-                    list.push(json!({"name":name,"createdAt":value["createdAt"],"path":path}));
-                } }
-                list.sort_by_key(|v| std::cmp::Reverse(v["createdAt"].as_u64().unwrap_or(0)));
-                Ok(json!({"backups":list,"activeProfile":state.data_dir,"originalProfile":state.profile_root,"startupIssues":state.startup_issues,"canRevert":state.profile_root.join("active-profile.json").exists()}))
+                fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+                app.opener()
+                    .open_path(root.to_string_lossy(), None::<&str>)
+                    .map_err(|e| e.to_string())?;
+                Ok(Value::Null)
             }
-            Operation::OpenFolder => { let root = backup_root(&state); fs::create_dir_all(&root).map_err(|e| e.to_string())?; app.opener().open_path(root.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())?; Ok(Value::Null) }
-            Operation::Restore { name } => { if !valid_name(&name, "backup") { return Err("Invalid backup name".into()); } restore(&state, &backup_root(&state).join(name), &mut progress) }
-            Operation::Import => match app.dialog().file().set_title("Select a Tarkov Companion Rust backup directory").blocking_pick_folder() {
-                None => Ok(Value::Null), Some(path) => restore(&state, &path.into_path().map_err(|e| e.to_string())?, &mut progress),
+            Operation::Restore { name } => {
+                if !valid_name(&name, "backup") {
+                    return Err("Invalid backup name".into());
+                }
+                restore(&state, &backup_root(&state).join(name), &mut progress)
+            }
+            Operation::Import => match app
+                .dialog()
+                .file()
+                .set_title("Select a Tarkov Companion Rust backup directory")
+                .blocking_pick_folder()
+            {
+                None => Ok(Value::Null),
+                Some(path) => restore(
+                    &state,
+                    &path.into_path().map_err(|e| e.to_string())?,
+                    &mut progress,
+                ),
             },
             Operation::Activate { recovery } => {
-                if !valid_name(&recovery, "recovery") { return Err("Invalid recovery name".into()); }
-                let target = state.profile_root.join("recovered-profiles").join(&recovery).canonicalize().map_err(|e| e.to_string())?;
-                if !target.starts_with(&state.profile_root) || !target.join("recovery-ready.json").is_file() { return Err("Recovery is not ready or is outside the profile root".into()); }
+                if !valid_name(&recovery, "recovery") {
+                    return Err("Invalid recovery name".into());
+                }
+                let target = state
+                    .profile_root
+                    .join("recovered-profiles")
+                    .join(&recovery)
+                    .canonicalize()
+                    .map_err(|e| e.to_string())?;
+                if !target.starts_with(&state.profile_root)
+                    || !target.join("recovery-ready.json").is_file()
+                {
+                    return Err("Recovery is not ready or is outside the profile root".into());
+                }
                 progress.stage("Verifying database and saved references");
-    for hash in stash_core::Repository::verify_file(target.join("user.sqlite")).map_err(|e| e.to_string())? {
+                for hash in stash_core::Repository::verify_file(target.join("user.sqlite"))
+                    .map_err(|e| e.to_string())?
+                {
                     let file = source_file(&target, &format!("screenshots/{hash}"))?;
-                    if fs::metadata(&file).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 || digest_file(&file, None, 64 * 1024 * 1024, &mut progress)?.sha256 != hash { return Err("Recovered screenshot evidence is invalid".into()); }
+                    if fs::metadata(&file).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024
+                        || digest_file(&file, None, 64 * 1024 * 1024, &mut progress)?.sha256 != hash
+                    {
+                        return Err("Recovered screenshot evidence is invalid".into());
+                    }
                 }
                 validate_renderer(&read_json(&target.join("renderer-state.json"), MAX_JSON)?)?;
-                write_json(&state.profile_root.join("active-profile.json"), &json!({"recovery":recovery}))?;
-                app.request_restart(); Ok(Value::Null)
+                write_json(
+                    &state.profile_root.join("active-profile.json"),
+                    &json!({"recovery":recovery}),
+                )?;
+                app.request_restart();
+                Ok(Value::Null)
             }
             Operation::Revert => {
                 let pointer = state.profile_root.join("active-profile.json");
-                if pointer.exists() { fs::rename(&pointer, state.profile_root.join(name("inactive-profile-pointer"))).map_err(|e| e.to_string())?; }
-                app.request_restart(); Ok(Value::Null)
+                if pointer.exists() {
+                    fs::rename(
+                        &pointer,
+                        state.profile_root.join(name("inactive-profile-pointer")),
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                app.request_restart();
+                Ok(Value::Null)
             }
             Operation::PendingRenderer => {
                 let file = state.data_dir.join("renderer-state.json");
-                if file.exists() && !state.data_dir.join("renderer-imported.json").exists() { let value = read_json(&file, MAX_JSON)?; validate_renderer(&value)?; Ok(value) } else { Ok(Value::Null) }
+                if file.exists() && !state.data_dir.join("renderer-imported.json").exists() {
+                    let value = read_json(&file, MAX_JSON)?;
+                    validate_renderer(&value)?;
+                    Ok(value)
+                } else {
+                    Ok(Value::Null)
+                }
             }
-            Operation::AcknowledgeRenderer => { write_json(&state.data_dir.join("renderer-imported.json"), &json!({"at":now()}))?; Ok(Value::Null) }
+            Operation::AcknowledgeRenderer => {
+                write_json(
+                    &state.data_dir.join("renderer-imported.json"),
+                    &json!({"at":now()}),
+                )?;
+                Ok(Value::Null)
+            }
         }
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

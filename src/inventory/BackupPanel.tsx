@@ -13,6 +13,7 @@ interface BackupList {
   backups: { name: string; createdAt: number; path: string }[]
   activeProfile: string
   originalProfile: string
+  issues: string[]
   startupIssues: string[]
   canRevert: boolean
 }
@@ -72,7 +73,8 @@ export function BackupPanel() {
         Includes every native profile, container, scan history, reserves,
         archived screenshots, settings and saved interface data with recognition
         corrections. Game-data caches are downloaded again. These backups are
-        kept until you remove them yourself.
+        kept until you remove them yourself. The list reads backup manifests;
+        full checksums and database validation run when preparing recovery.
       </p>
       <p className="text-xs text-ink-muted">
         The SQLite snapshot is transactional. Interface progress is captured
@@ -89,6 +91,14 @@ export function BackupPanel() {
               <p className="text-xs">Current file: {(progress.bytes / 1048576).toFixed(1)} / {(progress.total / 1048576).toFixed(1)} MiB</p>
             </>
           )}
+        </div>
+      )}
+      {!!list.data?.issues.length && (
+        <div role="status" className="space-y-1 text-sm text-warning">
+          <p>Some backup entries could not be listed. Their files have been retained.</p>
+          <ul className="max-h-40 list-inside list-disc overflow-auto break-words text-xs">
+            {list.data.issues.map((issue, i) => <li key={i}>{issue}</li>)}
+          </ul>
         </div>
       )}
       <fieldset disabled={busy} className="space-y-3">
@@ -162,7 +172,11 @@ export function BackupPanel() {
           <p className="text-xs text-ink-dim">
             {list.isPending
               ? 'Loading full backups…'
-              : 'No full backups saved yet.'}
+              : list.isError
+                ? 'Backup list could not be loaded.'
+                : list.data?.issues.length
+                  ? 'No readable backups found. Review the errors above or select a backup folder.'
+                  : 'No full backups saved yet.'}
           </p>
         )}
         {list.isError && (
