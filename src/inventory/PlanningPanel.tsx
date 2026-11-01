@@ -107,14 +107,18 @@ function PlannerEditor({
   const [recipeKind, setRecipeKind] = useState<'crafts' | 'barters'>('crafts')
   const [recipeId, setRecipeId] = useState('')
   const [traderLoyalty, setTraderLoyalty] = useState<Record<string, { level: number; confirmed: boolean }>>({})
+  const [barterAvailability, setBarterAvailability] = useState<Record<string, { batches: number; confirmed: boolean; catalogUpdatedAt?: number }>>({})
+  const currentBarterAvailability = useMemo(() => Object.fromEntries(Object.entries(barterAvailability).map(([id, fact]) =>
+    [id, { ...fact, confirmed: fact.confirmed && fact.catalogUpdatedAt === recipes.dataUpdatedAt }])), [barterAvailability, recipes.dataUpdatedAt])
   const [expired, setExpired] = useState(false)
   useEffect(() => {
     const invalidate = () => {
       setConfirmed('')
       setEpoch((n) => n + 1)
+      setBarterAvailability((current) => Object.fromEntries(Object.entries(current).map(([id, fact]) => [id, { ...fact, confirmed: false }])))
     }
     const stop = subscribe('inventory-changed', invalidate)
-    const stopWipe = subscribe('wipe-detected', () => { setTraderLoyalty({}); invalidate() })
+    const stopWipe = subscribe('wipe-detected', () => { setTraderLoyalty({}); setBarterAvailability({}); invalidate() })
     window.addEventListener('blur', invalidate)
     return () => {
       stop()
@@ -139,6 +143,7 @@ function PlannerEditor({
         items: items.data?.items ?? {},
         traders: game.data?.traders,
         traderLoyalty,
+        barterAvailability: currentBarterAvailability,
       }),
     [
       game.data,
@@ -150,6 +155,7 @@ function PlannerEditor({
       recipes.data,
       items.data,
       traderLoyalty,
+      currentBarterAvailability,
     ],
   )
   const catalogVersion = `${mode}:items@${items.dataUpdatedAt}:quests@${game.dataUpdatedAt}:hideout@${hideout.dataUpdatedAt}:recipes@${recipes.dataUpdatedAt}`
@@ -174,6 +180,7 @@ function PlannerEditor({
     progressionRevision,
     normalized,
     traderLoyalty,
+    barterAvailability,
     revisions,
     base.revision,
     preferences,
@@ -563,6 +570,27 @@ function PlannerEditor({
                     >
                       Remove
                     </button>
+                    {key === 'barterBatches' && batches > 0 && <div className="flex w-full flex-wrap items-center gap-3 pb-2 text-xs">
+                      <label>Exchanges available now{' '}
+                        <input type="number" min={0} max={1_000_000} step={1} className={`${inputClass} w-24`}
+                          aria-label={`Available exchanges for ${recipe ? (items.data?.items[recipe.outputId]?.name ?? recipe.outputId) : id}`}
+                          value={barterAvailability[id]?.batches ?? ''}
+                          onChange={(event) => {
+                            const value = event.target.valueAsNumber
+                            const blank = event.target.value === ''
+                            if (!blank && !quantity(value)) return
+                            setBarterAvailability((current) => {
+                              const next = { ...current }
+                              if (blank) delete next[id]
+                              else next[id] = { batches: value, confirmed: false }
+                              return next
+                            })
+                          }} />
+                      </label>
+                      <label className="flex gap-2"><input type="checkbox" checked={currentBarterAvailability[id]?.confirmed ?? false} disabled={!barterAvailability[id]}
+                        onChange={(event) => { const checked = event.target.checked; const catalogUpdatedAt = recipes.dataUpdatedAt; setBarterAvailability((current) => current[id] ? ({ ...current, [id]: { ...current[id], confirmed: checked, catalogUpdatedAt } }) : current) }} />Checked in game for this character</label>
+                      <p className="w-full max-w-prose text-ink-muted">Enter remaining exchanges, not item units or a catalog stock figure. Confirmation resets when you leave the window, inventory changes or recipes refresh. Future batches stay reserved.</p>
+                    </div>}
                   </div>
                 )
               })}

@@ -16,6 +16,7 @@ interface Input {
   items: ItemsById
   traders?: Trader[]
   traderLoyalty?: Record<string, { level: number; confirmed: boolean }>
+  barterAvailability?: Record<string, { batches: number; confirmed: boolean }>
 }
 
 /** No inferred completion or aggregate collected counts are subtracted. They do
@@ -193,6 +194,10 @@ export function buildRequirements(input: Input) {
           gaps.push(`${kind}: ${name} · complete ${task.name} to unlock this recipe`)
       }
       if (kind === 'barter') {
+        const available = input.barterAvailability?.[recipeId]
+        if (!available?.confirmed || !Number.isSafeInteger(available.batches)
+          || available.batches < batches || available.batches > 1_000_000)
+          gaps.push(`Barter: ${name} · check that at least ${batches} exchanges are available now; future ingredients remain reserved`)
         const trader = input.traders?.find((trader) => trader.id === recipe.traderId)
         const fact = recipe.traderId ? input.traderLoyalty?.[recipe.traderId] : undefined
         if (!trader || !Number.isSafeInteger(trader.maxLevel) || trader.maxLevel < 0 || trader.maxLevel > 8)
