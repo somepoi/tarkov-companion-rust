@@ -1,6 +1,6 @@
 /**
- * Types shared between the Electron main process, the preload bridge and the
- * React renderer. Keep this file free of runtime imports.
+ * Types shared between desktop hosts/adapters and the React renderer.
+ * Keep this file free of runtime imports.
  */
 
 /** EFT "Session mode" as the log reports it, normalised. */
@@ -223,6 +223,8 @@ export interface PackProgress {
 }
 
 export interface DesktopApi {
+  /** Native user-selected export. isCurrent is checked after the picker closes. */
+  saveExport?: (request: { kind: 'progress' | 'inventory-json' | 'inventory-csv'; name: string; text: string }, isCurrent?: () => boolean) => Promise<'saved' | 'cancelled'>
   /** Optional instrumentation: marks React layout mounted in an isolated benchmark run. */
   reportUiReady?: () => Promise<void>
   benchmarkMode?: boolean

@@ -690,20 +690,38 @@ function ProgressSection() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const exportAlive = useRef(true)
+  useEffect(() => { exportAlive.current = true; return () => { exportAlive.current = false } }, [])
   const modeLabel = gameMode === 'pve' ? 'PvE' : 'PvP'
 
-  const handleExport = () => {
-    const date = new Date().toISOString().slice(0, 10)
-    const blob = new Blob([JSON.stringify(buildProgressFile(), null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `tarkov-companion-progress-${date}.json`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-    setMessage({ kind: 'ok', text: 'Progress file downloaded (quests, item collection, keys, hideout, map drawings, story chapters and your raid log).' })
+  const handleExport = async () => {
+    if (exporting) return
+    setExporting(true)
+    setMessage(null)
+    try {
+      const date = new Date().toISOString().slice(0, 10)
+      const name = `tarkov-companion-progress-${date}.json`
+      const text = JSON.stringify(buildProgressFile(), null, 2)
+      const blob = new Blob([text], { type: 'application/json' })
+      if (blob.size > MAX_IMPORT_BYTES) throw new Error('Progress export exceeds the 20 MiB file limit')
+      if (window.desktop?.saveExport) {
+        const result = await window.desktop.saveExport({ kind: 'progress', name, text }, () => exportAlive.current)
+        if (exportAlive.current) setMessage({ kind: 'ok', text: result === 'saved'
+          ? 'Progress file saved (quests, item collection, keys, hideout, map drawings, story chapters and raid log).'
+          : 'Export cancelled; no progress file was saved.' })
+      } else {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url; link.download = name
+        try { document.body.append(link); link.click() } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000) }
+        setMessage({ kind: 'ok', text: 'Progress download requested. Check your browser or Downloads folder for the file.' })
+      }
+    } catch (cause) {
+      if (exportAlive.current) setMessage({ kind: 'error', text: `Export failed: ${cause instanceof Error ? cause.message : String(cause)}` })
+    } finally {
+      if (exportAlive.current) setExporting(false)
+    }
   }
 
   const handleImport = async (file: File) => {
@@ -726,10 +744,10 @@ function ProgressSection() {
       </Row>
       <Row label="Export or import progress" hint="One file with your quests, items, keys, hideout, drawings, story and raid log. Use it to move to another PC or keep a copy.">
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={handleExport} className="btn">
-            <Download className="h-4 w-4" /> Export
+          <button type="button" onClick={() => void handleExport()} disabled={exporting} className="btn">
+            <Download className="h-4 w-4" /> {exporting ? 'Saving…' : 'Export'}
           </button>
-          <button type="button" onClick={() => fileInput.current?.click()} className="btn">
+          <button type="button" onClick={() => fileInput.current?.click()} disabled={exporting} className="btn">
             <Upload className="h-4 w-4" /> Import
           </button>
           <input

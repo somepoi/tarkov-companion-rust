@@ -4,6 +4,8 @@ mod benchmark_profile;
 mod capture;
 mod cleanup;
 mod desktop;
+mod exports;
+mod file_identity;
 mod integrations;
 mod inventory;
 mod jobs;

@@ -27,10 +27,21 @@ export function ExportPanel({ profile, busy, run }: { profile: LocalProfile; bus
       try { worker.postMessage({ inventory, format, at }) } catch (error) { finish(); reject(error) }
     })
     if (!alive.current || useProgressStore.getState().gameMode !== profile.mode) return
+    const name = `tarkov-stash-${profile.mode}-${at.replaceAll(':', '-')}.${format}`
+    if (window.desktop?.saveExport) {
+      let text = await blob.text()
+      // Blob.text's UTF-8 decoder can consume the CSV BOM. Preserve it for Excel.
+      if (format === 'csv' && !text.startsWith('\ufeff')) text = '\ufeff' + text
+      const result = await window.desktop.saveExport({ kind: format === 'json' ? 'inventory-json' : 'inventory-csv', name, text },
+        () => alive.current && useProgressStore.getState().gameMode === profile.mode)
+      if (alive.current && useProgressStore.getState().gameMode === profile.mode)
+        setMessage(result === 'saved' ? `Saved ${inventory.containers.length} containers from ${profile.mode}. This report is not a recovery backup.` : 'Export cancelled; no report was saved.')
+      return
+    }
     release()
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.href = url; link.download = `tarkov-stash-${profile.mode}-${at.replaceAll(':', '-')}.${format}`
+    link.href = url; link.download = name
     try { document.body.append(link); link.click() } catch (error) { URL.revokeObjectURL(url); throw error } finally { link.remove() }
     download.current = { url, timer: setTimeout(release, 60000) }
     setMessage(`Download requested: ${inventory.containers.length} containers from ${profile.mode}. This report is not a recovery backup.`)
@@ -39,7 +50,7 @@ export function ExportPanel({ profile, busy, run }: { profile: LocalProfile; bus
     <summary className="cursor-pointer text-sm font-medium">Export saved inventory facts</summary>
     <div className="mt-3 space-y-3">
       <p className="max-w-prose text-sm text-ink-muted">Export this profile’s saved containers, locations, unknown values and confirmation flags. Legacy counts are labeled separately. Drafts, images, prices and recommendations are excluded. Use Full backup for recovery with evidence.</p>
-      <div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={() => save('json')}>Download JSON</button><button className="btn" disabled={busy} onClick={() => save('csv')}>Download CSV</button></div>
+      <div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={() => save('json')}>Export JSON</button><button className="btn" disabled={busy} onClick={() => save('csv')}>Export CSV</button></div>
       <p className="text-xs text-ink-muted">CSV neutralizes spreadsheet formulas in text; JSON preserves source text. Files are limited to 20 MiB.</p>
       {message && <p role="status" className="text-sm text-ink-muted">{message}</p>}
     </div>

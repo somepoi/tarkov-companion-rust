@@ -90,6 +90,7 @@ pub struct HostState {
     overlay: Mutex<OverlayState>,
     pub packs: Result<crate::packs::Packs, String>,
     pub cleanup: crate::cleanup::Cleanup,
+    pub exports: crate::exports::Exports,
 }
 
 impl HostState {
@@ -194,6 +195,7 @@ impl HostState {
             searchbar: crate::searchbar::SearchBar::default(),
             overlay: Mutex::new(OverlayState::default()),
             cleanup: crate::cleanup::Cleanup::default(),
+            exports: crate::exports::Exports::default(),
         })
     }
 
@@ -600,6 +602,8 @@ pub async fn desktop_call(
             | "watcher:pickFolder"
             | "update:outcome"
             | "cleanup:run"
+            | "export:select"
+            | "export:write"
     ) {
         Some(crate::jobs::enter().map_err(|e| error("update_busy", e))?)
     } else {
@@ -637,6 +641,15 @@ fn dispatch(
     args: &[Value],
 ) -> Result<Value, NativeError> {
     let first = args.first().unwrap_or(&Value::Null);
+    if channel.starts_with("export:") {
+        if args.len() != 1 {
+            return Err(error("export", "Invalid export request"));
+        }
+        return state
+            .exports
+            .call(app, _window, &state.profile_root, channel, first.clone())
+            .map_err(|e| error("export", e));
+    }
     if channel.starts_with("cleanup:") {
         if _window.label() != "main" {
             return Err(error(

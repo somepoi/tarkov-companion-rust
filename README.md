@@ -53,6 +53,7 @@ Settings → Clean up now previews eligible older fork installers in Downloads a
 Tauri uses its separate app identifier `io.github.somepoi.tarkov-companion-rust` and application-data directory. The active directory is displayed in Stash Manager. Do not point it at the original application's profile or assume an original installation is migrated in place.
 
 - Settings progress JSON/daily backups cover the existing interface progress stores.
+- Native progress and inventory JSON/CSV exports use a system Save As dialog and report completion or cancellation. Inventory reports are not recovery backups.
 - **Stash Manager → Full backup and recovery** additionally preserves the transactional database, retained screenshot evidence, settings and recognition corrections. Export can select another folder/disk.
 - Recovery prepares a separate profile and retains the original. Returning to an older binary requires a compatible full recovery copy, not an ad hoc schema downgrade.
 - Save drafts before backup/recovery. Unsaved edits are not part of saved-state exports.

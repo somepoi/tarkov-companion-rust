@@ -86,6 +86,18 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     return promise as Promise<T>
   }
   const api: DesktopApi = {
+    saveExport: async ({ kind, name, text }, isCurrent = () => true) => {
+      if (!isCurrent()) return 'cancelled'
+      const selected = await call<{ id: string } | null>('export:select', { kind, name })
+      if (!selected) return 'cancelled'
+      try {
+        if (!isCurrent()) return 'cancelled'
+        if (await call<boolean>('export:write', { id: selected.id, text }) !== true) throw new Error('Export was not saved')
+        return 'saved'
+      } finally {
+        await call('export:cancel', selected.id).catch(() => undefined)
+      }
+    },
     reportUiReady: () => call('ui:ready'),
     benchmarkMode: metadata.benchmarkMode,
     reportCatalogReady: (summary) => call('benchmark:catalog-ready', summary),

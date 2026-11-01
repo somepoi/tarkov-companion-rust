@@ -17,6 +17,7 @@ Tauri hosts the React interface in Windows WebView2, without a permanent Node si
 | Remote content | SVG maps and wiki HTML use existing allow-list sanitizers (`src/lib/sanitizeSvg.ts`, `src/api/storyWiki.ts`). |
 | Saved inventory | SQLite migrations, revisions and commit replay checks protect saved facts. Screenshot writes are separate from database transactions. Recovery verifies retained evidence and prepares a separate profile while retaining the source. |
 | Imports/backups | Progress, corrections and recovery bundles are bounded and validated. Keep independent backups; in-process rollback does not prove power-loss safety. |
+| Report exports | Only the main window can request a native file picker. A short-lived single-use selection binds the destination, format and file/parent identity before bounded JSON/CSV publication. The renderer cannot supply arbitrary filesystem paths. Save targets inside the native profile are refused. |
 | Updates/identity | Default update routes are disabled. Experimental signed updates require explicit build configuration, signature/version checks and recovery preparation before permitted installation. Fork identifiers are separate from the original. |
 | Manual cleanup | Only the main window can preview/confirm cleanup. Native-owned previews expire, bind target identities/metadata and scope, and are checked again before recycle-only Shell operations. Pack installation is excluded during cleanup. Backups, stash evidence, prepared updates and active resources are outside the target set. |
 
