@@ -327,23 +327,22 @@ function indexById<T extends { id: string }>(list: T[]): Record<string, T> {
 // Loaders
 // ---------------------------------------------------------------------------
 
-/** Tasks + traders + maps (with English names) for one game mode. */
-export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): Promise<GameData> {
-  // Read the catalog first so we fail with a clear message if the API changed.
-  assertCatalogSupports(await getEndpointCatalog(), gameMode)
-
-  const [tasksRes, tradersRes, mapsRes] = await Promise.all([
-    fetchTranslated<RawTasksData>(gameMode, 'tasks', signal),
-    fetchTranslated<Record<string, RawTrader>>(gameMode, 'traders', signal),
-    fetchTranslated<RawMapsData>(gameMode, 'maps', signal),
-  ])
-
-  const traders = Object.values(tradersRes.doc.data).map((tr) => adaptTrader(tr, tradersRes.t))
+type MapView = Pick<GameData, 'maps' | 'mapDetails' | 'lootContainerNames' | 'mobNames' | 'mobPortraits' | 'goonReport'>
+async function fetchMapView(gameMode: GameMode, signal?: AbortSignal): Promise<MapView> {
+  signal?.throwIfAborted()
+  if (isTauri()) {
+    try {
+      const view = await invoke<MapView>('load_map_catalog', { mode: gameMode })
+      signal?.throwIfAborted()
+      view.maps.sort((a, b) => a.name.localeCompare(b.name))
+      return view
+    } catch (cause) {
+      signal?.throwIfAborted()
+      throw new Error(typeof cause === 'string' ? cause : String(cause), { cause })
+    }
+  }
+  const mapsRes = await fetchTranslated<RawMapsData>(gameMode, 'maps', signal)
   const maps = adaptMaps(mapsRes.doc.data, mapsRes.t).sort((a, b) => a.name.localeCompare(b.name))
-  const tradersById = indexById(traders)
-  const mapsById = indexById(maps)
-  const questItems = adaptQuestItems(tasksRes.doc.data, tasksRes.t)
-
   const lootContainerNames: Record<string, string> = {}
   for (const c of Object.values(mapsRes.doc.data.lootContainers ?? {})) {
     lootContainerNames[c.id] = mapsRes.t(c.name, c.normalizedName)
@@ -366,6 +365,28 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
     .filter((g) => g.mapId && Number.isFinite(g.at))
     .sort((a, b) => b.at - a.at)[0]
   const goonReport = latestGoon ?? null
+
+  return { maps, mapDetails, lootContainerNames, mobNames, mobPortraits, goonReport }
+}
+
+/** Tasks + traders + maps (with English names) for one game mode. */
+export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): Promise<GameData> {
+  // Read the catalog first so we fail with a clear message if the API changed.
+  assertCatalogSupports(await getEndpointCatalog(), gameMode)
+
+  const [tasksRes, tradersRes, mapView] = await Promise.all([
+    fetchTranslated<RawTasksData>(gameMode, 'tasks', signal),
+    fetchTranslated<Record<string, RawTrader>>(gameMode, 'traders', signal),
+    fetchMapView(gameMode, signal),
+  ])
+
+  const traders = Object.values(tradersRes.doc.data).map((tr) => adaptTrader(tr, tradersRes.t))
+  const maps = mapView.maps
+  const tradersById = indexById(traders)
+  const mapsById = indexById(maps)
+  const questItems = adaptQuestItems(tasksRes.doc.data, tasksRes.t)
+
+  const { mapDetails, lootContainerNames, mobNames, mobPortraits, goonReport } = mapView
 
   const tasks = Object.values(tasksRes.doc.data.tasks).map((raw) =>
     adaptTask(raw, tasksRes.t, tradersById, mapsById, questItems),

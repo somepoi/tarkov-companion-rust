@@ -30,6 +30,13 @@ pub async fn load_item_catalog(
     crate::catalog_adapters::load(&window, crate::catalog_adapters::Kind::Items, mode).await
 }
 struct Admission(u8);
+#[tauri::command]
+pub async fn load_map_catalog(
+    window: tauri::WebviewWindow,
+    mode: GameMode,
+) -> Result<Value, String> {
+    crate::catalog_adapters::load(&window, crate::catalog_adapters::Kind::Maps, mode).await
+}
 impl Drop for Admission {
     fn drop(&mut self) {
         RUNNING.fetch_and(!self.0, Ordering::AcqRel);

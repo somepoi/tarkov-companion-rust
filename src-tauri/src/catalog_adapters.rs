@@ -12,6 +12,7 @@ use tokio::sync::{Semaphore, watch};
 pub(super) enum Kind {
     Items,
     Hideout,
+    Maps,
 }
 type State = Option<Arc<Result<Value, String>>>;
 static PENDING: OnceLock<Mutex<BTreeMap<String, watch::Receiver<State>>>> = OnceLock::new();
@@ -35,6 +36,7 @@ fn subscribe(kind: Kind, mode: GameMode) -> Result<watch::Receiver<State>, Strin
     let endpoint = match kind {
         Kind::Items => "items",
         Kind::Hideout => "hideout",
+        Kind::Maps => "maps",
     };
     let key = format!("{mode}/{endpoint}");
     let mut jobs = pending()
@@ -46,7 +48,7 @@ fn subscribe(kind: Kind, mode: GameMode) -> Result<watch::Receiver<State>, Strin
     let lease = crate::jobs::enter().map_err(str::to_owned)?;
     let (sender, receiver) = watch::channel(None);
     jobs.insert(key.clone(), receiver.clone());
-    // Four possible keys bound real jobs, regardless of consumer navigation.
+    // Six possible keys bound real jobs, regardless of consumer navigation.
     tauri::async_runtime::spawn(async move {
         let _cleanup = Cleanup(key);
         let result = async {
@@ -61,6 +63,7 @@ fn subscribe(kind: Kind, mode: GameMode) -> Result<watch::Receiver<State>, Strin
             tauri::async_runtime::spawn_blocking(move || {
                 let _lease = lease;
                 match kind {
+                    Kind::Maps => stash_core::catalog::maps::adapt(&base, &english),
                     Kind::Hideout => {
                         serde_json::to_value(stash_core::catalog::hideout::adapt(&base, &english)?)
                             .map_err(|e| e.to_string())
