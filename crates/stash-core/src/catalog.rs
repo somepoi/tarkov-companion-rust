@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub mod hideout;
 pub mod items;
 pub mod maps;
+pub mod traders;
 
 pub const RECIPE_PLANNING_SCHEMA: u32 = 2;
 

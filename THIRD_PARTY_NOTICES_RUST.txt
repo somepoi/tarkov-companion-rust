@@ -1,6 +1,6 @@
 Tarkov Companion Rust — native dependency notices
 
-Cargo.lock SHA-256 (LF): bad6f532ab31e0203d6efe93efe2149dcbccc793c4323862e22f7cce88efbf87
+Cargo.lock SHA-256 (LF): b30b729e441196c0b478edeb32548497eac865a3ca0bbdd57bc06e2315108320
 Target: x86_64-pc-windows-msvc. Includes build-time dependencies from the resolved graph.
 Identical license texts are included once and referenced by content hash.
 The application remains GPL-3.0-or-later; each dependency retains its own license.

@@ -328,6 +328,21 @@ function indexById<T extends { id: string }>(list: T[]): Record<string, T> {
 // ---------------------------------------------------------------------------
 
 type MapView = Pick<GameData, 'maps' | 'mapDetails' | 'lootContainerNames' | 'mobNames' | 'mobPortraits' | 'goonReport'>
+async function fetchTraderView(gameMode: GameMode, signal?: AbortSignal): Promise<Trader[]> {
+  signal?.throwIfAborted()
+  if (isTauri()) {
+    try {
+      const traders = await invoke<Trader[]>('load_trader_catalog', { mode: gameMode })
+      signal?.throwIfAborted()
+      return traders
+    } catch (cause) {
+      signal?.throwIfAborted()
+      throw new Error(typeof cause === 'string' ? cause : String(cause), { cause })
+    }
+  }
+  const { doc, t } = await fetchTranslated<Record<string, RawTrader>>(gameMode, 'traders', signal)
+  return Object.values(doc.data).map((raw) => adaptTrader(raw, t))
+}
 async function fetchMapView(gameMode: GameMode, signal?: AbortSignal): Promise<MapView> {
   signal?.throwIfAborted()
   if (isTauri()) {
@@ -374,13 +389,12 @@ export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): P
   // Read the catalog first so we fail with a clear message if the API changed.
   assertCatalogSupports(await getEndpointCatalog(), gameMode)
 
-  const [tasksRes, tradersRes, mapView] = await Promise.all([
+  const [tasksRes, traders, mapView] = await Promise.all([
     fetchTranslated<RawTasksData>(gameMode, 'tasks', signal),
-    fetchTranslated<Record<string, RawTrader>>(gameMode, 'traders', signal),
+    fetchTraderView(gameMode, signal),
     fetchMapView(gameMode, signal),
   ])
 
-  const traders = Object.values(tradersRes.doc.data).map((tr) => adaptTrader(tr, tradersRes.t))
   const maps = mapView.maps
   const tradersById = indexById(traders)
   const mapsById = indexById(maps)

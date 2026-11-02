@@ -90,7 +90,12 @@ fn rows<'a>(raw: &'a Value, key: &str, budget: &mut usize) -> Result<&'a [Value]
     }
     Ok(values)
 }
-fn translated(dict: &Value, key: &Value, fallback: &str) -> Result<String, String> {
+fn translated(
+    dict: &Value,
+    key: &Value,
+    fallback: &str,
+    bytes: &mut usize,
+) -> Result<String, String> {
     let result = key
         .as_str()
         .filter(|s| !s.is_empty())
@@ -100,6 +105,12 @@ fn translated(dict: &Value, key: &Value, fallback: &str) -> Result<String, Strin
         .unwrap_or(fallback);
     if result.len() > 65_536 || result.contains('\0') {
         return Err("Hideout translation exceeds supported text limits".into());
+    }
+    // A small dictionary can be reused by many levels/bonuses. Account for
+    // worst-case JSON escaping before allocating each repeated translated copy.
+    *bytes += result.len() * 6 + 2;
+    if *bytes > 32 * 1024 * 1024 {
+        return Err("Hideout translated output exceeds supported workload".into());
     }
     Ok(result.to_owned())
 }
@@ -117,6 +128,7 @@ pub fn adapt(document: &Value, english: &Value) -> Result<Vec<Station>, String> 
     }
     let mut ids = BTreeSet::new();
     let mut budget = 0;
+    let mut translation_bytes = 0;
     data.values()
         .map(|raw| {
             let id = text(&raw["id"], 512)?;
@@ -181,7 +193,7 @@ pub fn adapt(document: &Value, english: &Value) -> Result<Vec<Station>, String> 
                         .map(|r| {
                             let key = text(&r["skill"], 512)?;
                             Ok(SkillGate {
-                                skill: translated(dict, &r["skill"], &key)?,
+                                skill: translated(dict, &r["skill"], &key, &mut translation_bytes)?,
                                 level: number(&r["level"])?,
                             })
                         })
@@ -194,10 +206,10 @@ pub fn adapt(document: &Value, english: &Value) -> Result<Vec<Station>, String> 
                                 None
                             } else {
                                 let key = text(&b["skill"], 512)?;
-                                Some(translated(dict, &b["skill"], &key)?)
+                                Some(translated(dict, &b["skill"], &key, &mut translation_bytes)?)
                             };
                             Ok(Bonus {
-                                name: translated(dict, &b["name"], &kind)?,
+                                name: translated(dict, &b["name"], &kind, &mut translation_bytes)?,
                                 r#type: kind,
                                 value: b["value"].as_f64(),
                                 skill,
@@ -217,7 +229,12 @@ pub fn adapt(document: &Value, english: &Value) -> Result<Vec<Station>, String> 
                         item_requirements,
                         skill_requirements,
                         bonuses,
-                        description: translated(dict, &raw["description"], "")?,
+                        description: translated(
+                            dict,
+                            &raw["description"],
+                            "",
+                            &mut translation_bytes,
+                        )?,
                     })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
@@ -235,7 +252,7 @@ pub fn adapt(document: &Value, english: &Value) -> Result<Vec<Station>, String> 
             };
             Ok(Station {
                 id,
-                name: translated(dict, &raw["name"], &normalized_name)?,
+                name: translated(dict, &raw["name"], &normalized_name, &mut translation_bytes)?,
                 normalized_name,
                 image_link,
                 levels,

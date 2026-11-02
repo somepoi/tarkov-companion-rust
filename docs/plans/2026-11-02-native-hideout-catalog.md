@@ -16,6 +16,7 @@ Continue Phase 6 catalog adaptation ownership after native recipe normalization 
 - At most four hideout adapter calls are admitted, without a waiting queue. The IO lease remains held through the actual off-thread adaptation. Both documents must succeed before normalized data is returned. Query aborts reject late results; shared transport reads can finish for other consumers.
 - The pure `stash-core::catalog::hideout` adapter uses typed serialized output. It rejects malformed station/level/dependency/item identities and numbers instead of dropping them. Duplicate station IDs, level IDs or level numbers are rejected. This is stricter than the reference's silent station/item filtering and permissive numeric passthrough; producer compatibility is not inferred from compilation.
 - Workload limits: 512 stations, 256 levels per station, 4096 entries per optional list and 65,536 optional-list entries in total; identifiers up to 512 UTF-8 bytes, image text up to 4096 bytes and translated text up to 65,536 bytes. The already bounded raw documents limit the remaining structure. Exceeded limits fail the refresh without publishing truncated requirements.
+- The subsequent trader checkpoint adds a shared 32 MiB conservative translated-output budget, charged before each repeated name/skill/bonus/description copy; see `2026-11-02-native-trader-catalog.md`. Per-field limits alone do not bound repeated dictionary expansion tightly enough.
 
 ## Verification and remaining work
 
