@@ -58,7 +58,7 @@ fn write(value: &Value, depth: usize, out: &mut String) -> Result<(), String> {
     }
     Ok(())
 }
-pub(super) fn objective_definition(value: &Value) -> Result<String, String> {
+pub(crate) fn objective_definition(value: &Value) -> Result<String, String> {
     let mut out = String::new();
     write(value, 0, &mut out)?;
     Ok(out)

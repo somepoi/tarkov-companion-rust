@@ -4,7 +4,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-mod canonical;
+pub(crate) mod canonical;
 pub mod hideout;
 pub mod items;
 pub mod maps;

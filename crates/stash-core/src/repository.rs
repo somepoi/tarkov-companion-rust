@@ -292,6 +292,14 @@ impl Repository {
                 "inventory changed; reload before calculating recommendations".into(),
             ));
         }
+        let mut input = *request.normalization_input;
+        input.preferences = saved.preferences.clone();
+        let normalized = crate::requirements::build(&input).map_err(StorageError::Invalid)?;
+        let complete = request.requirements_complete && normalized.coverage_gaps.is_empty();
+        let mut gaps = request.coverage_gaps;
+        gaps.extend(normalized.coverage_gaps);
+        gaps.sort();
+        gaps.dedup();
         Ok(crate::plan(&crate::PlannerInput {
             inventory,
             catalog_version: request.catalog_version,
@@ -299,9 +307,9 @@ impl Repository {
             plan_revision: saved.revision.to_string(),
             horizon: crate::planning::HORIZON.into(),
             inventory_confirmed_current: request.inventory_confirmed_current,
-            requirements_complete: request.requirements_complete,
-            coverage_gaps: request.coverage_gaps,
-            requirements: request.requirements,
+            requirements_complete: complete,
+            coverage_gaps: gaps,
+            requirements: normalized.requirements,
             reserves: saved.preferences.reserves,
         })?)
     }

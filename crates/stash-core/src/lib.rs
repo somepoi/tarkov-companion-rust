@@ -11,6 +11,7 @@ pub mod planner;
 pub mod planning;
 mod reconciliation;
 mod repository;
+pub mod requirements;
 
 pub use model::*;
 pub use planner::{Plan, PlannerInput, plan};

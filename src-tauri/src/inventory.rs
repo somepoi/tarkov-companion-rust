@@ -88,6 +88,9 @@ pub enum Operation {
     CalculatePlan {
         request: stash_core::planning::CalculatePlan,
     },
+    NormalizeRequirements {
+        input: Box<stash_core::requirements::Input>,
+    },
 }
 
 struct Job {
@@ -245,6 +248,10 @@ fn execute(
             preferences,
         } => value(repository.save_planning_state(&profile_id, expected_revision, preferences)),
         Operation::CalculatePlan { request } => value(repository.calculate_plan(request)),
+        Operation::NormalizeRequirements { input } => {
+            serde_json::to_value(stash_core::requirements::build(&input)?)
+                .map_err(|e| e.to_string())
+        }
     }
 }
 
@@ -272,6 +279,7 @@ pub async fn inventory_call(
             | Operation::ListScans { .. }
             | Operation::PlanningState { .. }
             | Operation::CalculatePlan { .. }
+            | Operation::NormalizeRequirements { .. }
             | Operation::ComposeViews { .. }
             | Operation::GetComposition { .. }
     );

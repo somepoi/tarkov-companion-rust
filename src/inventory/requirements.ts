@@ -19,6 +19,45 @@ interface Input {
   barterAvailability?: Record<string, { batches: number; confirmed: boolean }>
 }
 
+/** Project only facts needed by native normalization; exclude pictures, map
+ * layers, economy quotes, unrelated profile data and unparsed recovery payloads. */
+export function requirementsSource(input: Input) {
+  return {
+    tasks: input.tasks.map((task) => ({
+      id: task.id, name: task.name, factionName: task.factionName, wiki: !!task.wiki,
+      objectives: task.objectives.map((o) => ({
+        id: o.id, type: o.type, description: o.description, optional: o.optional,
+        count: o.count, itemIds: o.itemIds, foundInRaid: o.foundInRaid,
+        markerItemId: o.markerItemId, minimumDogtagLevel: o.minimumDogtagLevel,
+        durability: o.durability, planningGaps: o.planningGaps,
+        planningDefinition: o.planningDefinition,
+        build: o.build ? { weaponId: o.build.weaponId, partIds: o.build.partIds } : null,
+      })),
+    })),
+    profile: {
+      faction: input.profile.faction,
+      completedTaskIds: [...input.profile.completedTaskIds],
+      activeTaskIds: [...input.profile.activeTaskIds],
+      failedTaskIds: [...input.profile.failedTaskIds],
+      objectiveProgress: input.profile.objectiveProgress ?? {},
+      objectiveProgressNeedsReview: input.profile.objectiveProgressReview !== undefined,
+    },
+    stations: input.stations.map((s) => ({ id: s.id, name: s.name, levels: s.levels.map((l) => ({
+      id: l.id, level: l.level, stationLevelRequirements: l.stationLevelRequirements, itemRequirements: l.itemRequirements,
+    })) })),
+    stationLevels: input.stationLevels, preferences: input.preferences,
+    recipes: input.recipes ?? null,
+    items: Object.fromEntries(Object.entries(input.items).map(([id, item]) => [id, {
+      name: item.name, types: item.types, dogtagAlternatives: item.dogtagAlternatives,
+    }])),
+    traders: (input.traders ?? []).map((t) => ({ id: t.id, name: t.name, maxLevel: t.maxLevel })),
+    traderLoyalty: input.traderLoyalty ?? {}, barterAvailability: input.barterAvailability ?? {},
+  }
+}
+
+export type RequirementsSource = ReturnType<typeof requirementsSource>
+export type NormalizedRequirements = ReturnType<typeof buildRequirements>
+
 /** No inferred completion or aggregate collected counts are subtracted. They do
  * not prove an objective hand-in or identify a physical stack. */
 export function buildRequirements(input: Input) {

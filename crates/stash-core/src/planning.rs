@@ -1,8 +1,5 @@
 //! Persisted intent is separate from derived recommendations and physical stock.
-use crate::{
-    StorageError,
-    planner::{Requirement, UserReserve},
-};
+use crate::{StorageError, planner::UserReserve};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -27,8 +24,8 @@ pub struct PlanningState {
     pub preferences: PlanningPreferences,
 }
 
-/// Catalog/progression are still owned by the incumbent frontend during this
-/// migration. The host always reads inventory and reserves from its own actor.
+/// The frontend supplies catalog/progression facts; Rust derives demand using
+/// saved native preferences and reads physical inventory in the same actor job.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CalculatePlan {
@@ -40,7 +37,7 @@ pub struct CalculatePlan {
     pub inventory_confirmed_current: bool,
     pub requirements_complete: bool,
     pub coverage_gaps: Vec<String>,
-    pub requirements: Vec<Requirement>,
+    pub normalization_input: Box<crate::requirements::Input>,
 }
 
 pub(crate) fn validate(preferences: &PlanningPreferences) -> Result<(), StorageError> {

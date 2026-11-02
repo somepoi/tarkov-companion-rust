@@ -16,7 +16,8 @@ import {
 } from './client'
 import { fetchRecipeCatalog, RECIPE_PLANNING_SCHEMA } from './recipeCatalog'
 import { ANY_DOGTAG_ID, PLANNING_CATALOG_SCHEMA } from '../api/planningItems'
-import { buildRequirements } from './requirements'
+import { requirementsSource } from './requirements'
+import { useRequirementPreview } from './useRequirementPreview'
 import { PlanResults } from './PlanResults'
 import { quantityFitsCatalog } from '../scan/quantity'
 import { QuestObjectiveProgress } from './QuestObjectiveProgress'
@@ -126,9 +127,9 @@ function PlannerEditor({
       window.removeEventListener('blur', invalidate)
     }
   }, [])
-  const normalized = useMemo(
+  const normalizationInput = useMemo(
     () =>
-      buildRequirements({
+      requirementsSource({
         tasks: [
           ...(game.data?.tasks ?? []),
           ...wiki.tasks.filter(
@@ -158,6 +159,8 @@ function PlannerEditor({
       currentBarterAvailability,
     ],
   )
+  const { preview: requirementPreview, retry: retryRequirements } = useRequirementPreview(normalizationInput)
+  const normalized = requirementPreview?.value
   const catalogVersion = `${mode}:items@${items.dataUpdatedAt}:quests@${game.dataUpdatedAt}:hideout@${hideout.dataUpdatedAt}:recipes@${recipes.dataUpdatedAt}`
   const progressionRevision = JSON.stringify([
     progression.playerLevel,
@@ -179,6 +182,7 @@ function PlannerEditor({
     catalogVersion,
     progressionRevision,
     normalized,
+    requirementPreview?.error,
     traderLoyalty,
     barterAvailability,
     revisions,
@@ -276,7 +280,8 @@ function PlannerEditor({
     }))
   }
   async function calculate() {
-    const gaps = [...normalized.coverageGaps]
+    if (!normalized) throw new Error('Wait for requirement review before calculating advice')
+    const gaps: string[] = []
     for (const entry of inventory.containers)
       for (const stack of entry.snapshot?.stacks ?? []) {
         if (stack.itemId === ANY_DOGTAG_ID)
@@ -338,7 +343,7 @@ function PlannerEditor({
         inventoryConfirmedCurrent: confirmed === inventorySignature,
         requirementsComplete: gaps.length === 0,
         coverageGaps: [...new Set(gaps)],
-        requirements: normalized.requirements,
+        normalizationInput,
       },
     })
     setExpired(false)
@@ -420,7 +425,7 @@ function PlannerEditor({
                   {station.levels.map((l) => (
                     <option key={l.id} value={l.level}>
                       Level {l.level}
-                      {(normalized.effectiveHideoutTargets[station.id] ?? 0) >
+                      {(normalized?.effectiveHideoutTargets[station.id] ?? 0) >
                       l.level
                         ? ' + dependencies'
                         : ''}
@@ -719,12 +724,14 @@ function PlannerEditor({
         </label>
         <button
           className="btn"
-          disabled={dirty || !inventory.containers.length}
+          disabled={dirty || !inventory.containers.length || !normalized}
           onClick={() => void act(calculate)}
         >
           {busy ? 'Working…' : 'Calculate KEEP / SELL / REVIEW'}
         </button>
       </fieldset>
+      {!requirementPreview && <p role="status" className="text-sm text-ink-muted">Preparing requirement review…</p>}
+      {requirementPreview?.error && <div className="space-y-2"><p role="alert" className="text-sm text-warning">Requirement review could not finish: {requirementPreview.error}</p><button className="btn" disabled={busy} onClick={retryRequirements}>Retry requirement review</button></div>}
       {!plan && calculated && (
         <p role="status" className="text-sm text-warning">
           Advice is out of date. Recalculate after reviewing the current
