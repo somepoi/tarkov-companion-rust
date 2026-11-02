@@ -505,6 +505,17 @@ function borrowVariantPictures(out: ItemsById) {
 
 /** All items (name, short name, icon, prices) plus the level XP table, for one game mode. ~1.4 MB compressed. */
 export async function fetchItems(gameMode: GameMode, signal?: AbortSignal): Promise<ItemsBundle> {
+  signal?.throwIfAborted()
+  if (isTauri()) {
+    try {
+      const bundle = await invoke<ItemsBundle>('load_item_catalog', { mode: gameMode })
+      signal?.throwIfAborted()
+      return bundle
+    } catch (cause) {
+      signal?.throwIfAborted()
+      throw new Error(typeof cause === 'string' ? cause : String(cause), { cause })
+    }
+  }
   const { doc, t } = await fetchTranslated<RawItemsData>(gameMode, 'items', signal)
   const playerLevels = (doc.data.playerLevels ?? [])
     .filter((l) => typeof l.level === 'number' && typeof l.exp === 'number')

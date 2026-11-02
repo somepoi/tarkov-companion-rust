@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod hideout;
+pub mod items;
 
 pub const RECIPE_PLANNING_SCHEMA: u32 = 2;
 
