@@ -4,6 +4,7 @@
 //! worker; do not share browser writes or execute these methods on a UI thread.
 //! Recommendations never perform a sale or mutate inventory.
 
+pub mod catalog;
 pub mod composition;
 pub mod model;
 pub mod planner;

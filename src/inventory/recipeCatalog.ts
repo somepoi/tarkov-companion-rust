@@ -1,4 +1,5 @@
 import { fetchJson, type GameMode } from '../api/client'
+import { invoke, isTauri } from '@tauri-apps/api/core'
 
 export const RECIPE_PLANNING_SCHEMA = 2
 
@@ -126,10 +127,30 @@ function parse(document: unknown, kind: 'craft' | 'barter'): Recipe[] {
   })
 }
 
+// Aborting a query discards its result. Re-entering the same mode can reuse the
+// bounded native read instead of starting another download while it finishes.
+const nativeReads = new Map<GameMode, Promise<RecipeCatalog>>()
+
 export async function fetchRecipeCatalog(
   mode: GameMode,
   signal?: AbortSignal,
 ): Promise<RecipeCatalog> {
+  signal?.throwIfAborted()
+  if (isTauri()) {
+    let pending = nativeReads.get(mode)
+    if (!pending) {
+      pending = invoke<RecipeCatalog>('load_recipe_catalog', { mode })
+      nativeReads.set(mode, pending)
+      const release = () => { if (nativeReads.get(mode) === pending) nativeReads.delete(mode) }
+      void pending.then(release, release)
+    }
+    const catalog = await pending.catch((cause: unknown) => {
+      signal?.throwIfAborted()
+      throw new Error(typeof cause === 'string' ? cause : String(cause), { cause })
+    })
+    signal?.throwIfAborted()
+    return catalog
+  }
   const [crafts, barters] = await Promise.all([
     fetchJson<unknown>(`/${mode}/crafts`, signal),
     fetchJson<unknown>(`/${mode}/barters`, signal),
