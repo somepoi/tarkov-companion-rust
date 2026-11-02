@@ -115,6 +115,10 @@ pub async fn fetch_catalog_document(
     if !matches!(window.label(), "main" | "searchbar") {
         return Err("Catalog reads require an application window".into());
     }
+    read(path).await
+}
+
+pub(super) async fn read(path: String) -> Result<Value, String> {
     if path.len() > 256 || !allowed(&path) {
         return Err("Unsupported catalog route".into());
     }

@@ -1,4 +1,5 @@
 import { friendlySwitchName } from './switchNames'
+import { invoke, isTauri } from '@tauri-apps/api/core'
 import { objectiveItemConditions } from './itemConditions'
 import { adaptDogtagAlternatives, PLANNING_CATALOG_SCHEMA } from './planningItems'
 import { feeRate } from '../lib/fleaFees'
@@ -579,6 +580,17 @@ export async function fetchPriceHistory(
 
 /** Hideout stations with every level's requirements and bonuses (names in English). */
 export async function fetchHideout(gameMode: GameMode, signal?: AbortSignal): Promise<HideoutStation[]> {
+  signal?.throwIfAborted()
+  if (isTauri()) {
+    try {
+      const stations = await invoke<HideoutStation[]>('load_hideout_catalog', { mode: gameMode })
+      signal?.throwIfAborted()
+      return stations.sort((a, b) => a.name.localeCompare(b.name))
+    } catch (cause) {
+      signal?.throwIfAborted()
+      throw new Error(typeof cause === 'string' ? cause : String(cause), { cause })
+    }
+  }
   const { doc, t } = await fetchTranslated<Record<string, RawHideoutStation>>(gameMode, 'hideout', signal)
   return Object.values(doc.data)
     .filter((s) => s && Array.isArray(s.levels))

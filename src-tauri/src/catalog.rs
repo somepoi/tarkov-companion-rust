@@ -14,6 +14,38 @@ use std::{
 
 const MAX_DOCUMENT: u64 = 16 * 1024 * 1024;
 static RUNNING: AtomicU8 = AtomicU8::new(0);
+static HIDEOUT: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+#[tauri::command]
+pub async fn load_hideout_catalog(
+    window: tauri::WebviewWindow,
+    mode: GameMode,
+) -> Result<Vec<stash_core::catalog::hideout::Station>, String> {
+    if !matches!(window.label(), "main" | "searchbar") {
+        return Err("Hideout reads require an application window".into());
+    }
+    let admission = HIDEOUT
+        .try_acquire()
+        .map_err(|_| "Hideout sync is busy; retry shortly".to_owned())?;
+    let lease = crate::jobs::enter().map_err(str::to_owned)?;
+    let mode = match mode {
+        GameMode::Regular => "regular",
+        GameMode::Pve => "pve",
+    };
+    let base =
+        tauri::async_runtime::spawn(crate::catalog_transport::read(format!("/{mode}/hideout")));
+    let english = crate::catalog_transport::read(format!("/{mode}/hideout_en")).await;
+    let base = base
+        .await
+        .map_err(|e| format!("Hideout sync worker stopped: {e}"))??;
+    let english = english?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (_admission, _lease) = (admission, lease);
+        stash_core::catalog::hideout::adapt(&base, &english)
+    })
+    .await
+    .map_err(|e| format!("Hideout adapter stopped: {e}"))?
+}
 
 struct Admission(u8);
 impl Drop for Admission {

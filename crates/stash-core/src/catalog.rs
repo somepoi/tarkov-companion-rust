@@ -4,6 +4,8 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod hideout;
+
 pub const RECIPE_PLANNING_SCHEMA: u32 = 2;
 
 #[derive(Serialize)]
