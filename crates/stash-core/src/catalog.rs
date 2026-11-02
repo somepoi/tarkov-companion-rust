@@ -4,9 +4,11 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+mod canonical;
 pub mod hideout;
 pub mod items;
 pub mod maps;
+pub mod tasks;
 pub mod traders;
 
 pub const RECIPE_PLANNING_SCHEMA: u32 = 2;

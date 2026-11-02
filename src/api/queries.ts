@@ -388,6 +388,27 @@ async function fetchMapView(gameMode: GameMode, signal?: AbortSignal): Promise<M
 export async function fetchGameData(gameMode: GameMode, signal?: AbortSignal): Promise<GameData> {
   // Read the catalog first so we fail with a clear message if the API changed.
   assertCatalogSupports(await getEndpointCatalog(), gameMode)
+  signal?.throwIfAborted()
+  if (isTauri()) {
+    try {
+      const bundle = await invoke<Omit<GameData, 'tasksById'>>('load_game_catalog', { mode: gameMode })
+      signal?.throwIfAborted()
+      bundle.maps.sort((a, b) => a.name.localeCompare(b.name))
+      const mapsById = indexById(bundle.maps)
+      const tradersById = indexById(bundle.traders)
+      // Restore the shared display-object references that JSON cannot carry.
+      for (const task of bundle.tasks) {
+        task.trader = tradersById[task.trader.id] ?? task.trader
+        if (task.map) task.map = mapsById[task.map.id] ?? task.map
+        for (const objective of task.objectives)
+          objective.maps = objective.maps.map((map) => mapsById[map.id] ?? map)
+      }
+      return { ...bundle, tasksById: indexById(bundle.tasks) }
+    } catch (cause) {
+      signal?.throwIfAborted()
+      throw new Error(typeof cause === 'string' ? cause : String(cause), { cause })
+    }
+  }
 
   const [tasksRes, traders, mapView] = await Promise.all([
     fetchTranslated<RawTasksData>(gameMode, 'tasks', signal),

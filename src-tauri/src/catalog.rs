@@ -38,6 +38,13 @@ pub async fn load_trader_catalog(
 }
 struct Admission(u8);
 #[tauri::command]
+pub async fn load_game_catalog(
+    window: tauri::WebviewWindow,
+    mode: GameMode,
+) -> Result<Value, String> {
+    crate::catalog_adapters::load(&window, crate::catalog_adapters::Kind::Tasks, mode).await
+}
+#[tauri::command]
 pub async fn load_map_catalog(
     window: tauri::WebviewWindow,
     mode: GameMode,
