@@ -588,6 +588,7 @@ impl Packs {
             }
         });
         let client = reqwest::blocking::Client::builder()
+            .no_gzip()
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(180))
             .redirect(redirect)

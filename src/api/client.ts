@@ -4,6 +4,8 @@
  * Documents: https://json.tarkov.dev/{gameMode}/{endpoint}  (+ "_{lang}" for translations)
  */
 
+import { invoke, isTauri } from '@tauri-apps/api/core'
+
 export const JSON_API_BASE = 'https://json.tarkov.dev'
 
 export type GameMode = 'regular' | 'pve'
@@ -38,6 +40,17 @@ const REQUEST_TIMEOUT_MS = 90_000
 
 export async function fetchJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const url = `${JSON_API_BASE}${path}`
+  signal?.throwIfAborted()
+  if (isTauri()) {
+    try {
+      const document = await invoke<T>('fetch_catalog_document', { path })
+      signal?.throwIfAborted()
+      return document
+    } catch (cause) {
+      signal?.throwIfAborted()
+      throw new TarkovApiError(typeof cause === 'string' ? cause : String(cause), 0, url)
+    }
+  }
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   const both = signal ? AbortSignal.any([signal, timeout]) : timeout
   let res: Response

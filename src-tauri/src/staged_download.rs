@@ -48,6 +48,7 @@ impl Candidate {
 
 pub fn download(candidate: Candidate, key: String, root: PathBuf) -> Result<Value, String> {
     let client = reqwest::blocking::Client::builder()
+        .no_gzip()
         .https_only(true)
         .connect_timeout(Duration::from_secs(20))
         .timeout(Duration::from_secs(300))

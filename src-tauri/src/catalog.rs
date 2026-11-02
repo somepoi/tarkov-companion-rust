@@ -28,39 +28,50 @@ fn document(
     endpoint: &str,
     deadline: Instant,
 ) -> Result<Value, String> {
+    download(
+        client,
+        &format!("/{mode}/{endpoint}"),
+        MAX_DOCUMENT,
+        deadline,
+    )
+}
+
+pub(super) fn download(
+    client: &Client,
+    path: &str,
+    limit: u64,
+    deadline: Instant,
+) -> Result<Value, String> {
     let remaining = deadline.saturating_duration_since(Instant::now());
     if remaining.is_zero() {
-        return Err("Recipe catalog request timed out".into());
+        return Err("Catalog request timed out".into());
     }
     let response = client
-        .get(format!("https://json.tarkov.dev/{mode}/{endpoint}"))
+        .get(format!("https://json.tarkov.dev{path}"))
         .timeout(remaining)
         .header(reqwest::header::ACCEPT, "application/json")
         .header(reqwest::header::CACHE_CONTROL, "no-cache")
         .send()
         .and_then(reqwest::blocking::Response::error_for_status)
-        .map_err(|e| format!("Could not load {endpoint} catalog: {e}"))?;
+        .map_err(|e| format!("Could not load {path} catalog: {e}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "{endpoint} catalog returned HTTP {}; redirects are not followed",
+            "{path} catalog returned HTTP {}; redirects are not followed",
             response.status()
         ));
     }
-    if response
-        .content_length()
-        .is_some_and(|size| size > MAX_DOCUMENT)
-    {
-        return Err(format!("{endpoint} catalog exceeds 16 MiB"));
+    if response.content_length().is_some_and(|size| size > limit) {
+        return Err(format!("{path} catalog exceeds {} MiB", limit / 1048576));
     }
     let mut bytes = Vec::new();
     response
-        .take(MAX_DOCUMENT + 1)
+        .take(limit + 1)
         .read_to_end(&mut bytes)
-        .map_err(|e| format!("Could not read {endpoint} catalog: {e}"))?;
-    if bytes.len() as u64 > MAX_DOCUMENT {
-        return Err(format!("{endpoint} catalog exceeds 16 MiB"));
+        .map_err(|e| format!("Could not read {path} catalog: {e}"))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{path} catalog exceeds {} MiB", limit / 1048576));
     }
-    serde_json::from_slice(&bytes).map_err(|e| format!("Invalid {endpoint} catalog JSON: {e}"))
+    serde_json::from_slice(&bytes).map_err(|e| format!("Invalid {path} catalog JSON: {e}"))
 }
 
 #[tauri::command]

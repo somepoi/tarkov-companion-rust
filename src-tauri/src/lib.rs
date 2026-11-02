@@ -3,6 +3,7 @@ mod backup;
 mod benchmark_profile;
 mod capture;
 mod catalog;
+mod catalog_transport;
 mod cleanup;
 mod desktop;
 mod exports;
@@ -50,6 +51,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             catalog::load_recipe_catalog,
+            catalog_transport::fetch_catalog_document,
             desktop::desktop_metadata,
             desktop::desktop_call,
             desktop::read_game_screenshot,
