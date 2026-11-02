@@ -8,6 +8,7 @@ import { MultiViewPanel } from '../inventory/MultiViewPanel'
 import { ExportPanel } from '../inventory/ExportPanel'
 import { PlanningPanel } from '../inventory/PlanningPanel'
 import { BackupPanel } from '../inventory/BackupPanel'
+import { InvalidateContainersPanel } from '../inventory/InvalidateContainersPanel'
 import { StackIdentityReview } from '../inventory/StackIdentityReview'
 import { ScreenshotRegistration, type StagedScreenshot } from '../inventory/ScreenshotRegistration'
 import type { Grid } from '../scan/core'
@@ -159,7 +160,7 @@ function StashManager({ mode }: { mode: GameMode }) {
         const id = stack.itemId ?? 'unknown'
         const row = map.get(id) ?? { quantity: 0, uncertain: 0, locations: [] }
         if (
-          stack.quantity !== null &&
+          !entry.snapshot?.staleReason && stack.quantity !== null &&
           stack.provenance.quantityConfirmed &&
           stack.provenance.identityConfirmed
         )
@@ -671,6 +672,7 @@ function StashManager({ mode }: { mode: GameMode }) {
                         ? `${entry.snapshot.stacks.length} stacks · ${entry.snapshot.capturedAt}`
                         : 'Not scanned'}
                     </span>
+                    {entry.snapshot?.staleReason && <p className="text-sm text-amber-400">Outdated: {entry.snapshot.staleReason}. Take and review a new full scan.</p>}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -692,6 +694,7 @@ function StashManager({ mode }: { mode: GameMode }) {
               ))}
             </div>
           </section>
+          {inventory && <InvalidateContainersPanel key={inventory.profile.id} inventory={inventory} disabled={busy || !!draft} run={action} onChanged={async () => { setLastCommit(null); await refresh() }} />}
           {draft && session && selected && (
             <fieldset
               disabled={busy}

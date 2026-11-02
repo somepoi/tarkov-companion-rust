@@ -287,7 +287,18 @@ pub struct InventorySnapshot {
     pub algorithm_version: String,
     pub catalog_version: String,
     pub full_coverage_confirmed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale_reason: Option<String>,
     pub stacks: Vec<Stack>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InvalidateInventory {
+    pub profile_id: String,
+    pub expected_revisions: BTreeMap<String, u64>,
+    pub reason: String,
+    pub idempotency_key: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

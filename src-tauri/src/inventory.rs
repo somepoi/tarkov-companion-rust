@@ -32,6 +32,9 @@ pub enum Operation {
     Inventory {
         profile_id: String,
     },
+    InvalidateInventory {
+        request: stash_core::InvalidateInventory,
+    },
     BeginScan {
         container_id: String,
         scope: ScanScope,
@@ -188,6 +191,9 @@ fn execute(
             rows,
         } => value(repository.create_container(&profile_id, &name, &kind, columns, rows)),
         Operation::Inventory { profile_id } => value(repository.inventory(&profile_id)),
+        Operation::InvalidateInventory { request } => {
+            value(repository.invalidate_inventory(request))
+        }
         Operation::BeginScan {
             container_id,
             scope,

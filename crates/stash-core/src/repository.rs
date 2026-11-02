@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, path::Path, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: u32 = 8;
+const SCHEMA_VERSION: u32 = 9;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -180,6 +180,11 @@ impl Repository {
         if version < 8 {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             tx.execute_batch(include_str!("../migrations/0008_clipped_footprints.sql"))?;
+            tx.commit()?;
+        }
+        if version < 9 {
+            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            tx.execute_batch(include_str!("../migrations/0009_snapshot_freshness.sql"))?;
             tx.commit()?;
         }
         Ok(Self { connection })
@@ -552,7 +557,7 @@ impl Repository {
         }
         validate_draft(draft, &current)?;
         validate_evidence(draft)?;
-        let result = write_snapshot(&tx, &current, Some(&scan.id), draft)?;
+        let result = write_snapshot(&tx, &current, Some(&scan.id), draft, None)?;
         tx.execute(
             "UPDATE scan_sessions SET status='committed' WHERE id=?1",
             [&scan.id],
@@ -615,7 +620,13 @@ impl Repository {
         )?;
         let draft = crate::composition::patch(&current, &composition, &base)?;
         validate_evidence(&draft, &composition)?;
-        let result = write_snapshot(&tx, &current, Some(&scan.id), &draft)?;
+        let result = write_snapshot(
+            &tx,
+            &current,
+            Some(&scan.id),
+            &draft,
+            base.stale_reason.as_deref(),
+        )?;
         let json = serde_json::to_string(&draft)?;
         tx.execute(
             "UPDATE scan_sessions SET draft_json=?1,draft_hash=?2,status='committed' WHERE id=?3",
@@ -663,6 +674,10 @@ impl Repository {
             .as_deref()
             .map(|id| snapshot(&tx, id))
             .transpose()?;
+        // Undo restores facts, never freshness after a reported physical change.
+        let stale_reason = snapshot(&tx, committed_snapshot_id)?
+            .stale_reason
+            .or_else(|| restored.as_ref().and_then(|old| old.stale_reason.clone()));
         // Undoing the very first scan restores an unscanned container, not a
         // verified empty inventory. Coverage remains false in that snapshot.
         let draft = match restored {
@@ -685,9 +700,77 @@ impl Repository {
                 observations: vec![],
             },
         };
-        let result = write_snapshot(&tx, &current, None, &draft)?;
+        let result = write_snapshot(&tx, &current, None, &draft, stale_reason.as_deref())?;
         tx.commit()?;
         Ok(result)
+    }
+
+    /// Retain historical evidence while atomically invalidating affected heads.
+    /// Unscanned containers remain unknown; no verified empty stock is invented.
+    pub fn invalidate_inventory(
+        &mut self,
+        request: InvalidateInventory,
+    ) -> Result<Vec<CommitResult>, StorageError> {
+        text(&request.reason, "outdated reason")?;
+        text(&request.idempotency_key, "idempotency key")?;
+        if request.expected_revisions.is_empty() || request.expected_revisions.len() > 256 {
+            return Err(StorageError::Invalid(
+                "select 1-256 affected containers".into(),
+            ));
+        }
+        let request_hash = hash(&serde_json::to_vec(&request)?);
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        profile(&tx, &request.profile_id)?;
+        let replay: Option<(String, String)> = tx.query_row(
+            "SELECT request_hash,result_json FROM inventory_invalidations WHERE profile_id=?1 AND idempotency_key=?2",
+            params![request.profile_id, request.idempotency_key], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional()?;
+        if let Some((previous_hash, json)) = replay {
+            if request_hash != previous_hash {
+                return Err(StorageError::IdempotencyConflict);
+            }
+            return Ok(serde_json::from_str(&json)?);
+        }
+        let mut affected = Vec::new();
+        for (id, revision) in &request.expected_revisions {
+            let current = container(&tx, id)?;
+            if current.profile_id != request.profile_id {
+                return Err(StorageError::Invalid(
+                    "affected containers must belong to the selected profile".into(),
+                ));
+            }
+            check_revision(&current, *revision)?;
+            affected.push(current);
+        }
+        let mut results = Vec::new();
+        for current in affected {
+            let Some(id) = &current.current_snapshot_id else {
+                continue;
+            };
+            let old = snapshot(&tx, id)?;
+            let draft = ScanDraft {
+                full_coverage_confirmed: false,
+                review_confirmed: true,
+                captured_at: old.captured_at,
+                algorithm_version: old.algorithm_version,
+                catalog_version: old.catalog_version,
+                stacks: old.stacks,
+                observations: vec![],
+            };
+            results.push(write_snapshot(
+                &tx,
+                &current,
+                None,
+                &draft,
+                Some(&request.reason),
+            )?);
+        }
+        tx.execute("INSERT INTO inventory_invalidations(profile_id,idempotency_key,request_hash,result_json) VALUES (?1,?2,?3,?4)",
+            params![request.profile_id, request.idempotency_key, request_hash, serde_json::to_string(&results)?])?;
+        tx.commit()?;
+        Ok(results)
     }
 
     /// A new legacy import replaces the separate unlocated checklist. Replays
@@ -1114,7 +1197,7 @@ fn session(connection: &Connection, id: &str) -> Result<ScanSession, StorageErro
 }
 
 fn snapshot(connection: &Connection, id: &str) -> Result<InventorySnapshot, StorageError> {
-    let mut result = connection.query_row("SELECT revision,captured_at,algorithm_version,catalog_version,full_coverage_confirmed FROM snapshots WHERE id=?1", [id], |row| Ok(InventorySnapshot { id: id.to_owned(), revision: read_revision(row, 0)?, captured_at: row.get(1)?, algorithm_version: row.get(2)?, catalog_version: row.get(3)?, full_coverage_confirmed: row.get(4)?, stacks: vec![] })).optional()?.ok_or(StorageError::NotFound("snapshot"))?;
+    let mut result = connection.query_row("SELECT revision,captured_at,algorithm_version,catalog_version,full_coverage_confirmed,stale_reason FROM snapshots WHERE id=?1", [id], |row| Ok(InventorySnapshot { id: id.to_owned(), revision: read_revision(row, 0)?, captured_at: row.get(1)?, algorithm_version: row.get(2)?, catalog_version: row.get(3)?, full_coverage_confirmed: row.get(4)?, stale_reason: row.get(5)?, stacks: vec![] })).optional()?.ok_or(StorageError::NotFound("snapshot"))?;
     let mut query = connection
         .prepare("SELECT payload_json FROM snapshot_stacks WHERE snapshot_id=?1 ORDER BY id")?;
     let rows = query.query_map([id], |row| row.get::<_, String>(0))?;
@@ -1129,6 +1212,7 @@ fn write_snapshot(
     current: &Container,
     session_id: Option<&str>,
     draft: &ScanDraft,
+    stale_reason: Option<&str>,
 ) -> Result<CommitResult, StorageError> {
     let revision = current
         .revision
@@ -1136,7 +1220,7 @@ fn write_snapshot(
         .filter(|value| *value <= i64::MAX as u64)
         .ok_or_else(|| StorageError::Invalid("revision overflow".into()))?;
     let snapshot_id = new_id();
-    connection.execute("INSERT INTO snapshots(id,container_id,revision,previous_snapshot_id,session_id,captured_at,algorithm_version,catalog_version,full_coverage_confirmed) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)", params![snapshot_id, current.id, sql_revision(revision)?, current.current_snapshot_id, session_id, draft.captured_at, draft.algorithm_version, draft.catalog_version, draft.full_coverage_confirmed])?;
+    connection.execute("INSERT INTO snapshots(id,container_id,revision,previous_snapshot_id,session_id,captured_at,algorithm_version,catalog_version,full_coverage_confirmed,stale_reason) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)", params![snapshot_id, current.id, sql_revision(revision)?, current.current_snapshot_id, session_id, draft.captured_at, draft.algorithm_version, draft.catalog_version, draft.full_coverage_confirmed && stale_reason.is_none(), stale_reason])?;
     for stack in &draft.stacks {
         let fir = match stack.fir {
             Fir::Yes => "yes",

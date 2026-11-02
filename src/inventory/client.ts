@@ -125,6 +125,7 @@ export interface Snapshot {
   algorithmVersion: string
   catalogVersion: string
   fullCoverageConfirmed: boolean
+  staleReason?: string | null
   stacks: Stack[]
 }
 export interface Inventory {

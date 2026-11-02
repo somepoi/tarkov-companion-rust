@@ -269,6 +269,12 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                 "snapshot does not match the current container revision".into(),
             ));
         }
+        if let Some(reason) = &snapshot.stale_reason {
+            gaps.push(format!(
+                "Container {} is outdated: {}. A new full scan is required.",
+                container.name, reason
+            ));
+        }
         if !snapshot.full_coverage_confirmed {
             gaps.push(format!(
                 "Container {} lacks confirmed full coverage.",
@@ -310,17 +316,18 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                     "invalid physical item state fact".into(),
                 ));
             }
-            let trusted = stack
-                .item_id
-                .as_ref()
-                .is_some_and(|id| !id.trim().is_empty())
+            let trusted = snapshot.stale_reason.is_none()
+                && stack
+                    .item_id
+                    .as_ref()
+                    .is_some_and(|id| !id.trim().is_empty())
                 && stack.quantity.is_some()
                 && stack.provenance.identity_confirmed
                 && stack.provenance.quantity_confirmed
                 && stack.fir != Fir::Unknown;
             if !trusted {
                 gaps.push(format!(
-                    "Stack {} has unconfirmed identity, quantity or FIR.",
+                    "Stack {} has outdated inventory or unconfirmed identity, quantity or FIR.",
                     stack.id
                 ));
             }
@@ -538,7 +545,11 @@ pub fn plan(input: &PlannerInput) -> Result<Plan, PlannerError> {
                 } else {
                     None
                 },
-                reason: if s.protected {
+                reason: if s.snapshot.stale_reason.is_some() && s.protected {
+                    "Never-sell protection applies; this container is outdated and needs a new full scan."
+                } else if s.snapshot.stale_reason.is_some() {
+                    "This container is outdated; take and review a new full scan before allocating this stock."
+                } else if s.protected {
                     "Never-sell protection applies; verify unknown identity, quantity or FIR."
                 } else {
                     "Verify unknown identity, quantity or FIR; this stock cannot authorize a sale."
