@@ -389,6 +389,14 @@ pub fn build(input: &Input) -> Result<Normalized, String> {
                 b.gap(format!(
                     "{source}: weapon condition and fitted parts require manual review"
                 ))?;
+                // A missing build object cannot establish that no parts are needed,
+                // but it must not discard the rest of the plan either.
+                if !o["build"].is_object() {
+                    b.gap(format!(
+                        "{source}: weapon build coverage is unavailable; refresh the quest catalog"
+                    ))?;
+                    continue;
+                }
                 let ids = o["build"]["weaponId"]
                     .as_str()
                     .filter(|s| !s.is_empty())
@@ -401,6 +409,28 @@ pub fn build(input: &Input) -> Result<Normalized, String> {
                     );
                 for (index, id) in ids.enumerate() {
                     b.add(json!({"id": format!("{rid}:{index}"), "source": source, "kind": {"kind": "consume"}, "alternatives": [id], "quantity": 1, "fir": "any"}))?;
+                }
+                // Category slots name a part class, not a physical item, so they
+                // are never expanded into concrete reservations.
+                let categories = rows(&o["build"]["categoryIds"])?
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>();
+                if !categories.is_empty() {
+                    b.gap(format!(
+                        "{source}: {} required part categories have no selected item; choose a build manually",
+                        categories.len()
+                    ))?;
+                }
+                // Stat limits gate whether a fitted build qualifies at all; no
+                // physical stack fact can prove them.
+                let limits = rows(&o["build"]["limits"])?;
+                if !limits.is_empty() {
+                    b.gap(format!(
+                        "{source}: {} weapon stat limits require a verified in-game build",
+                        limits.len()
+                    ))?;
                 }
             } else if !rows(&o["itemIds"])?.is_empty() && kind != "findItem" {
                 b.gap(format!("{source}: unsupported item objective {kind}"))?;

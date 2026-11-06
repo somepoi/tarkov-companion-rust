@@ -31,7 +31,10 @@ export function requirementsSource(input: Input) {
         markerItemId: o.markerItemId, minimumDogtagLevel: o.minimumDogtagLevel,
         durability: o.durability, planningGaps: o.planningGaps,
         planningDefinition: o.planningDefinition,
-        build: o.build ? { weaponId: o.build.weaponId, partIds: o.build.partIds } : null,
+        build: o.build ? {
+          weaponId: o.build.weaponId, partIds: o.build.partIds,
+          categoryIds: o.build.categoryIds, limits: o.build.limits,
+        } : null,
       })),
     })),
     profile: {
@@ -141,19 +144,34 @@ export function buildRequirements(input: Input) {
         gaps.push(
           `${source}: weapon condition and fitted parts require manual review`,
         )
-        const ids = [
-          objective.build?.weaponId,
-          ...(objective.build?.partIds ?? []),
-        ].filter((id): id is string => Boolean(id))
-        for (const [i, id] of ids.entries())
-          add({
-            id: `quest:${task.id}:${objective.id}:${i}`,
-            source,
-            kind: consume,
-            alternatives: [id],
-            quantity: 1,
-            fir: 'any',
-          })
+        const build = objective.build
+        // A missing build object cannot establish that no parts are needed, but it
+        // must not discard the rest of the plan either.
+        if (!build) {
+          gaps.push(`${source}: weapon build coverage is unavailable; refresh the quest catalog`)
+        } else {
+          const ids = [build.weaponId, ...build.partIds].filter((id): id is string => Boolean(id))
+          for (const [i, id] of ids.entries())
+            add({
+              id: `quest:${task.id}:${objective.id}:${i}`,
+              source,
+              kind: consume,
+              alternatives: [id],
+              quantity: 1,
+              fir: 'any',
+            })
+          // A category names a part class, not a physical item; never expand it.
+          if (build.categoryIds.length)
+            gaps.push(
+              `${source}: ${build.categoryIds.length} required part categories have no selected item; choose a build manually`,
+            )
+          // Stat limits gate whether a fitted build qualifies at all; no physical
+          // stack fact can prove them.
+          if (build.limits.length)
+            gaps.push(
+              `${source}: ${build.limits.length} weapon stat limits require a verified in-game build`,
+            )
+        }
       } else if (objective.itemIds.length && objective.type !== 'findItem') {
         gaps.push(`${source}: unsupported item objective ${objective.type}`)
       }
