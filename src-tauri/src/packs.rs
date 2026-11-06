@@ -141,6 +141,8 @@ fn reserved(segment: &str) -> bool {
             .or_else(|| base.strip_prefix("LPT"))
             .is_some_and(|n| n.len() == 1 && matches!(n.as_bytes()[0], b'1'..=b'9'))
 }
+pub(crate) const LIGHTHOUSE_DRAWING: &str = "tiles/lighthouse-re3mr/drawing-2026.svg";
+
 fn relative(name: &str, value: &str) -> Result<String, String> {
     if value.len() > 240 || value.is_empty() || value.contains('\\') || value.contains("..") {
         return Err("Invalid content-pack relative path".into());
@@ -167,11 +169,12 @@ fn relative(name: &str, value: &str) -> Result<String, String> {
     let allowed = match name {
         "scan" => path.starts_with("scan/") && matches!(extension, "json" | "bin"),
         "lighthouse" => {
-            path.starts_with("tiles/lighthouse-re3mr/")
-                && matches!(
-                    extension,
-                    "png" | "jpg" | "jpeg" | "webp" | "json" | "txt" | "md"
-                )
+            path == LIGHTHOUSE_DRAWING
+                || (path.starts_with("tiles/lighthouse-re3mr/")
+                    && matches!(
+                        extension,
+                        "png" | "jpg" | "jpeg" | "webp" | "json" | "txt" | "md"
+                    ))
         }
         _ => false,
     };
@@ -190,7 +193,9 @@ fn required(name: &str, files: &BTreeSet<String>) -> bool {
         ]
         .iter()
         .all(|file| files.contains(*file)),
-        "lighthouse" => files.contains("tiles/lighthouse-re3mr/0/0/0.png"),
+        "lighthouse" => {
+            files.contains("tiles/lighthouse-re3mr/0/0/0.png") && files.contains(LIGHTHOUSE_DRAWING)
+        }
         _ => false,
     }
 }

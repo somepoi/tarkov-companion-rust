@@ -49,6 +49,8 @@ export interface LayerCredit {
   link?: string
   /** e.g. "MIT", "CC BY-NC-SA 4.0" */
   license?: string
+  /** What the picture is in the credit line ("render" when absent). */
+  what?: 'render' | 'drawing'
   /** Individual map author, when known. */
   author?: string
   authorLink?: string
@@ -208,10 +210,40 @@ interface ExtraLayers {
   overrides?: Record<string, Partial<Pick<BaseLayerConfig, 'label' | 'note' | 'outdated'>>>
 }
 
+/** Our updated Lighthouse drawing keeps tarkov.dev's frame (viewBox, bounds, transform). */
+const TD_LIGHTHOUSE = file.maps.find((m) => m.normalizedName === 'lighthouse')
+export const LIGHTHOUSE_2026 = 'drawing-2026'
+const LIGHTHOUSE_DRAWING_PATH = 'tiles/lighthouse-re3mr/drawing-2026.svg'
+
 export const EXTRA_BASE_LAYERS: Record<string, ExtraLayers> = {
   lighthouse: {
-    defaultBaseLayerId: 're3mr',
+    defaultBaseLayerId: LIGHTHOUSE_2026,
     layers: [
+      {
+        id: LIGHTHOUSE_2026,
+        label: 'Updated drawing (2026)',
+        kind: 'svg',
+        // In the Lighthouse content pack with the render (same licence); see scripts/lighthouse-map.
+        svgPath: typeof window !== 'undefined' && window.desktop && !import.meta.env.DEV
+          ? window.desktop.appResourceUrl?.(LIGHTHOUSE_DRAWING_PATH) ?? `tcres://app/${LIGHTHOUSE_DRAWING_PATH}`
+          : `${import.meta.env.BASE_URL}${LIGHTHOUSE_DRAWING_PATH}`,
+        svgLayer: 'Ground_Level',
+        pack: 'lighthouse',
+        minZoom: TD_LIGHTHOUSE?.minZoom ?? 1,
+        maxZoom: TD_LIGHTHOUSE?.maxZoom ?? 6,
+        affine: affineFromTarkovDev(TD_LIGHTHOUSE?.transform ?? [0.2, 0, 0.2, 0], TD_LIGHTHOUSE?.coordinateRotation ?? 180),
+        bounds: TD_LIGHTHOUSE?.bounds ?? [[515, -998], [-545, 725]],
+        floors: [],
+        credit: {
+          what: 'drawing',
+          name: "Jindouz's 2D map (layout) in the tarkov.dev SVG maps style",
+          link: 'https://escapefromtarkov.fandom.com/wiki/Lighthouse',
+          license: 'CC BY-SA 3.0 (layout), CC BY-NC-SA 4.0 (style and border)',
+          author: 'Jindouz, Shebuka',
+          authorLink: 'https://github.com/the-hideout/tarkov-dev-svg-maps',
+        },
+        note: "Today's layout (September 2026) in the flat drawing style: ground, roads, paths, buildings, the water plant, the rebuilt lighthouse island and the causeway from Jindouz's 2D map, placed on the game's own positions so containers and loot sit in the right buildings; minefields from the game data.",
+      },
       {
         id: 're3mr',
         label: 'RE3MR render',

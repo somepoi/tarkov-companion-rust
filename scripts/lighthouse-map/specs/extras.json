@@ -1,0 +1,73 @@
+{
+  "about": "Things the fitted layout does not draw as buildings or ground, measured on it (jindouz.cjs view), in game positions (drawing units). Water plant basins: water = open basin with water, covered = closed basin, ring = empty basin (the north one has the crashed helicopter).",
+  "tanks": [
+    { "n": "basin 1", "kind": "water", "c": [538.3, 329], "rad": 22 },
+    { "n": "basin 2", "kind": "water", "c": [611.7, 329], "rad": 22 },
+    { "n": "basin 3", "kind": "water", "c": [538.3, 384.3], "rad": 22 },
+    { "n": "basin 4", "kind": "covered", "c": [611.7, 385], "rad": 22 },
+    { "n": "basin 5", "kind": "covered", "c": [538.3, 443.3], "rad": 22 },
+    { "n": "basin 6 (crashed helicopter)", "kind": "ring", "c": [611.7, 445.7], "rad": 21.5 },
+    { "n": "basin 7", "kind": "covered", "c": [538.3, 503.3], "rad": 22 },
+    { "n": "basin 8", "kind": "ring", "c": [611.7, 502.3], "rad": 21.5 }
+  ],
+  "rails": [
+    { "n": "terminal track 1", "l": [[515, 17], [515, 183]] },
+    { "n": "terminal track 2", "l": [[537.7, 17], [537.7, 183]] },
+    { "n": "terminal track 3", "l": [[559.3, 17], [559.3, 183]] },
+    { "n": "terminal track 4", "l": [[568.3, 17], [568.3, 183]] },
+    { "n": "terminal track 5", "l": [[577.3, 17], [577.3, 183]] }
+  ],
+  "roadblocks_about": "Roadblocks on the main road, traced from RE3MR's render where the game's loot lies in and beside its vehicles (render within about 3 m there); the fitted layout's own shapes inside these areas are left out (replace).",
+  "replace": [[476, 986, 512, 1042], [490, 1094, 532, 1190], [495, 1232, 537, 1322]],
+  "vehicles": [
+    { "n": "middle roadblock: truck", "c": [499.4, 997.6], "w": 4, "h": 12, "a": -24 },
+    { "n": "UN checkpoint: car", "c": [501.3, 1100.8], "w": 6.5, "h": 3.4, "a": 0 },
+    { "n": "UN checkpoint: car", "c": [505.9, 1116.2], "w": 5.5, "h": 3.6, "a": 20 },
+    { "n": "UN checkpoint: truck", "c": [515.5, 1137], "w": 3.2, "h": 7.5, "a": -35 },
+    { "n": "UN checkpoint: truck", "c": [497.5, 1151.3], "w": 4.2, "h": 10.5, "a": 15 },
+    { "n": "UN checkpoint: truck", "c": [507, 1162], "w": 4.5, "h": 11, "a": -25 },
+    { "n": "UN checkpoint: car", "c": [499.5, 1161], "w": 3.5, "h": 7, "a": 10 },
+    { "n": "UN checkpoint: car", "c": [523.4, 1152.8], "w": 3.6, "h": 6.5, "a": -20 },
+    { "n": "UN checkpoint: car", "c": [506.7, 1180.4], "w": 3.4, "h": 6, "a": 35 },
+    { "n": "south roadblock: car", "c": [517.6, 1236.6], "w": 3.6, "h": 5, "a": 0 },
+    { "n": "south roadblock: truck", "c": [508.8, 1241.3], "w": 4.2, "h": 7.5, "a": 0 },
+    { "n": "south roadblock: van", "c": [502.5, 1248], "w": 3.6, "h": 7.8, "a": -22 },
+    { "n": "south roadblock: bus", "c": [512.3, 1256.8], "w": 4.1, "h": 13, "a": 0 },
+    { "n": "south roadblock: car", "c": [514.3, 1268.6], "w": 3.3, "h": 6.7, "a": 0 },
+    { "n": "south roadblock: van", "c": [506, 1277.6], "w": 3.5, "h": 8.7, "a": -5 },
+    { "n": "south roadblock: truck", "c": [518, 1284.4], "w": 3.5, "h": 7.5, "a": -20 },
+    { "n": "south roadblock: truck", "c": [525.8, 1295.4], "w": 11.5, "h": 3.8, "a": 41 },
+    { "n": "south roadblock: tractor", "c": [528.8, 1305.5], "w": 4, "h": 8, "a": 35 },
+    { "n": "south roadblock: car", "c": [514.4, 1316.2], "w": 3.6, "h": 7, "a": 0 },
+    { "n": "crashed helicopter (camp on the hill)", "c": [633, 1299.5], "w": 20, "h": 4, "a": 24 }
+  ],
+  "blocks": [
+    { "n": "middle roadblock: concrete block", "r": [481, 1029.7, 483.8, 1032.5] },
+    { "n": "middle roadblock: concrete block", "r": [486.3, 1028.3, 489.3, 1031.2] },
+    { "n": "middle roadblock: concrete block", "r": [487.2, 1032, 490, 1035] },
+    { "n": "middle roadblock: concrete block", "r": [482.7, 1033, 485.5, 1036.3] },
+    { "n": "middle roadblock: crates", "r": [483, 990, 490.5, 994] },
+    { "n": "UN checkpoint: crate", "r": [527.2, 1162, 529.3, 1163.7] }
+  ],
+  "gantries": [
+    { "n": "road gantry north of the UN checkpoint", "l": [[484.7, 1058.3], [508.8, 1058.3]] }
+  ],
+  "camps": [
+    { "n": "camp on the beach north of the seaside houses", "c": [466.1, 674.6] },
+    { "n": "camp above the seaside houses (Icebreaker transit)", "c": [422.2, 823.9] },
+    { "n": "camp by the hideout under the landing stage", "c": [414.7, 1262.1] },
+    { "n": "camp at the crashed helicopter (hill above the side tunnel)", "c": [629.7, 1281.5] }
+  ],
+  "wood": [
+    { "n": "seaside houses: north platform", "r": [373, 799, 391, 819] },
+    { "n": "seaside houses: south platform", "r": [366, 854, 384.5, 872] },
+    { "n": "seaside houses: boardwalk along the shore", "r": [384.5, 812, 390, 872] },
+    { "n": "seaside houses: north walkway to the shore", "r": [389, 806, 410, 811] },
+    { "n": "seaside houses: south walkway to the shore", "r": [382, 861, 410, 864.5] },
+    { "n": "seaside houses: long pier (Icebreaker transit)", "p": [[352, 831], [387, 836], [387, 841], [351, 837.5]] }
+  ],
+  "buildings": [
+    { "n": "seaside house north (on the pier)", "r": [375, 801, 389, 813.5] },
+    { "n": "seaside house south (on the pier)", "r": [368, 856, 382.5, 869.5] }
+  ]
+}

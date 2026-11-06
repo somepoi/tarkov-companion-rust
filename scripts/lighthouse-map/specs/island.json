@@ -1,0 +1,12 @@
+{
+  "about": "Drawn over the fitted layout, in game positions (drawing units). Causeway: a straight line from the island end of Jindouz's fitted plan to the mainland end, which passes over the game's parked car (trunk lock) and the claymores. Jetty: the north jetty of Lightkeeper island, where the game has containers.",
+  "wood": [
+    { "n": "north jetty", "p": [[82,1348],[94,1343],[132,1416],[120,1422]] }
+  ],
+  "cement": [
+    { "n": "causeway", "p": [[201,1490],[405,1520],[405,1549],[198,1523]] }
+  ],
+  "roads": [
+    { "w": 12, "n": "causeway road", "l": [[192,1506],[300,1521],[404,1535]] }
+  ]
+}

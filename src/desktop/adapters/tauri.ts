@@ -130,20 +130,17 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     onSearchBarMap: (cb) => overlaySubscribe<void>('searchbar:map', () => cb()),
     searchBarCorner: (corner) => overlayCall('searchbar:corner', corner),
     getState: logs?.getState ?? (() => call('watcher:getState')),
-    ensurePack: async (name: PackName) => {
-      const rel =
-        name === 'scan'
-          ? 'scan/fingerprints.json'
-          : 'tiles/lighthouse-re3mr/0/0/0.png'
+    ensurePack: async (name: PackName, use?: 'drawing') => {
+      const resource = name === 'scan'
+        ? { path: 'scan/fingerprints.json', mime: 'application/json' }
+        : use === 'drawing'
+          ? { path: 'tiles/lighthouse-re3mr/drawing-2026.svg', mime: 'image/svg+xml' }
+          : { path: 'tiles/lighthouse-re3mr/0/0/0.png', mime: 'image/png' }
       const response = await fetch(
-        new URL(import.meta.env.BASE_URL + rel, location.href),
+        new URL(import.meta.env.BASE_URL + resource.path, location.href),
+        { method: 'HEAD' },
       ).catch(() => null)
-      if (
-        !response?.ok ||
-        response.headers.get('content-type')?.includes('text/html') ||
-        (name === 'scan' &&
-          !response.headers.get('content-type')?.includes('json'))
-      )
+      if (!response?.ok || !response.headers.get('content-type')?.includes(resource.mime))
         await call('packs:ensure', name)
     },
     onPackProgress: (cb) => subscribe<PackProgress>('pack:progress', cb),

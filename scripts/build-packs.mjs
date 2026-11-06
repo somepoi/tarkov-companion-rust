@@ -5,8 +5,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { atomicBytes, generatedPath, root } from './lib/content-assets.mjs'
 
+const LIGHTHOUSE_DRAWING = 'tiles/lighthouse-re3mr/drawing-2026.svg'
 const PACKS = [
-  { name: 'lighthouse', dir: 'public/tiles/lighthouse-re3mr', prefix: 'tiles/lighthouse-re3mr', label: 'Lighthouse map (RE3MR render)' },
+  { name: 'lighthouse', dir: 'public/tiles/lighthouse-re3mr', prefix: 'tiles/lighthouse-re3mr', label: 'Lighthouse maps' },
   { name: 'scan', dir: 'public/scan', prefix: 'scan', label: 'stash scanner data' },
 ]
 const OUT = generatedPath('release-packs')
@@ -25,7 +26,8 @@ function safePath(pack, relative) {
   })) throw new Error(`Unsafe pack path: ${relative}`)
   const extension = path.posix.extname(relative).toLowerCase()
   const allowed = pack.name === 'scan' ? ['.json', '.bin'] : ['.png', '.jpg', '.jpeg', '.webp', '.json', '.txt', '.md']
-  if (!relative.startsWith(`${pack.prefix}/`) || !allowed.includes(extension)) throw new Error(`Not data for this pack: ${relative}`)
+  const drawing = pack.name === 'lighthouse' && relative === LIGHTHOUSE_DRAWING
+  if (!relative.startsWith(`${pack.prefix}/`) || (!allowed.includes(extension) && !drawing)) throw new Error(`Not data for this pack: ${relative}`)
 }
 
 function entries(pack) {
@@ -58,7 +60,7 @@ function entries(pack) {
   walk(directory, 0)
   const required = pack.name === 'scan'
     ? ['scan/manifest.json', 'scan/source-manifest.json', 'scan/fingerprints.json', 'scan/fingerprints.bin']
-    : ['tiles/lighthouse-re3mr/0/0/0.png']
+    : ['tiles/lighthouse-re3mr/0/0/0.png', LIGHTHOUSE_DRAWING]
   if (required.some((file) => !names.has(file))) throw new Error(`Pack ${pack.name} is missing required content`)
   return files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
 }

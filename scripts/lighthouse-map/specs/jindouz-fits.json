@@ -1,0 +1,645 @@
+{
+ "about": "Local fits of Jindouz's Lighthouse map (2242 x 3892 px) to the game's indoor loot spots: per 260-unit window, the shift / turn / scale (around cx, cy, picture px) that puts the most spots on building pixels. Made by jindouz.cjs fit; extract blends them by distance (sigma 110 units).",
+ "fits": [
+  {
+   "centre": [
+    80,
+    1470
+   ],
+   "points": 184,
+   "before": 22,
+   "score": 118,
+   "share": 0.64,
+   "sc": 0.95,
+   "rot": -2,
+   "dx": 44,
+   "dy": 50,
+   "cx": 313.3,
+   "cy": 3480.5
+  },
+  {
+   "centre": [
+    80,
+    1600
+   ],
+   "points": 173,
+   "before": 21,
+   "score": 114,
+   "share": 0.66,
+   "sc": 1,
+   "rot": 0,
+   "dx": 44,
+   "dy": 48,
+   "cx": 315,
+   "cy": 3489.2
+  },
+  {
+   "centre": [
+    210,
+    1470
+   ],
+   "points": 186,
+   "before": 22,
+   "score": 120,
+   "share": 0.65,
+   "sc": 0.95,
+   "rot": -2,
+   "dx": 44,
+   "dy": 50,
+   "cx": 317.6,
+   "cy": 3481.4
+  },
+  {
+   "centre": [
+    210,
+    1600
+   ],
+   "points": 176,
+   "before": 21,
+   "score": 115,
+   "share": 0.65,
+   "sc": 1,
+   "rot": -2,
+   "dx": 46,
+   "dy": 50,
+   "cx": 318.7,
+   "cy": 3489.2
+  },
+  {
+   "centre": [
+    340,
+    300
+   ],
+   "points": 48,
+   "before": 5,
+   "score": 34,
+   "share": 0.71,
+   "sc": 1.1,
+   "rot": 0,
+   "dx": 20,
+   "dy": -20,
+   "cx": 917.1,
+   "cy": 1063.3
+  },
+  {
+   "centre": [
+    340,
+    430
+   ],
+   "points": 43,
+   "before": 6,
+   "score": 33,
+   "share": 0.77,
+   "sc": 1.1,
+   "rot": 6,
+   "dx": 24,
+   "dy": -10,
+   "cx": 942,
+   "cy": 1198.6
+  },
+  {
+   "centre": [
+    340,
+    1210
+   ],
+   "points": 30,
+   "before": 2,
+   "score": 19,
+   "share": 0.63,
+   "sc": 1.05,
+   "rot": 2,
+   "dx": 38,
+   "dy": 26,
+   "cx": 794.3,
+   "cy": 2937.6
+  },
+  {
+   "centre": [
+    340,
+    1340
+   ],
+   "points": 41,
+   "before": 2,
+   "score": 30,
+   "share": 0.73,
+   "sc": 1,
+   "rot": 0,
+   "dx": 40,
+   "dy": 24,
+   "cx": 830.3,
+   "cy": 3139.5
+  },
+  {
+   "centre": [
+    470,
+    40
+   ],
+   "points": 38,
+   "before": 15,
+   "score": 22,
+   "share": 0.58,
+   "sc": 0.9,
+   "rot": 0,
+   "dx": -8,
+   "dy": -20,
+   "cx": 1044.1,
+   "cy": 680.9
+  },
+  {
+   "centre": [
+    470,
+    170
+   ],
+   "points": 72,
+   "before": 23,
+   "score": 40,
+   "share": 0.56,
+   "sc": 1.05,
+   "rot": -2,
+   "dx": -8,
+   "dy": -12,
+   "cx": 1083.6,
+   "cy": 781.2
+  },
+  {
+   "centre": [
+    470,
+    300
+   ],
+   "points": 103,
+   "before": 35,
+   "score": 74,
+   "share": 0.72,
+   "sc": 1,
+   "rot": 0,
+   "dx": 12,
+   "dy": -4,
+   "cx": 1051.2,
+   "cy": 1065.1
+  },
+  {
+   "centre": [
+    470,
+    430
+   ],
+   "points": 102,
+   "before": 31,
+   "score": 64,
+   "share": 0.63,
+   "sc": 1,
+   "rot": -2,
+   "dx": 12,
+   "dy": -2,
+   "cx": 1022.7,
+   "cy": 1232.2
+  },
+  {
+   "centre": [
+    470,
+    560
+   ],
+   "points": 34,
+   "before": 4,
+   "score": 18,
+   "share": 0.53,
+   "sc": 1,
+   "rot": -2,
+   "dx": 14,
+   "dy": 0,
+   "cx": 1039.9,
+   "cy": 1415.7
+  },
+  {
+   "centre": [
+    470,
+    690
+   ],
+   "points": 48,
+   "before": 5,
+   "score": 35,
+   "share": 0.73,
+   "sc": 1,
+   "rot": -2,
+   "dx": 18,
+   "dy": 2,
+   "cx": 1122,
+   "cy": 1911
+  },
+  {
+   "centre": [
+    470,
+    820
+   ],
+   "points": 106,
+   "before": 5,
+   "score": 57,
+   "share": 0.54,
+   "sc": 1.05,
+   "rot": -2,
+   "dx": 26,
+   "dy": 10,
+   "cx": 1070.9,
+   "cy": 2096.2
+  },
+  {
+   "centre": [
+    470,
+    950
+   ],
+   "points": 77,
+   "before": 0,
+   "score": 30,
+   "share": 0.39,
+   "sc": 1,
+   "rot": -2,
+   "dx": 26,
+   "dy": 14,
+   "cx": 1020.3,
+   "cy": 2299.7
+  },
+  {
+   "centre": [
+    470,
+    1210
+   ],
+   "points": 60,
+   "before": 2,
+   "score": 21,
+   "share": 0.35,
+   "sc": 1,
+   "rot": 0,
+   "dx": 36,
+   "dy": 28,
+   "cx": 955.6,
+   "cy": 2904.1
+  },
+  {
+   "centre": [
+    470,
+    1340
+   ],
+   "points": 66,
+   "before": 4,
+   "score": 30,
+   "share": 0.45,
+   "sc": 1,
+   "rot": 0,
+   "dx": 40,
+   "dy": 24,
+   "cx": 938.5,
+   "cy": 3153
+  },
+  {
+   "centre": [
+    470,
+    1470
+   ],
+   "points": 35,
+   "before": 2,
+   "score": 16,
+   "share": 0.46,
+   "sc": 1,
+   "rot": -4,
+   "dx": 38,
+   "dy": 16,
+   "cx": 1000.9,
+   "cy": 3356.2
+  },
+  {
+   "centre": [
+    600,
+    40
+   ],
+   "points": 60,
+   "before": 12,
+   "score": 29,
+   "share": 0.48,
+   "sc": 1.05,
+   "rot": -2,
+   "dx": -8,
+   "dy": -24,
+   "cx": 1197.5,
+   "cy": 682.6
+  },
+  {
+   "centre": [
+    600,
+    170
+   ],
+   "points": 135,
+   "before": 40,
+   "score": 79,
+   "share": 0.59,
+   "sc": 1.05,
+   "rot": -2,
+   "dx": 8,
+   "dy": -18,
+   "cx": 1246.2,
+   "cy": 819
+  },
+  {
+   "centre": [
+    600,
+    300
+   ],
+   "points": 183,
+   "before": 76,
+   "score": 133,
+   "share": 0.73,
+   "sc": 1,
+   "rot": -2,
+   "dx": 14,
+   "dy": -16,
+   "cx": 1301.9,
+   "cy": 1057.1
+  },
+  {
+   "centre": [
+    600,
+    430
+   ],
+   "points": 170,
+   "before": 52,
+   "score": 105,
+   "share": 0.62,
+   "sc": 1.05,
+   "rot": -2,
+   "dx": 10,
+   "dy": -20,
+   "cx": 1285.5,
+   "cy": 1258.8
+  },
+  {
+   "centre": [
+    600,
+    560
+   ],
+   "points": 64,
+   "before": 4,
+   "score": 31,
+   "share": 0.48,
+   "sc": 1,
+   "rot": -2,
+   "dx": 18,
+   "dy": -10,
+   "cx": 1244,
+   "cy": 1460.8
+  },
+  {
+   "centre": [
+    600,
+    690
+   ],
+   "points": 82,
+   "before": 9,
+   "score": 59,
+   "share": 0.72,
+   "sc": 1,
+   "rot": -2,
+   "dx": 20,
+   "dy": -6,
+   "cx": 1289.5,
+   "cy": 1939.7
+  },
+  {
+   "centre": [
+    600,
+    820
+   ],
+   "points": 130,
+   "before": 13,
+   "score": 77,
+   "share": 0.59,
+   "sc": 1,
+   "rot": -2,
+   "dx": 30,
+   "dy": -8,
+   "cx": 1248.5,
+   "cy": 2064.7
+  },
+  {
+   "centre": [
+    600,
+    950
+   ],
+   "points": 96,
+   "before": 7,
+   "score": 37,
+   "share": 0.39,
+   "sc": 1,
+   "rot": -2,
+   "dx": 28,
+   "dy": 6,
+   "cx": 1207.4,
+   "cy": 2368.7
+  },
+  {
+   "centre": [
+    600,
+    1080
+   ],
+   "points": 116,
+   "before": 8,
+   "score": 44,
+   "share": 0.38,
+   "sc": 1,
+   "rot": -4,
+   "dx": 26,
+   "dy": 6,
+   "cx": 1255.8,
+   "cy": 2613
+  },
+  {
+   "centre": [
+    730,
+    40
+   ],
+   "points": 31,
+   "before": 1,
+   "score": 16,
+   "share": 0.52,
+   "sc": 0.95,
+   "rot": 6,
+   "dx": 16,
+   "dy": -22,
+   "cx": 1320.7,
+   "cy": 682.1
+  },
+  {
+   "centre": [
+    730,
+    170
+   ],
+   "points": 81,
+   "before": 21,
+   "score": 45,
+   "share": 0.56,
+   "sc": 1.05,
+   "rot": -2,
+   "dx": 12,
+   "dy": -20,
+   "cx": 1325.7,
+   "cy": 836.4
+  },
+  {
+   "centre": [
+    730,
+    300
+   ],
+   "points": 121,
+   "before": 46,
+   "score": 97,
+   "share": 0.8,
+   "sc": 1,
+   "rot": -2,
+   "dx": 14,
+   "dy": -20,
+   "cx": 1405.1,
+   "cy": 1060.2
+  },
+  {
+   "centre": [
+    730,
+    430
+   ],
+   "points": 112,
+   "before": 27,
+   "score": 74,
+   "share": 0.66,
+   "sc": 1.05,
+   "rot": -2,
+   "dx": 18,
+   "dy": -24,
+   "cx": 1426.1,
+   "cy": 1270
+  },
+  {
+   "centre": [
+    730,
+    560
+   ],
+   "points": 69,
+   "before": 4,
+   "score": 33,
+   "share": 0.48,
+   "sc": 1,
+   "rot": -2,
+   "dx": 20,
+   "dy": -18,
+   "cx": 1474.3,
+   "cy": 1603
+  },
+  {
+   "centre": [
+    730,
+    690
+   ],
+   "points": 85,
+   "before": 12,
+   "score": 56,
+   "share": 0.66,
+   "sc": 1,
+   "rot": -2,
+   "dx": 26,
+   "dy": -18,
+   "cx": 1518.6,
+   "cy": 1937.5
+  },
+  {
+   "centre": [
+    730,
+    820
+   ],
+   "points": 71,
+   "before": 13,
+   "score": 47,
+   "share": 0.66,
+   "sc": 1,
+   "rot": -2,
+   "dx": 26,
+   "dy": -12,
+   "cx": 1437.7,
+   "cy": 2053.5
+  },
+  {
+   "centre": [
+    730,
+    950
+   ],
+   "points": 47,
+   "before": 7,
+   "score": 23,
+   "share": 0.49,
+   "sc": 1.05,
+   "rot": 0,
+   "dx": 38,
+   "dy": -8,
+   "cx": 1305.3,
+   "cy": 2416.1
+  },
+  {
+   "centre": [
+    730,
+    1080
+   ],
+   "points": 85,
+   "before": 8,
+   "score": 40,
+   "share": 0.47,
+   "sc": 1,
+   "rot": -2,
+   "dx": 26,
+   "dy": 2,
+   "cx": 1315.4,
+   "cy": 2603
+  },
+  {
+   "centre": [
+    730,
+    1210
+   ],
+   "points": 66,
+   "before": 5,
+   "score": 28,
+   "share": 0.42,
+   "sc": 0.9,
+   "rot": -6,
+   "dx": 36,
+   "dy": -4,
+   "cx": 1326.2,
+   "cy": 2754.4
+  },
+  {
+   "centre": [
+    860,
+    560
+   ],
+   "points": 32,
+   "before": 3,
+   "score": 19,
+   "share": 0.59,
+   "sc": 0.9,
+   "rot": 0,
+   "dx": 24,
+   "dy": -24,
+   "cx": 1646.5,
+   "cy": 1761.2
+  },
+  {
+   "centre": [
+    860,
+    690
+   ],
+   "points": 46,
+   "before": 8,
+   "score": 28,
+   "share": 0.61,
+   "sc": 1,
+   "rot": 0,
+   "dx": 26,
+   "dy": -20,
+   "cx": 1658.2,
+   "cy": 1891.9
+  }
+ ]
+}

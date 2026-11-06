@@ -73,7 +73,7 @@ function resourcePath(rel: string, devServer: boolean): string {
   return path.join(base, clean)
 }
 
-const MIME: Record<string, string> = { '.png': 'image/png', '.js': 'text/javascript', '.json': 'application/json', '.gz': 'application/gzip', '.bin': 'application/octet-stream', '.wasm': 'application/wasm' }
+const MIME: Record<string, string> = { '.png': 'image/png', '.svg': 'image/svg+xml', '.js': 'text/javascript', '.json': 'application/json', '.gz': 'application/gzip', '.bin': 'application/octet-stream', '.wasm': 'application/wasm' }
 
 /** tcres://app/<dir>/<file> -> the bundled file, read-only, scanner and OCR folders only. */
 export function resourceResponse(url: string, devServer: boolean): Response {

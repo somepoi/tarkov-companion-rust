@@ -57,7 +57,14 @@ const manifest = {
   maxZoom: zmax,
   zoom0Size: [meta.width / 2 ** zmax, meta.height / 2 ** zmax],
   tiles: count,
-  generated: new Date().toISOString(),
+  // no build time here: the content pack is hashed, and a time stamp gave it a new name (and a
+  // fresh 48 MB download for every desktop user) on every release
 }
 fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2))
 console.log(`wrote ${count} tiles to ${OUT}`, manifest.zoom0Size)
+
+// The updated Lighthouse drawing (scripts/lighthouse-map: Jindouz's layout, CC BY-SA, in the
+// tarkov.dev style, CC BY-NC-SA) travels in the same content pack, so it stays out of the installer too.
+const drawing = fs.readFileSync('scripts/lighthouse-map/lighthouse-2026.svg', 'utf8')
+fs.writeFileSync(path.join(OUT, 'drawing-2026.svg'), drawing.replace(/\r\n/g, '\n'))
+console.log(`copied the updated drawing to ${OUT}/drawing-2026.svg`)

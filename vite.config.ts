@@ -2,7 +2,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, type Plugin } from 'vite'
 import electron from 'vite-plugin-electron/simple'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; productName: string; repository?: { url?: string } }
 const repoUrl = (pkg.repository?.url ?? '').replace(/^git+/, '').replace(/.git$/, '')
@@ -30,6 +31,19 @@ const CSP = [
   "form-action 'none'",
 ].join('; ')
 
+const LIGHTHOUSE_DRAWING = 'tiles/lighthouse-re3mr/drawing-2026.svg'
+
+function lighthouseDrawing(tauri: boolean): Plugin {
+  return {
+    name: 'tc-lighthouse-drawing',
+    // Vite copies public assets before writing its bundle. The native drawing is supplied
+    // by the separately licensed pack, not embedded into the signed Tauri frontend.
+    writeBundle(output) {
+      if (tauri && output.dir) rmSync(join(output.dir, LIGHTHOUSE_DRAWING), { force: true })
+    },
+  }
+}
+
 function contentSecurityPolicy(): Plugin {
   return {
     name: 'tc-csp',
@@ -54,6 +68,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
+      lighthouseDrawing(tauri),
       ...(!tauri ? [contentSecurityPolicy()] : []),
       ...(desktop
         ? [

@@ -46,7 +46,7 @@ export function MapCredits({
             </>
           ) : (
             <>
-              {mapName} render by <Link href={c.link}>{c.name}</Link>
+              {mapName} {c.what ?? 'render'} by <Link href={c.link}>{c.name}</Link>
               {c.link ? ` (${c.link.replace(/^https?:\/\//, '')})` : ''}
               {c.license ? `, ${c.license}` : ''}.
             </>

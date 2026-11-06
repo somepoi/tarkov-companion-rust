@@ -1,5 +1,5 @@
 //! Data-only map tiles, never scripts or private profile files.
-use crate::desktop::HostState;
+use crate::{desktop::HostState, packs::LIGHTHOUSE_DRAWING};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -46,7 +46,21 @@ pub fn serve(
         return;
     };
     let relative = decoded.strip_prefix('/').unwrap_or(&decoded).to_owned();
-    let mime = if relative.ends_with(".png") {
+    let drawing = relative == LIGHTHOUSE_DRAWING;
+    let origin = request
+        .headers()
+        .get("origin")
+        .and_then(|origin| origin.to_str().ok())
+        .filter(|origin| {
+            matches!(
+                *origin,
+                "http://tauri.localhost" | "https://tauri.localhost"
+            )
+        })
+        .map(str::to_owned);
+    let mime = if drawing {
+        "image/svg+xml"
+    } else if relative.ends_with(".png") {
         "image/png"
     } else if relative.ends_with(".jpg") || relative.ends_with(".jpeg") {
         "image/jpeg"
@@ -133,13 +147,30 @@ pub fn serve(
                     Ok(Some(bytes))
                 }
             };
-            let result = match read() {
+            let mut result = match read() {
                 Ok(Some(bytes)) if bytes.len() <= 8 * 1024 * 1024 => {
                     response(200, mime, if head { vec![] } else { bytes })
                 }
                 Ok(None) => response(404, "text/plain", vec![]),
                 _ => response(500, "text/plain", vec![]),
             };
+            if drawing {
+                let headers = result.headers_mut();
+                // The renderer fetches and sanitizes the drawing before adding it to Leaflet.
+                // Keep direct SVG navigation inert and CORS limited to the app's own origin.
+                headers.insert(
+                    "Content-Security-Policy",
+                    "default-src 'none'; sandbox"
+                        .parse()
+                        .expect("Static SVG policy"),
+                );
+                if let Some(origin) = origin {
+                    headers.insert(
+                        "Access-Control-Allow-Origin",
+                        origin.parse().expect("Allowed origin"),
+                    );
+                }
+            }
             responder.respond(result);
         })
         .await;

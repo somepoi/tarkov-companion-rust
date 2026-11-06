@@ -20,6 +20,7 @@ export const CREDITS: Credit[] = [
   { name: 'tarkov.dev', url: 'https://tarkov.dev', license: 'MIT (data and API by the-hideout)', what: 'Quests, items, traders, maps, prices and the map coordinate transforms.' },
   { name: 'tarkov-dev-svg-maps', url: 'https://github.com/the-hideout/tarkov-dev-svg-maps', license: 'CC BY-NC-SA 4.0', what: 'The map drawings (SVG) and photo imagery used for most maps.' },
   { name: 'RE3MR', url: 'https://reemr.se', license: 'CC BY-NC-SA 4.0', what: 'The post-1.1.5 Lighthouse render, sliced into tiles for this app.' },
+  { name: 'Jindouz', url: 'https://escapefromtarkov.fandom.com/wiki/Lighthouse', license: 'CC BY-SA 3.0 (EFT Wiki)', what: "His 2D Lighthouse map (September 2026): the layout of the app's updated Lighthouse drawing, placed on the game's own positions and redrawn in the tarkov.dev style." },
   { name: 'Escape from Tarkov Wiki', url: 'https://escapefromtarkov.fandom.com', license: 'CC BY-SA 3.0', what: 'Quest guide pictures, the story chapter walkthroughs with their waiting times, and the endings.' },
   { name: 'TarkovMonitor', url: 'https://github.com/the-hideout/TarkovMonitor', license: 'GPL-3.0 (reference only; no code copied)', what: 'Where the meaning of the game log lines was learned. The parser here is an independent implementation.' },
   { name: 'Tesseract OCR (tesseract.js)', url: 'https://github.com/naptha/tesseract.js', license: 'Apache-2.0', what: 'Reads the item names printed in stash screenshots, offline, for the stash scanner.' },

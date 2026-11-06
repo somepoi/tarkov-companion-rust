@@ -53,6 +53,20 @@ interface ImageryProps {
 }
 
 /**
+ * The pane for the SVG map drawing: above the tiles (200), below everything drawn on the map (400+).
+ * In the overlay pane itself the drawing covered every canvas-drawn dot (containers, spawns, loot
+ * spots), because Leaflet's CSS puts an <svg> (z-index 200) above the canvas (100) in a pane.
+ */
+function basePane(map: L.Map): string {
+  if (!map.getPane('tcBase')) {
+    const pane = map.createPane('tcBase')
+    pane.style.zIndex = '250'
+    pane.style.pointerEvents = 'none'
+  }
+  return 'tcBase'
+}
+
+/**
  * Imperative Leaflet layer management (tiles, SVG, floors). Lives inside
  * MapContainer so it can use the map instance. The MapContainer is keyed on the
  * base layer, so changing imagery remounts everything (the CRS can't change).
@@ -135,7 +149,7 @@ function Imagery({ layer, floor, onState }: ImageryProps) {
         .then((svg) => {
           svgElRef.current = svg
           svg.classList.toggle('tc-hide-base', useTiles)
-          const overlay = L.svgOverlay(svg, svgBounds, { className: 'tc-svg-overlay', interactive: false })
+          const overlay = L.svgOverlay(svg, svgBounds, { className: 'tc-svg-overlay', interactive: false, pane: basePane(map) })
           svgOverlayRef.current = overlay
           overlay.addTo(map)
           setSvgReady(true)
@@ -275,7 +289,7 @@ export function MapViewer({ mapKey, layer, floorName, affineOverride, children }
   )
   const remountKey = `${mapKey}:${layer.id}:${(affineOverride ?? layer.affine).join(',')}`
   // Desktop: some images (Lighthouse) are a content pack downloaded the first time.
-  const { state: pack, retry: retryPack } = usePack(layer.pack)
+  const { state: pack, retry: retryPack } = usePack(layer.pack, layer.pack && layer.kind === 'svg' ? 'drawing' : undefined)
 
   if (pack.status === 'downloading') {
     return (
@@ -336,12 +350,12 @@ export function MapViewer({ mapKey, layer, floorName, affineOverride, children }
         <div className="absolute inset-x-0 top-3 z-[1000] flex justify-center px-4">
           <div role="alert" className="flex items-center gap-2 rounded border border-danger/50 bg-surface-2/95 px-3 py-2 text-xs text-ink">
             <AlertTriangle className="h-4 w-4 shrink-0 text-danger" />
-            <span>The map picture could not be downloaded ({pack.message}). Markers still work.</span>
+            <span>The map picture could not be downloaded ({pack.message}). Markers still work. You can choose another map picture above.</span>
             <button type="button" onClick={retryPack} className="btn !py-0.5 text-xs">Retry</button>
           </div>
         </div>
       )}
-      {state === 'error' && (
+      {state === 'error' && pack.status !== 'error' && (
         <div className="absolute inset-x-0 top-3 z-[1000] flex justify-center px-4">
           <div role="alert" className="flex items-start gap-2 rounded border border-danger/50 bg-surface-2/95 px-3 py-2 text-xs text-ink">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />

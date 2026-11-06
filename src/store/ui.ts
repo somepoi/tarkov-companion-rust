@@ -31,7 +31,7 @@ export const useUiStore = create<UiState>()(
     }),
     {
       name: 'tarkov-companion-ui',
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as Partial<UiState> & { styleByMap?: Record<string, 'tile' | 'svg'> }
         // v2 stored a tile/svg style per map; map it onto the tarkov.dev layer ids.
@@ -41,9 +41,12 @@ export const useUiStore = create<UiState>()(
             fromStyle[k] = v === 'svg' ? 'tarkovdev-drawing' : 'tarkovdev-photo'
           }
         }
+        const baseLayerByMap = { ...(p.baseLayerByMap ?? fromStyle) }
+        // v4: whoever picked tarkov.dev's outdated Lighthouse drawing gets the updated one in its style.
+        if (version < 4 && baseLayerByMap['lighthouse'] === 'tarkovdev-drawing') baseLayerByMap['lighthouse'] = 'drawing-2026'
         return {
           lastMapKey: p.lastMapKey ?? null,
-          baseLayerByMap: p.baseLayerByMap ?? fromStyle,
+          baseLayerByMap,
           floorByMap: p.floorByMap ?? {},
         } as UiState
       },

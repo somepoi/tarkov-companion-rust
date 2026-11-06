@@ -23,10 +23,12 @@ Asset preparation obtains scanner references and the pinned English OCR resource
 ## Build a local Windows installer
 
 ```powershell
+npm run tiles:fetch
+npm run tiles:lighthouse
 npm run build
 ```
 
-This checks content assets, generates notices, builds the React interface and optimized Rust host, then packages the configured NSIS installer. Output:
+This checks content assets, creates the separate content packs in `release-packs/`, generates notices, builds the React interface and optimized Rust host, then packages the configured NSIS installer. Output:
 
 ```text
 target/release/bundle/nsis/Tarkov Companion Rust_<version>_x64-setup.exe
@@ -39,6 +41,8 @@ npm run build:tauri:offline
 ```
 
 Both variants identify the same fork and reuse the bundler's output filename. A later build replaces that local output. No installer is executed or published by these commands. Default fork updates are disabled; signing-channel configuration is a separate distribution task and is not needed for local development. The original project's signing certificate/release policy does not apply to this fork.
+
+The 2026 Lighthouse drawing is served from the separate Lighthouse content pack. To test a local installer before publishing the pack, serve `release-packs/` on a loopback HTTP server and set `TC_PACKS_BASE_URL` to that server's URL in the shell that starts the app. You can also select another map picture from the layer menu.
 
 ## Features and data
 
