@@ -1,5 +1,5 @@
-import { LogWatcher } from '../electron/logs/watcher'
-import { detectLogsFolder } from '../electron/logs/locator'
+import { LogWatcher } from './logs/watcher'
+import { detectLogsFolder } from './logs/locator'
 const w = new LogWatcher()
 const logs = detectLogsFolder().path as string
 w.configure({ logsPath: logs, detectedPath: logs, paused: true })

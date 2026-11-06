@@ -1,5 +1,5 @@
 // Downloads EFT Wiki pictures by file name (original PNG/JPEG, not WebP) so quest spots can be read off them.
-// Usage: ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe scripts/quest-spots/pictures.cjs <outDir> "<File name.png>" ...
+// Usage: node scripts/quest-spots/pictures.cjs <outDir> "<File name.png>" ...
 const fs = require('fs')
 const path = require('path')
 const API = 'https://escapefromtarkov.fandom.com/api.php'

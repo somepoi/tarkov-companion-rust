@@ -1,8 +1,8 @@
 // Scans an EFT Logs folder with the same code the desktop app uses and prints
 // what a "Read past logs" backfill would find. Read-only.
 // Usage: npx tsx scripts/scan-logs.ts [path-to-Logs-folder]
-import { detectLogsFolder } from '../electron/logs/locator'
-import { LogWatcher } from '../electron/logs/watcher'
+import { detectLogsFolder } from './logs/locator'
+import { LogWatcher } from './logs/watcher'
 
 const arg = process.argv[2]
 const detection = detectLogsFolder()

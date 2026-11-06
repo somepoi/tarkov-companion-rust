@@ -1,7 +1,7 @@
 /**
  * App-wide preferences from the Settings page (appearance, general, prices, notifications,
  * maps, scanner). Desktop-only switches that the main process applies (start with Windows,
- * updates, backups kept, …) live in Electron's settings.json instead (see useDesktop).
+ * updates, backups kept, …) live in the native settings.json instead (see useDesktop).
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'

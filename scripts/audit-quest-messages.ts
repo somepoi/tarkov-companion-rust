@@ -4,7 +4,7 @@
 // Usage: npx tsx scripts/audit-quest-messages.ts [path-to-Logs-folder]
 import fs from 'node:fs'
 import path from 'node:path'
-import { detectLogsFolder } from '../electron/logs/locator'
+import { detectLogsFolder } from './logs/locator'
 
 const logsPath = process.argv[2] ?? detectLogsFolder().path
 if (!logsPath) throw new Error('no logs folder')

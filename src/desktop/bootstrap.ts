@@ -1,4 +1,4 @@
-/** Keep Electron preload authoritative; initialize Tauri before any app module reads it. */
+/** Initialize the native bridge before any app module reads it. */
 export async function bootstrapDesktop(): Promise<void> {
   if (window.desktop) return
   const { isTauri } = await import('@tauri-apps/api/core')

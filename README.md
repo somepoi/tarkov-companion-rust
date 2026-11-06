@@ -4,7 +4,7 @@ Windows companion for Escape from Tarkov, migrating the [original Tarkov Compani
 
 Tauri is the desktop host. The existing React/TypeScript interface runs inside WebView2; Rust provides native Windows integrations, physical inventory storage, planning, backups and recovery. The image matcher/OCR and shared log interpretation remain TypeScript workers. There is no permanent Node sidecar in the native app.
 
-The primary development and installer commands now target Tauri. The Electron implementation is retained under explicit reference commands while migration acceptance is unfinished. See the [migration plan](docs/plans/2026-10-27-migration-plan.md), [execution ledger](docs/plans/2026-10-27-implementation-progress.md) and [feature inventory](docs/performance/feature-parity.md) for implementation evidence and open gates. Source/build success does not establish complete runtime parity.
+The development and installer commands target Tauri. See the [migration plan](docs/plans/2026-10-27-migration-plan.md), [execution ledger](docs/plans/2026-10-27-implementation-progress.md) and [feature inventory](docs/performance/feature-parity.md) for implementation evidence and open gates. Source/build success does not establish complete runtime parity.
 
 ## Run the native app
 
@@ -76,13 +76,12 @@ Ordinary logs and user-triggered Windows screenshots are the integration boundar
 | `npm run build` / `build:desktop` / `dist:desktop` / `build:tauri` | Build the native installer |
 | `npm run build:tauri-ui` | Type-check/build the native frontend only |
 | `npm run dev:web` / `build:web` / `preview` | Browser-only reference build |
-| `npm run dev:electron` / `build:electron` / `dist:electron` | Explicit Electron reference development/build/package |
 | `npm run lint` / `lint:rust` | Static frontend/native checks |
 | `npm run assets:prepare` / `assets:check` | Prepare/validate scanner and OCR content |
 
-Web and Electron reference builds both use `dist/`; rebuild the selected reference before previewing/running it. Tauri uses its separate `dist-tauri/`.
+The browser build uses `dist/`; Tauri uses `dist-tauri/`.
 
-The manually dispatched Windows staging workflow retains separate native and Electron artifacts and does not publish releases. Experimental signed-update staging is documented separately in `docs/plans/2026-11-01-update-artifacts.md`; it is not part of normal local builds. Historical map/source instructions and the inherited app description remain in [the Electron reference](docs/electron-reference.md).
+The manually dispatched Windows staging workflow builds native artifacts and does not publish releases. Experimental signed-update staging is documented separately in `docs/plans/2026-11-01-update-artifacts.md`; it is not part of normal local builds. Historical map/source instructions and the inherited app description remain in [the Electron reference](docs/electron-reference.md).
 
 ## Licence and attribution
 

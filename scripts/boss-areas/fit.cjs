@@ -1,6 +1,6 @@
 // Fits a homography from picture pixels to game x/z using control points (extract markers whose
 // game position is known), prints each point's error in metres, then converts the marked areas.
-// Usage (no Node here: ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe scripts/boss-areas/fit.cjs specs/x.json).
+// Usage (node scripts/boss-areas/fit.cjs specs/x.json).
 // Reference points: positions.cjs <map> prints extract/transit positions; wiki-pictures.cjs <outDir> <page...> downloads the pictures.
 // spec = { points: [[ix, iy, gx, gz, label]], areas: { name: [[ix, iy], ...] } }
 const fs = require('fs')

@@ -31,8 +31,8 @@ public/tiles/
 dist-electron/
 release/
 
-# The EFT log-watcher source lives in electron/logs (not log output)
-!electron/logs/
+# Log parser source, not log output
+!scripts/logs/
 !src/shared/logs/
 !src/desktop/logs/
 
@@ -56,7 +56,7 @@ public/ocr/
 
 # Content packs (npm run packs): uploaded with each release, never committed
 /release-packs/
-/electron/packs.generated.json
+/packs.generated.json
 
 # Rust and Tauri build output
 /target/

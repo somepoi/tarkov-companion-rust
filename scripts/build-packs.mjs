@@ -137,5 +137,5 @@ const sources = PACKS.map((pack) => ({ pack, files: entries(pack) }))
 fs.mkdirSync(OUT, { recursive: true })
 const manifest = { packs: {} }
 for (const { pack, files } of sources) manifest.packs[pack.name] = await build(pack, files)
-atomicBytes(generatedPath('electron/packs.generated.json'), `${JSON.stringify(manifest, null, 2)}\n`)
-console.log('wrote electron/packs.generated.json')
+atomicBytes(generatedPath('packs.generated.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+console.log('wrote packs.generated.json')

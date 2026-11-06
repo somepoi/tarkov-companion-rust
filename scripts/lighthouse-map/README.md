@@ -63,7 +63,7 @@ Drawn by hand over the fitted map, in game positions:
 
 Vehicles in his map (narrow outlines under 40 m²) are drawn as vehicles, not buildings.
 
-## Commands (run from the repository root; without Node use `ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe`)
+## Commands (run from the repository root)
 
 - `node scripts/lighthouse-map/jindouz.cjs fetch`: downloads Jindouz's map to `assets-src/lighthouse/` (SHA-256 checked).
 - `node scripts/lighthouse-map/check.cjs scripts/lighthouse-map/lighthouse-2026.svg --cache=<points.json> [--list]`: fetches the game points once into the cache and prints the indoor check.

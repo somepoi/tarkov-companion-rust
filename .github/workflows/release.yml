@@ -31,10 +31,6 @@ jobs:
         run: npm run lint
       - name: Third-party notices
         run: npm run notices
-      - name: Build Electron reference packages
-        run: npm run dist:electron
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Prepare pinned native dependencies
         run: |
           rustup show active-toolchain
@@ -60,6 +56,5 @@ jobs:
         with:
           name: tarkov-companion-rust-windows-staging
           path: |
-            release/TarkovCompanionRust-*.exe
             release-packs/*.tcpack
           if-no-files-found: error

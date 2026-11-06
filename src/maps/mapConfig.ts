@@ -57,7 +57,7 @@ export interface LayerCredit {
 }
 
 export interface BaseLayerConfig {
-  /** Desktop: content pack that must be downloaded before this image can show (electron/packs.ts). */
+  /** Desktop: content pack that must be downloaded before this image can show (native pack service). */
   pack?: 'lighthouse'
   /** Stable id, stored in user preferences. */
   id: string
@@ -249,7 +249,7 @@ export const EXTRA_BASE_LAYERS: Record<string, ExtraLayers> = {
         label: 'RE3MR render',
         kind: 'tiles',
         // Web: served with the site. Desktop: the app's own file server (a content pack that is
-        // downloaded the first time this map is opened; see electron/packs.ts).
+        // downloaded the first time this map is opened; see native pack service).
         tilePath: typeof window !== 'undefined' && window.desktop ? `${window.desktop.appResourceUrl?.('tiles/lighthouse-re3mr') ?? 'tcres://app/tiles/lighthouse-re3mr'}/{z}/{x}/{y}.png` : `${import.meta.env.BASE_URL}tiles/lighthouse-re3mr/{z}/{x}/{y}.png`,
         pack: 'lighthouse',
         tileSize: 256,

@@ -141,7 +141,7 @@ fn numbers<const N: usize>(text: &str) -> Option<[f64; N]> {
         .ok()
 }
 
-/// Same decimal/quaternion convention as electron/position.ts; yaw is not normalized.
+/// Uses the game screenshot decimal/quaternion convention; yaw is not normalized.
 pub fn parse_screenshot_name(name: &str, at: u64) -> Option<PlayerPosition> {
     if !plain_name(name) {
         return None;

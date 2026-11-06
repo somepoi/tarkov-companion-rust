@@ -25,9 +25,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=TC_STAGED_INSTALL_ENABLED");
     println!("cargo:rerun-if-env-changed=TC_STAGED_UPDATE_ENDPOINT");
     println!("cargo:rerun-if-env-changed=TC_STAGED_UPDATE_PUBLIC_KEY");
-    let manifest = std::path::Path::new("../electron/packs.generated.json");
+    let manifest = std::path::Path::new("../packs.generated.json");
     println!("cargo:rerun-if-changed={}", manifest.display());
-    println!("cargo:rerun-if-changed=../electron");
+    println!("cargo:rerun-if-changed=..");
     let content = match std::fs::metadata(manifest) {
         Ok(metadata) => {
             assert!(

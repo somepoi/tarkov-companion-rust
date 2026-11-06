@@ -9,7 +9,7 @@ export type PackState =
 const pending: PackState = { status: 'downloading', percent: 0, label: '', installing: false }
 
 /**
- * Desktop content pack (electron/packs.ts) needed by a screen: downloads it the first time,
+ * Desktop content pack (native pack service) needed by a screen: downloads it the first time,
  * with progress. Always "ready" on the web and when no pack is needed.
  */
 export function usePack(name: PackName | undefined, use?: 'drawing'): { state: PackState; retry: () => void } {

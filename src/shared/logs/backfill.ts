@@ -18,7 +18,7 @@ export function emptyBackfill(): BackfillResult {
   }
 }
 
-/** Same current-profile and wipe boundary rules used by the Electron watcher. */
+/** Current-profile and wipe boundary rules shared by log backfill. */
 export function finishBackfill(result: BackfillResult): BackfillResult {
   const ordered = [...result.events].sort((a, b) => a.at - b.at)
   const profilesSeen: Record<SessionMode, Set<string>> = {

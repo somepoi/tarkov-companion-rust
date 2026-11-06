@@ -1,7 +1,7 @@
 // Audits the game logs for the Stats tab: profiles per mode over time and raid start/end counts.
 // Usage: npx tsx scripts/raid-audit.ts [logsFolder]
-import { LogWatcher } from '../electron/logs/watcher'
-import { detectLogsFolder } from '../electron/logs/locator'
+import { LogWatcher } from './logs/watcher'
+import { detectLogsFolder } from './logs/locator'
 
 const logs = process.argv[2] ?? detectLogsFolder().path
 if (!logs) throw new Error('No logs folder found')

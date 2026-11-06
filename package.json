@@ -38,13 +38,7 @@
     "bench:scan": "tsx scripts/bench/scan-baseline.ts",
     "icons:windows": "node scripts/build-windows-icon.mjs",
     "dev:web": "vite",
-    "build:web": "tsc -b && vite build",
-    "dev:electron": "vite --mode desktop",
-    "build:electron": "tsc -b && vite build --mode desktop",
-    "dist:electron": "npm run assets:check && npm run packs && npm run build:electron && electron-builder --win nsis portable --publish never"
-  },
-  "dependencies": {
-    "electron-updater": "^6.8.9"
+    "build:web": "tsc -b && vite build"
   },
   "devDependencies": {
     "@geoman-io/leaflet-geoman-free": "^2.20.2",
@@ -59,8 +53,6 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
-    "electron": "^44.5.1",
-    "electron-builder": "^26.15.3",
     "idb-keyval": "^6.3.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.50.0",
@@ -75,96 +67,19 @@
     "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
-    "vite-plugin-electron": "^1.1.2",
     "vitest": "^5.0.3",
     "zustand": "^5.0.15"
   },
   "allowScripts": {
-    "esbuild@0.28.2": true,
-    "electron-winstaller@5.4.0": true
+    "esbuild@0.28.2": true
   },
   "productName": "Tarkov Companion Rust",
   "description": "Local-first Escape from Tarkov PvE companion and stash manager",
   "author": "David",
-  "main": "dist-electron/main.cjs",
-  "build": {
-    "appId": "io.github.somepoi.tarkov-companion-rust",
-    "productName": "Tarkov Companion Rust",
-    "copyright": "Copyright (C) 2026 David04-09. Free software under the GNU GPL v3 or later. Not affiliated with Battlestate Games.",
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      "dist/**",
-      "!dist/tiles/**",
-      "!dist/scan/**",
-      "dist-electron/**",
-      "build/icon.png",
-      "build/tray.png",
-      "package.json",
-      "!node_modules/**/*.{md,map,ts}"
-    ],
-    "asarUnpack": [
-      "build/**"
-    ],
-    "publish": null,
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "build/icon.png",
-      "artifactName": "TarkovCompanionRust-${version}-${arch}.${ext}",
-      "verifyUpdateCodeSignature": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowElevation": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Tarkov Companion Rust",
-      "runAfterFinish": true,
-      "deleteAppDataOnUninstall": false,
-      "artifactName": "TarkovCompanionRust-Setup-${version}.${ext}",
-      "guid": "5492dde8-2462-4b54-9ddf-66e53df5cef3"
-    },
-    "portable": {
-      "artifactName": "TarkovCompanionRust-${version}-portable.exe"
-    },
-    "electronFuses": {
-      "runAsNode": false,
-      "enableNodeOptionsEnvironmentVariable": false,
-      "enableNodeCliInspectArguments": false,
-      "enableCookieEncryption": true,
-      "enableEmbeddedAsarIntegrityValidation": true,
-      "onlyLoadAppFromAsar": true
-    },
-    "extraResources": [
-      {
-        "from": "THIRD_PARTY_NOTICES.txt",
-        "to": "THIRD_PARTY_NOTICES.txt"
-      },
-      {
-        "from": "LICENSE",
-        "to": "LICENSE.txt"
-      }
-    ]
-  },
   "homepage": "https://github.com/somepoi/tarkov-companion-rust",
   "repository": {
     "type": "git",
     "url": "https://github.com/somepoi/tarkov-companion-rust.git"
   },
-  "license": "GPL-3.0-or-later",
-  "companion": {
-    "dataDirectoryName": "Tarkov Companion Rust",
-    "artifactPrefix": "TarkovCompanionRust",
-    "updaterCacheDirectoryName": "tarkov-companion-rust-updater",
-    "updatesEnabled": false,
-    "automaticCleanupEnabled": false,
-    "contentPackRepository": "https://github.com/somepoi/tarkov-companion-rust"
-  }
+  "license": "GPL-3.0-or-later"
 }

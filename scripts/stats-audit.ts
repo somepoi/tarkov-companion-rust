@@ -1,6 +1,6 @@
 // Prints what the Stats tab computes from the real logs (PvE): raids since the reset and in total.
-import { LogWatcher } from '../electron/logs/watcher'
-import { detectLogsFolder } from '../electron/logs/locator'
+import { LogWatcher } from './logs/watcher'
+import { detectLogsFolder } from './logs/locator'
 import { computeLogStats } from '../src/lib/logStats'
 const logs = detectLogsFolder().path as string
 const w = new LogWatcher()

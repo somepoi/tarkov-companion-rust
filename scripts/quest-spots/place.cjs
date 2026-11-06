@@ -1,7 +1,7 @@
 // Turns quest markers read off EFT Wiki map pictures into game x/z. Each spec names a fitted frame
 // (scripts/boss-areas/specs/*.json, control points in a scaled copy of the same picture) and the
 // marker pixels in the full-size picture. Prints one line per spot plus the frame's fit error.
-// Usage: ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe scripts/quest-spots/place.cjs scripts/quest-spots/specs/<map>.json
+// Usage: node scripts/quest-spots/place.cjs scripts/quest-spots/specs/<map>.json
 // spec = { frame: "<path to boss-areas spec>", pictureWidth: <px of the full-size picture>, spots: { "<name>": [x, y] } }
 // A picture with no fitted twin carries its own control points instead of `frame`:
 // spec = { picture, affine, points: [[x, y, gameX, gameZ, label]], spots } (full-size pixels).

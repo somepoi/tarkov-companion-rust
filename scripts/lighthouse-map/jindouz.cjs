@@ -15,7 +15,7 @@
 //   view <out.png> --box=u0,v0,u1,v1 [--px=3] [--cache=points.json]   the fitted picture with game points
 //
 // Single-threaded and done once per map update: build.cjs only reads specs/jindouz.json.
-// Usage: node scripts/lighthouse-map/jindouz.cjs <command> [options]   (no Node here: ELECTRON_RUN_AS_NODE=1 electron.exe)
+// Usage: node scripts/lighthouse-map/jindouz.cjs <command> [options]
 const fs = require('fs')
 const path = require('path')
 const F = require('./frames.cjs')

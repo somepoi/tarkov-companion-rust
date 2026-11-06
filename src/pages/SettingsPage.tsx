@@ -562,7 +562,7 @@ function ScannerSection() {
   )
 }
 
-/** Records a key combination for a global hotkey (Electron accelerator format). */
+/** Records a key combination for a global hotkey (accelerator format). */
 function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | 'searchBarHotkey' | 'searchBarSearchHotkey' | 'searchBarLockHotkey' | 'searchBarMapHotkey' }) {
   const current = useDesktopStore((s) => s.settings?.[setting]) ?? ''
   const [recording, setRecording] = useState(false)

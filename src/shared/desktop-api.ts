@@ -88,7 +88,7 @@ export interface DesktopSettings {
   /** Set after the first automatic backfill so it only runs once. */
   initialBackfillDone: boolean
   paused: boolean
-  /** Electron accelerator that captures the screen and opens the stash scanner. */
+  /** Accelerator that captures the screen and opens the stash scanner. */
   scanHotkey: string
   /** A small search bar over the game, top left of the main screen. */
   searchBar: boolean
