@@ -123,3 +123,21 @@ export function computeNeeds(input: NeedsInput): Map<string, ItemNeed> {
 export function remainingFor(need: ItemNeed, collected: number): number {
   return Math.max(0, need.total - collected)
 }
+
+export type NeedCount = 'all' | 'fir' | 'any'
+
+export function countedNeed(need: ItemNeed, count: NeedCount) {
+  if (count === 'all') {
+    return { total: need.total, sources: need.sources, review: need.quantityUnknown || need.unknownFir > 0 }
+  }
+  const fir = count === 'fir'
+  const sources = need.sources.filter((source) => source.kind === 'craft'
+    ? !fir
+    : source.fir === null || source.fir === fir)
+  return {
+    total: fir ? need.fir : need.nonFir,
+    sources,
+    review: sources.some((source) => source.count === null || !Number.isSafeInteger(source.count)
+      || source.count < 0 || ('fir' in source && source.fir === null)),
+  }
+}
