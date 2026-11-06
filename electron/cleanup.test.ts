@@ -3,20 +3,24 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanLeftovers, oldInstallerNames, stalePackDirs } from './cleanup'
+import { APP_IDENTITY, installerFileName } from './appIdentity'
 
 describe('oldInstallerNames', () => {
   it('picks only release files of older versions', () => {
+    const installer = installerFileName('1.17.0')
+    const portable = `${APP_IDENTITY.artifactPrefix}-1.9.0-portable.exe`
     const names = [
+      installer,
+      `${installer}.blockmap`,
+      portable,
+      installerFileName('1.18.0'),
+      installerFileName('1.19.0'),
+      installer.replace('.exe', ' (1).exe'),
+      `${installer}.txt`,
       'TarkovCompanion-Setup-1.17.0.exe',
-      'TarkovCompanion-Setup-1.17.0.exe.blockmap',
-      'TarkovCompanion-1.9.0-portable.exe',
-      'TarkovCompanion-Setup-1.18.0.exe',
-      'TarkovCompanion-Setup-1.19.0.exe',
-      'TarkovCompanion-Setup-1.17.0 (1).exe',
-      'TarkovCompanion-Setup-1.17.0.exe.txt',
       'SomethingElse-Setup-1.0.0.exe',
     ]
-    expect(oldInstallerNames(names, '1.18.0')).toEqual(['TarkovCompanion-Setup-1.17.0.exe', 'TarkovCompanion-Setup-1.17.0.exe.blockmap', 'TarkovCompanion-1.9.0-portable.exe'])
+    expect(oldInstallerNames(names, '1.18.0')).toEqual([installer, `${installer}.blockmap`, portable])
   })
 })
 
@@ -34,10 +38,13 @@ describe('cleanLeftovers', () => {
   it('measures in a dry run and removes for real otherwise', async () => {
     const updater = path.join(tmp, 'updater')
     const downloads = path.join(tmp, 'Downloads')
+    const installer = installerFileName('1.17.0')
+    const upstreamInstaller = 'TarkovCompanion-Setup-1.17.0.exe'
     fs.mkdirSync(path.join(updater, 'pending'), { recursive: true })
-    fs.writeFileSync(path.join(updater, 'pending', 'TarkovCompanion-Setup-1.17.0.exe'), 'x'.repeat(100))
+    fs.writeFileSync(path.join(updater, 'pending', installer), 'x'.repeat(100))
     fs.mkdirSync(downloads)
-    fs.writeFileSync(path.join(downloads, 'TarkovCompanion-Setup-1.17.0.exe'), 'y'.repeat(50))
+    fs.writeFileSync(path.join(downloads, installer), 'y'.repeat(50))
+    fs.writeFileSync(path.join(downloads, upstreamInstaller), 'original')
     fs.writeFileSync(path.join(downloads, 'holiday.jpg'), 'z')
     const trashed: string[] = []
     const places = { currentVersion: '1.18.0', updaterCacheDir: updater, packs: null, crashReportsDir: path.join(tmp, 'none'), downloadsDir: downloads, runningExe: null, trash: async (f: string) => { trashed.push(f); fs.rmSync(f) } }
@@ -49,7 +56,7 @@ describe('cleanLeftovers', () => {
     const real = await cleanLeftovers({ ...places, dry: false })
     expect(real.bytes).toBe(150)
     expect(fs.readdirSync(updater)).toEqual([])
-    expect(trashed).toEqual([path.join(downloads, 'TarkovCompanion-Setup-1.17.0.exe')])
-    expect(fs.readdirSync(downloads)).toEqual(['holiday.jpg'])
+    expect(trashed).toEqual([path.join(downloads, installer)])
+    expect(fs.readdirSync(downloads).sort()).toEqual([upstreamInstaller, 'holiday.jpg'].sort())
   })
 })
