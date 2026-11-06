@@ -20,6 +20,12 @@ export const UNRELEASED: string[] = [
   'Native full backup and recovery: checksummed database, screenshot evidence, saved preferences and recognition corrections. Restore prepares a separate profile and retains the original for rollback. Daily progress JSON backups remain separate from full stash backups.',
   'Native desktop: configurable screenshot capture shortcut with conflict errors, binary image transfer and bounded capture lifetime; separate current-user Windows autostart entry. Settings now show desktop-operation failures instead of silently ignoring them.',
   'Native log preview: event-driven read-only watching, bounded worker parsing, historical review and Stats using the shared existing interpreter. Quest events with unknown game mode are excluded from automatic progress; native profile-change markers are tracked separately per mode.',
+  'Desktop settings recover from invalid files, report save failures, and pause log watching for the session if the preference cannot be saved. Offline catalog archives are kept by schema.',
+  'Item Collection can count all requirements, found-in-raid requirements, or those that accept any copy. Unverified checklist counts do not count as confirmed found-in-raid stock.',
+  'Appearance settings include a font choice for the main window and search bar. My stats keeps its log-derived summaries, with legacy manual raid records preserved in progress files.',
+  'Hideout has an interactive bunker floor plan, station dependency lines, and manual build timers with notifications.',
+  'Lighthouse has a 2026 drawing with updated roads, vehicles, camps, and hazards. Map drawings stay below container and other canvas markers.',
+  'The native search bar has individually movable panels, a camera for stash snips, a pinned scan preview, and manual scanner tuning. The Values panel shows catalog references for review.',
 ]
 
 export const RELEASES: ChangelogEntry[] = [
