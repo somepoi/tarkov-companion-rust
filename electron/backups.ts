@@ -5,6 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { BackupInfo } from '../src/shared/desktop-api'
+import { atomicWriteSync } from './atomicWrite'
 
 const KEEP = 7
 const NAME_RE = /^progress-\d{4}-\d{2}-\d{2}\.json$/
@@ -24,7 +25,12 @@ export function listBackups(userData: string): BackupInfo[] {
         return { name, at: st.mtimeMs, size: st.size }
       })
       .sort((a, b) => b.name.localeCompare(a.name))
-  } catch {
+  } catch (error) {
+    // A missing folder is normal (no backup yet). Anything else is a real read failure and is
+    // logged, so "no backups" never hides a permission or I/O problem without a trace.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error('[backups] could not list', dir, error instanceof Error ? error.message : error)
+    }
     return []
   }
 }
@@ -37,8 +43,18 @@ export function writeBackup(userData: string, json: string, now = new Date(), ke
   fs.mkdirSync(dir, { recursive: true })
   const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const name = `progress-${day}.json`
-  fs.writeFileSync(path.join(dir, name), json)
-  for (const old of listBackups(userData).slice(Math.max(1, keep))) fs.rmSync(path.join(dir, old.name), { force: true })
+  // Rename over the day's file so a crash never leaves a half-written backup behind.
+  atomicWriteSync(path.join(dir, name), json)
+  // Retention is best effort. A copy that could not be removed only means an extra old backup
+  // stays; the new one is already safely on disk, so this is logged rather than reported as a
+  // failed backup.
+  for (const old of listBackups(userData).slice(Math.max(1, keep))) {
+    try {
+      fs.rmSync(path.join(dir, old.name), { force: true })
+    } catch (error) {
+      console.error('[backups] could not remove', old.name, error instanceof Error ? error.message : error)
+    }
+  }
   const st = fs.statSync(path.join(dir, name))
   return { name, at: st.mtimeMs, size: st.size }
 }

@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { CheckCircle2, FolderSearch, History, Loader2, ShieldCheck, XCircle } from 'lucide-react'
 import { APP_NAME } from '../lib/app-info'
 import { type Faction, useProfile, useProgressStore } from '../store/progress'
@@ -30,15 +29,15 @@ export function FirstRunSetup() {
   const gameMode = useProgressStore((s) => s.gameMode)
   const setGameMode = useProgressStore((s) => s.setGameMode)
   const setFaction = useProgressStore((s) => s.setFaction)
-  const [finishing, setFinishing] = useState(false)
-
   const hasLogs = Boolean(state?.logsPath)
-  const finish = async () => {
-    setFinishing(true)
+  const finish = () => {
+    // These flags live next to the progress they describe (see localFlags.ts), so they are the
+    // real "setup done" gate and are set even if the copy in settings.json cannot be saved.
     // If the user skipped "Read past logs", don't run it behind their back later either.
     useLocalFlags.getState().setBackfillDone(true)
     useLocalFlags.getState().setSetupDone(true)
-    await updateDesktopSettings({ setupDone: true, initialBackfillDone: true })
+    // Layout displays the shared settings error after the setup dialog closes.
+    void updateDesktopSettings({ setupDone: true, initialBackfillDone: true }).catch(() => undefined)
   }
 
   return (
@@ -123,10 +122,8 @@ export function FirstRunSetup() {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
-          <button type="button" onClick={() => void finish()} disabled={finishing || backfill.running} className="btn border-accent bg-accent text-surface hover:bg-accent">
-            {finishing ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Done
-          </button>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3">
+          <button type="button" onClick={finish} disabled={backfill.running} className="btn border-accent bg-accent text-surface hover:bg-accent">Done</button>
         </div>
       </div>
     </div>

@@ -42,6 +42,43 @@ pub fn command(profile_root: &Path) -> Result<String, String> {
     ))
 }
 
+/// True when a Windows error means "the key or value is not there".
+///
+/// `windows-registry` converts a failed `RegOpenKeyExW`/`RegGetValueW` straight into
+/// `std::io::Error::from_raw_os_error(HRESULT)`, so the numeric code arrives as a
+/// negative HRESULT (for example `0x80070002` / `-2147024894`) instead of `ERROR_FILE_NOT_FOUND`
+/// (2). Rust therefore reports `ErrorKind::Other`, not `NotFound`, and a missing value would
+/// otherwise look like a failure. Both spellings are checked here.
+#[cfg(windows)]
+fn is_missing(error: &std::io::Error) -> bool {
+    const ERROR_FILE_NOT_FOUND: i32 = 2;
+    const HRESULT_FILE_NOT_FOUND: i32 = -2147024894; // 0x80070002
+    matches!(
+        error.raw_os_error(),
+        Some(ERROR_FILE_NOT_FOUND) | Some(HRESULT_FILE_NOT_FOUND)
+    ) || error.kind() == std::io::ErrorKind::NotFound
+}
+
+/// A short reason for a failing Windows call, without a raw HRESULT in the UI.
+///
+/// The OS text ("The system cannot find the file specified.") is kept; the
+/// trailing machine form `(os error -2147024894)` is dropped, because it says
+/// nothing a user can act on.
+#[cfg(windows)]
+fn reason(error: &std::io::Error) -> String {
+    let text = error.to_string();
+    let stripped = match text.find(" (os error ") {
+        Some(index) => &text[..index],
+        None => &text[..],
+    };
+    let stripped = stripped.trim();
+    if stripped.is_empty() {
+        "the system refused the change".into()
+    } else {
+        stripped.to_string()
+    }
+}
+
 #[cfg(windows)]
 pub fn read() -> Result<Option<String>, String> {
     match windows_registry::CURRENT_USER
@@ -51,10 +88,14 @@ pub fn read() -> Result<Option<String>, String> {
         Ok(value) => Ok(Some(value)),
         Err(error) => {
             let error = std::io::Error::from(error);
-            if error.kind() == std::io::ErrorKind::NotFound {
+            if is_missing(&error) {
+                // No autostart entry is the normal state, not a failure.
                 Ok(None)
             } else {
-                Err(format!("Could not read native Windows autostart: {error}"))
+                Err(format!(
+                    "Could not read the Windows autostart entry: {}",
+                    reason(&error)
+                ))
             }
         }
     }
@@ -75,13 +116,19 @@ pub fn write(command: Option<&str>) -> Result<(), String> {
     result
         .map_err(std::io::Error::from)
         .or_else(|error| {
-            if command.is_none() && error.kind() == std::io::ErrorKind::NotFound {
+            // Removing a value that is already absent is the desired end state.
+            if command.is_none() && is_missing(&error) {
                 Ok(())
             } else {
                 Err(error)
             }
         })
-        .map_err(|e| format!("Could not update native Windows autostart: {e}"))
+        .map_err(|e| {
+            format!(
+                "Could not update the Windows autostart entry: {}",
+                reason(&e)
+            )
+        })
 }
 
 #[cfg(not(windows))]

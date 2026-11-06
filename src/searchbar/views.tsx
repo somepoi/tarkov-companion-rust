@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { Task } from '../api/types'
 import { useStory, type StoryData } from '../api/storyWiki'
 import { bestArmorClass, caliberLabel, shotDamage } from '../lib/ammo'
-import { formatDuration } from '../lib/economy'
+import { acquireCost, formatDuration } from '../lib/economy'
+import { usePrefs } from '../store/prefs'
 import { formatRoubles } from '../lib/format'
 import { isFactionEligible } from '../lib/taskStatus'
 import { buildSpawnModel } from '../maps/overlay/spawns'
@@ -370,6 +371,8 @@ export function HideoutView() {
 
 export function AmmoView({ id }: { id: string }) {
   const c = useDetails()
+  usePrefs((s) => s.priceSource) // acquireCost reads this preference when rendering the rows.
+  const traderFacts = { levels: c.traderLevels, completedTaskIds: c.completed }
   const rounds = useMemo(
     () =>
       Object.values(c.items ?? {})
@@ -394,7 +397,7 @@ export function AmmoView({ id }: { id: string }) {
         <tbody>
           {rounds.map((it) => {
             const a = it.ammo!
-            const price = it.avg24hPrice ?? it.buyFromTrader[0]?.priceRUB ?? null
+            const price = acquireCost(it, traderFacts, c.fleaRules)
             return (
               <tr key={it.id} className="hover:bg-white/5">
                 <td className="max-w-[9rem] truncate">
@@ -412,7 +415,7 @@ export function AmmoView({ id }: { id: string }) {
           })}
         </tbody>
       </table>
-      <Muted>"Cls" is a rule of thumb (penetration ≥ 10 × armour class), not the game's exact formula.</Muted>
+      <Muted>"Cls" estimates armour class from penetration. Prices use eligible flea averages and trader quotes. Current stock is unverified.</Muted>
     </>
   )
 }

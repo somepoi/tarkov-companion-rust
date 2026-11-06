@@ -72,7 +72,11 @@ function HotkeyField({ name, label, settings, onSaved }: { name: HotkeyName; lab
       if (!mods.length || !key) return setError('Use Ctrl, Alt or Shift plus a letter, number or F-key.')
       setError(null)
       setRecording(false)
-      void window.desktop?.setSettings({ [name]: [...mods, key].join('+') }).then(onSaved)
+      void window.desktop?.setSettings({ [name]: [...mods, key].join('+') })
+        .then(onSaved)
+        // The key was not saved (for example the file is read-only): say so instead of leaving
+        // the field showing a shortcut that will not survive a restart.
+        .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
@@ -87,7 +91,7 @@ function HotkeyField({ name, label, settings, onSaved }: { name: HotkeyName; lab
           <Keyboard className="h-3 w-3" />
         </button>
         {current && (
-          <button type="button" onClick={() => void window.desktop?.setSettings({ [name]: '' }).then(onSaved)} className="text-[10px] text-white/45 hover:text-white">
+          <button type="button" onClick={() => void window.desktop?.setSettings({ [name]: '' }).then(onSaved).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))} className="text-[10px] text-white/45 hover:text-white">
             off
           </button>
         )}

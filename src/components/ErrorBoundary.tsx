@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { queryClient } from '../api/queryClient'
-import { persister } from '../api/persist'
+import { clearOfflineCache } from '../api/persist'
 
 interface Props {
   children: ReactNode
@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   private clearCache = async () => {
     queryClient.clear()
-    await Promise.resolve(persister.removeClient()).catch(() => undefined)
+    await clearOfflineCache().catch(() => undefined)
     window.location.reload()
   }
 

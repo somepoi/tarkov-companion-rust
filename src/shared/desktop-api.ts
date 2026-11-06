@@ -234,6 +234,11 @@ export interface DesktopApi {
   appVersion: string
   /** 'main' for the app window, 'searchbar' for the search bar over the game. */
   windowKind: 'main' | 'searchbar'
+  /**
+   * Optional desktop extras that could not start (autostart entry, global shortcuts).
+   * They never block the app; Settings → Desktop app shows them.
+   */
+  startupWarnings?: string[]
   /** Search bar only: its size once drawn (the window follows it). */
   setSearchBarSize: (width: number, height: number) => Promise<void>
   setSearchBarRegions?: (regions: { x: number; y: number; width: number; height: number }[]) => Promise<void>

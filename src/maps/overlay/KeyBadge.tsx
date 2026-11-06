@@ -56,7 +56,7 @@ export function KeyBadge({
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{k?.name ?? (items ? 'Unknown key' : 'Loading…')}</span>
                 <span className="block text-ink-muted">
-                  Flea {formatRoubles(k?.avg24hPrice)}
+                  Flea ref {formatRoubles(k?.avg24hPrice)}
                   {k?.lastLowPrice != null ? ` · low ${formatRoubles(k.lastLowPrice)}` : ''}
                 </span>
               </span>

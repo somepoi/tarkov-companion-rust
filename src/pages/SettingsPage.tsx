@@ -42,7 +42,7 @@ import { MAX_IMPORT_BYTES, buildProgressFile, importProgressFile, parseImportJso
 import { askNotificationPermission, notificationPermission, notify } from '../lib/notify'
 import { formatDateTime, formatRoubles } from '../lib/format'
 import { JSON_API_BASE } from '../api/client'
-import { persister, retryCachePersistence, useCachePersistenceStatus } from '../api/persist'
+import { clearOfflineCache, retryCachePersistence, useCachePersistenceStatus } from '../api/persist'
 import type { DesktopSettings, UpdateMode } from '../shared/desktop-api'
 
 
@@ -322,6 +322,9 @@ function PricesSection() {
   const [note, setNote] = useState<string | null>(null)
   return (
     <Section id="prices" title="Prices & game data" icon={Database} keywords="price flea trader sell buy value fee intelligence center refresh update data cache offline tarkov.dev new quests content patch check interval">
+      {cacheStatus.retained && <div role="status" className="space-y-1 rounded border border-line bg-surface-2 px-4 py-3 text-sm">
+        <p>An offline copy of the game data from {formatDateTime(cacheStatus.retained.at)} is being kept as a fallback{cacheStatus.retained.usable ? '' : ' and is too old or uses a different catalog format'}. <span className="text-ink-dim">Clear cache</span> below removes all saved copies.</p>
+      </div>}
       {cacheStatus.error && <div role="alert" className="space-y-2 rounded border border-danger/40 px-4 py-3 text-sm">
         <p>Offline game data reported a storage error. Free some disk space or check storage access, then try again. Your progress and physical inventory are separate from this catalog cache.</p>
         <p className="break-words text-xs text-ink-muted">{cacheStatus.error}</p>
@@ -395,7 +398,7 @@ function PricesSection() {
               setCacheBusy(true)
               let removed = false
               try {
-                await persister.removeClient()
+                await clearOfflineCache()
                 removed = true
                 await queryClient.resetQueries()
                 setNote('Cached game data cleared. Active pages are loading a new copy; an online connection is needed.')
@@ -590,7 +593,6 @@ function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | '
 
 function DesktopAppSection() {
   const native = isTauri()
-  const settingsError = useDesktopStore((s) => s.settingsError)
   const [tray, setTray] = useDesktopSetting('minimizeToTray', true)
   const [startWin, setStartWin] = useDesktopSetting('startWithWindows', false)
   const [startMin, setStartMin] = useDesktopSetting('startMinimized', false)
@@ -605,7 +607,11 @@ function DesktopAppSection() {
   const setScavMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
   return (
     <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut search bar overlay update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot recycle bin clear delete scav cooldown timer">
-      {settingsError && <p role="alert" className="text-sm text-danger">Could not save desktop setting: {settingsError}</p>}
+      {window.desktop?.startupWarnings?.map((warning, i) => (
+        <p key={i} role="status" className="text-sm text-warning">
+          Optional desktop extra unavailable: {warning}
+        </p>
+      ))}
       <Row label="Close to tray" hint="The X button hides the window and keeps quest tracking running. Use the tray icon to reopen or quit.">
         <Switch checked={tray} onChange={setTray} label="Close to tray" />
       </Row>

@@ -44,7 +44,7 @@ impl Integrations {
             }
             let key: Shortcut = key
                 .parse()
-                .map_err(|e| format!("Invalid {name} shortcut: {e}"))?;
+                .map_err(|_| format!("{name} shortcut \"{key}\" is not a usable key combination. Pick another in Settings → Desktop app."))?;
             if desired.values().any(|old| *old == key) {
                 return Err("Capture and searchbar shortcuts must be distinct".into());
             }

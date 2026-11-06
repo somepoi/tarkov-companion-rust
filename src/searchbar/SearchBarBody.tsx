@@ -10,6 +10,7 @@ import { useNeeds } from '../hooks/useNeeds'
 import { useProgressContext } from '../hooks/useProgressContext'
 import { followOtherWindows } from '../lib/crossWindow'
 import { caliberLabel } from '../lib/ammo'
+import { fleaPurchaseAccess, type FleaRulesContext } from '../lib/economy'
 import { formatRoubles } from '../lib/format'
 import { computeTaskStatuses, isFactionEligible, STATUS_LABEL } from '../lib/taskStatus'
 import { useMapOptions, type MapOption } from '../maps/useMapOptions'
@@ -23,6 +24,7 @@ import { useUiStore } from '../store/ui'
 import { ItemDetails, OnMapBox, PictureDetails, QuestDetails, SideButton } from './details'
 import { DetailsContext, panelKey, type DetailsCtx, type KeyMap, type MapRequest, type View } from './detailsContext'
 import { useFleaFees } from '../hooks/useFleaFees'
+import { useFleaRules } from '../hooks/useFleaRules'
 import { bossIndex, extractIndex, mapRows, raidMap, type MapRow, type RaidState } from './overlayLogic'
 import { useOverlayPrefs, type Ref } from './overlayPrefs'
 import type { Request } from './SearchBarApp'
@@ -83,6 +85,7 @@ export default function SearchBarBody(props: BodyProps) {
 function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, raidRow, request, locked }: BodyProps) {
   const { needs, gameData, hideout, items, inventory } = useNeeds()
   const feeContext = useFleaFees(items.data)
+  const fleaRules = useFleaRules(items.data)
   const profile = useProfile()
   const mode = useProgressStore((s) => s.gameMode)
   const mapOptions = useMapOptions()
@@ -334,6 +337,7 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
             data,
             items: items.data?.items,
             feeContext,
+            fleaRules,
             stations: hideout.data ?? [],
             statuses,
             completed: progress?.completed ?? profile.completedTaskIds,
@@ -355,7 +359,7 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
             traderName,
           }
         : null,
-    [data, items.data, feeContext, hideout.data, statuses, profile.completedTaskIds, progress, needs, inventory, mode, onMap, tickQuest, keyMaps, showKey, openMap, openPanel, prefs.toggleStar, starred, traderName],
+    [data, items.data, feeContext, fleaRules, hideout.data, statuses, profile.completedTaskIds, progress, needs, inventory, mode, onMap, tickQuest, keyMaps, showKey, openMap, openPanel, prefs.toggleStar, starred, traderName],
   )
 
   const clear = () => {
@@ -513,7 +517,7 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
       <button type="button" onMouseEnter={() => i >= 0 && setCursor(i)} onClick={() => pick(h)} className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1 text-left">
         <HitIcon h={h} />
         <span className="min-w-0 flex-1 truncate">{hitLabel(h)}</span>
-        <span className="shrink-0 text-xs tabular-nums text-white/55">{hitNote(h, statuses)}</span>
+        <span className="shrink-0 text-xs tabular-nums text-white/55">{hitNote(h, statuses, fleaRules)}</span>
       </button>
       {h.kind === 'quest' && <OnMapBox checked={onMap.includes(h.task.id)} onChange={(on) => tickQuest(h.task, on)} />}
       {sideOf(h) && <SideButton label="Open beside" onClick={() => openPanel(sideOf(h)!)} />}
@@ -672,12 +676,16 @@ function hitLabel(h: Hit): string {
   }
 }
 
-function hitNote(h: Hit, statuses: Record<string, string>): string {
+function hitNote(h: Hit, statuses: Record<string, string>, fleaRules: FleaRulesContext | null): string {
   switch (h.kind) {
     case 'map':
       return 'map'
-    case 'item':
-      return h.item.types.includes('noFlea') ? 'no flea' : h.item.avg24hPrice ? formatRoubles(h.item.avg24hPrice) : '—'
+    case 'item': {
+      if (h.item.types.includes('noFlea')) return 'no flea'
+      if (!h.item.avg24hPrice) return '—'
+      // A catalog average is not a price this character can pay.
+      return fleaPurchaseAccess(h.item, fleaRules).available ? formatRoubles(h.item.avg24hPrice) : 'locked'
+    }
     case 'quest':
       return STATUS_LABEL[(statuses[h.task.id] as keyof typeof STATUS_LABEL) ?? 'locked']
     case 'trader':

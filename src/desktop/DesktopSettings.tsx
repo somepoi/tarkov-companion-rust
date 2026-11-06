@@ -107,7 +107,9 @@ export function DesktopSettingsSection() {
   }, [showEvents])
 
   if (!isDesktop()) return null
-  const set = (patch: Partial<DesktopSettings>) => void updateDesktopSettings(patch)
+  // Failures surface through the app-wide settings error banner; swallow the rejection
+  // itself so a storage problem is reported once instead of also becoming an unhandled rejection.
+  const set = (patch: Partial<DesktopSettings>) => void updateDesktopSettings(patch).catch(() => undefined)
   const taskName = (id: string) => gameData.data?.tasksById[id]?.name ?? `task …${id.slice(-6)}`
   const usingCustom = Boolean(settings?.logsPath)
 

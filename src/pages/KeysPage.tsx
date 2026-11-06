@@ -5,6 +5,8 @@ import { useGameData, useItems } from '../api/hooks'
 import type { Item } from '../api/types'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { formatRoubles } from '../lib/format'
+import { fleaPurchaseAccess } from '../lib/economy'
+import { useFleaRules } from '../hooks/useFleaRules'
 import { useLinkParam } from '../lib/linkParam'
 import { isFactionEligible } from '../lib/taskStatus'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
@@ -26,6 +28,7 @@ export function KeysPage() {
   const gameMode = useProgressStore((s) => s.gameMode)
   const inventory = useModeInventory()
   const setKeyOwned = useInventoryStore((s) => s.setKeyOwned)
+  const fleaRules = useFleaRules(items.data)
 
   const [search, setSearch] = useState('')
   const [map, setMap] = useState('all')
@@ -163,7 +166,17 @@ export function KeysPage() {
                   <td className="px-3 py-1.5 text-xs">
                     {r.quests.length === 0 ? <span className="text-ink-dim">—</span> : r.quests.map((q) => q.name).join(', ')}
                   </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-xs">{formatRoubles(r.item.avg24hPrice)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-xs">
+                    {r.item.avg24hPrice == null
+                      ? <span className="text-ink-dim">—</span>
+                      : (() => {
+                        // A catalog average is not a price this character can pay.
+                        const flea = fleaPurchaseAccess(r.item, fleaRules)
+                        return flea.available
+                          ? formatRoubles(r.item.avg24hPrice)
+                          : <span className="text-ink-dim" title={`Reference only: ${flea.reason}`}>locked</span>
+                      })()}
+                  </td>
                 </tr>
               )
             })}

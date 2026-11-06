@@ -33,6 +33,7 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     appVersion: string
     windowKind: 'main' | 'searchbar'
     benchmarkMode: boolean
+    startupWarnings?: string[]
   }>('desktop_metadata')
   const logs = metadata.windowKind === 'main' ? nativeLogBridge() : null
   const overlaySubscriptions: Promise<void>[] = []
@@ -104,6 +105,7 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     platform: metadata.platform,
     appVersion: metadata.appVersion,
     windowKind: metadata.windowKind,
+    startupWarnings: metadata.startupWarnings ?? [],
     setSearchBarSize: (width, height) => overlayCall('searchbar:size', width, height),
     setSearchBarRegions: (regions) => overlayCall('searchbar:regions', regions),
     searchBarReady: async () => { await Promise.all(overlaySubscriptions); await overlayCall('searchbar:ready') },

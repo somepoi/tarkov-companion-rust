@@ -154,11 +154,14 @@ function ItemLookupDialog() {
                 <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
                   <dt className="text-ink-muted">Flea avg 24h</dt><dd className="tabular-nums">{formatRoubles(selected.avg24hPrice)}</dd>
                   <dt className="text-ink-muted">Flea low / high 24h</dt><dd className="tabular-nums">{formatRoubles(selected.low24hPrice)} / {formatRoubles(selected.high24hPrice)}</dd>
-                  <dt className="text-ink-muted">Best trader sell</dt><dd className="tabular-nums">{bestTrader ? `${traderName(bestTrader.traderId)} ${formatRoubles(bestTrader.priceRUB)}` : '—'}</dd>
+                  <dt className="text-ink-muted">Trader sell reference</dt><dd className="tabular-nums">{bestTrader ? `${traderName(bestTrader.traderId)} ${formatRoubles(bestTrader.priceRUB)}` : '—'}</dd>
                   <dt className="text-ink-muted">Price per slot</dt><dd className="tabular-nums">{bestPrice ? formatRoubles(Math.round(bestPrice / slots)) : '—'}</dd>
                   <dt className="text-ink-muted">48h change</dt><dd className="tabular-nums">{selected.changeLast48hPercent != null ? `${selected.changeLast48hPercent > 0 ? '+' : ''}${selected.changeLast48hPercent.toFixed(1)}%` : '—'}</dd>
                   <dt className="text-ink-muted">Base price</dt><dd className="tabular-nums">{formatRoubles(selected.basePrice)}</dd>
                 </dl>
+                <p className="mt-1 text-[11px] text-ink-dim">
+                  These are catalog reference prices, not offers you can necessarily act on. What a trader pays for a specific item depends on its condition and your standing, and the flea fee depends on your level and standing — this panel checks neither.
+                </p>
 
                 <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink-muted">Tracked requirements</h3>
                 {!need ? (

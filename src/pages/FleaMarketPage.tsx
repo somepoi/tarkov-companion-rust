@@ -13,6 +13,8 @@ import { useLinkParam } from '../lib/linkParam'
 import { formatNumber, formatRoubles, formatTimeAgo } from '../lib/format'
 import { remainingFor, type ItemNeed } from '../lib/needs'
 import { trackedItemAdvice, type TrackedNeedCoverage } from '../lib/recommendationSafety'
+import { bestTraderOffer, type TraderAccessFacts } from '../lib/traderAccess'
+import { useTraderAccessFacts } from '../hooks/useTraderAccessFacts'
 import { useFleaStore, type FleaSortKey } from '../store/flea'
 
 const TEN_MINUTES = 10 * 60 * 1000
@@ -36,8 +38,13 @@ interface Row {
   perSlot: number | null
   traderSell: number
   traderSellId: string | null
+  /** Trader quote, only when the current character can actually buy it. */
   traderBuy: number | null
   traderBuyId: string | null
+  /** Why the catalog quote is not a purchasable price, when it is not. */
+  traderBuyBlocked: string | null
+  /** Whether the catalog publishes a usable per-restock purchase limit. */
+  traderBuyLimitKnown: boolean
   /** Profit from buying at a trader and selling on the flea, after the fee. */
   flip: number | null
 }
@@ -49,13 +56,18 @@ interface Changes {
   points: { t: number; p: number }[]
 }
 
-function buildRow(item: Item, feeContext: MarketFeeContext | null): Row {
+function buildRow(item: Item, feeContext: MarketFeeContext | null, facts: TraderAccessFacts): Row {
   const banned = item.types.includes('noFlea')
   const flea = banned ? null : item.avg24hPrice
   const traderSell = item.sellToTrader[0]?.priceRUB ?? 0
   const best = Math.max(flea ?? 0, traderSell)
   const slots = item.width * item.height || 1
-  const traderBuy = item.buyFromTrader[0]?.priceRUB ?? null
+  // A catalog quote is not a purchase the character can make. Only an offer with
+  // recorded loyalty and an unlocked quest may price a flip, and the purchase
+  // limit caps how many units that price can cover.
+  // Consider every offer: the cheapest quote often needs a higher loyalty level.
+  const access = bestTraderOffer(item.buyFromTrader, facts)
+  const traderBuy = access.kind === 'available' ? access.priceRUB : null
   const estimate = catalogFleaSale(item, 1, feeContext)
   const difference = estimate && traderBuy != null && Number.isSafeInteger(traderBuy) && traderBuy > 0 ? estimate.net - traderBuy : null
   const flip = difference !== null && Number.isSafeInteger(difference) ? difference : null
@@ -67,7 +79,10 @@ function buildRow(item: Item, feeContext: MarketFeeContext | null): Row {
     traderSell,
     traderSellId: item.sellToTrader[0]?.traderId ?? null,
     traderBuy,
-    traderBuyId: item.buyFromTrader[0]?.traderId ?? null,
+    traderBuyId: access.kind === 'available' ? access.offer.traderId : null,
+    traderBuyBlocked:
+      access.kind === 'unknown' && item.buyFromTrader.length > 0 ? access.reason : null,
+    traderBuyLimitKnown: access.kind === 'available' && access.limitKnown,
     flip,
   }
 }
@@ -168,7 +183,7 @@ const FleaRow = memo(function FleaRow({ row, open, needed, collected, coverage, 
         <div className="text-right text-xs tabular-nums">{changes ? <Pct v={changes.c7} /> : <span className="text-ink-dim">{wanted && !row.banned ? '…' : '—'}</span>}</div>
         <div className="text-right text-xs tabular-nums">{row.perSlot != null ? formatRoubles(row.perSlot) : '—'}</div>
         <div className="truncate text-right text-xs tabular-nums">{row.traderSell ? `${traderName(row.traderSellId)} ${formatRoubles(row.traderSell)}` : '—'}</div>
-        <div className={`text-right text-xs tabular-nums ${row.flip != null && row.flip > 0 ? 'text-success' : 'text-ink-dim'}`} title={row.traderBuy != null ? `Buy at ${traderName(row.traderBuyId)} for ${formatRoubles(row.traderBuy)}` : ''}>{row.flip != null ? formatRoubles(row.flip) : '—'}</div>
+        <div className={`text-right text-xs tabular-nums ${row.flip != null && row.flip > 0 ? 'text-success' : 'text-ink-dim'}`} title={row.traderBuy != null ? `Buy at ${traderName(row.traderBuyId)} for ${formatRoubles(row.traderBuy)}` : row.traderBuyBlocked ? `No trader flip: ${row.traderBuyBlocked}` : ''}>{row.flip != null ? formatRoubles(row.flip) : '—'}</div>
       </div>
       {open && (
         <div className="grid gap-4 border-b border-line bg-surface px-4 py-3 text-xs md:grid-cols-3" style={{ minHeight: EXPANDED_HEIGHT - 44 }}>
@@ -180,13 +195,28 @@ const FleaRow = memo(function FleaRow({ row, open, needed, collected, coverage, 
           <div>
             <h4 className="mb-1 font-semibold uppercase tracking-wide text-ink-muted">Trader sell prices</h4>
             {row.item.sellToTrader.length === 0 ? <span className="text-ink-dim">No trader buys this.</span> : (
-              <ul className="space-y-0.5">
-                {row.item.sellToTrader.map((s) => (
-                  <li key={s.traderId} className="flex justify-between gap-2"><span>{traderName(s.traderId)}</span><span className="tabular-nums">{formatRoubles(s.priceRUB)}</span></li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-0.5">
+                  {row.item.sellToTrader.map((s) => (
+                    <li key={s.traderId} className="flex justify-between gap-2"><span>{traderName(s.traderId)}</span><span className="tabular-nums">{formatRoubles(s.priceRUB)}</span></li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-ink-dim">
+                  Catalog reference prices. What a trader actually pays for a specific item also depends on its condition and your standing, which this list does not check.
+                </p>
+              </>
             )}
             {row.traderBuy != null && <div className="mt-1 text-ink-dim">Buy from {traderName(row.traderBuyId)}: {formatRoubles(row.traderBuy)}</div>}
+            {row.traderBuy != null && !row.traderBuyLimitKnown && (
+              <div className="mt-1 text-ink-muted">
+                Per-restock purchase limit is not published, so this price is only a per-unit reference.
+              </div>
+            )}
+            {row.traderBuyBlocked != null && (
+              <div className="mt-1 text-ink-muted">
+                Trader buy price not usable: {row.traderBuyBlocked}.
+              </div>
+            )}
           </div>
           <div>
             <h4 className="mb-1 font-semibold uppercase tracking-wide text-ink-muted">Tracked requirements</h4>
@@ -214,6 +244,9 @@ export function FleaMarketPage() {
   const feeContext = useFleaFees(items.data)
   const gameData = useGameData()
   const { needs, coverage, inventory } = useNeeds()
+  // Session facts about the current character; the catalog alone cannot prove
+  // that a quoted trader offer can actually be bought.
+  const traderFacts = useTraderAccessFacts()
   const filters = useFleaStore((s) => s.filters)
   const setFilters = useFleaStore((s) => s.setFilters)
   const resetFilters = useFleaStore((s) => s.resetFilters)
@@ -242,7 +275,7 @@ export function FleaMarketPage() {
     return () => clearInterval(id)
   }, [])
 
-  const rows = useMemo(() => (items.data ? Object.values(items.data.items).map((item) => buildRow(item, feeContext)) : []), [items.data, feeContext])
+  const rows = useMemo(() => (items.data ? Object.values(items.data.items).map((item) => buildRow(item, feeContext, traderFacts)) : []), [items.data, feeContext, traderFacts])
   // Lower-cased names once per data load, not on every keystroke.
   const searchText = useMemo(() => new Map(rows.map((r) => [r.item.id, `${r.item.name}\n${r.item.shortName}`.toLowerCase()])), [rows])
   // Typing stays instant; the 4,000-row filter catches up right after.

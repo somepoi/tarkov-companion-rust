@@ -160,8 +160,8 @@ export function KeyDetails({ row, data, owned, onToggleOwned, onClose }: { row: 
           <div className="min-w-0 flex-1">
             <h2 id="key-title" className="truncate text-base font-semibold">{row.item.name}</h2>
             <p className="text-xs text-ink-muted">
-              Flea {formatRoubles(row.item.avg24hPrice)}
-              {row.item.buyFromTrader[0] ? ` · trader ${formatRoubles(row.item.buyFromTrader[0].priceRUB)}` : ''}
+              Flea reference {formatRoubles(row.item.avg24hPrice)}
+              {row.item.buyFromTrader[0] ? ` · trader quote ${formatRoubles(row.item.buyFromTrader[0].priceRUB)}` : ''}
             </p>
           </div>
           <label className="flex items-center gap-1.5 text-sm">
@@ -245,13 +245,18 @@ export function KeyDetails({ row, data, owned, onToggleOwned, onClose }: { row: 
             )}
             <Thumbs images={wiki.data?.keyImages ?? []} onOpen={openImage} />
             {row.item.buyFromTrader.length > 0 && (
-              <p className="text-sm">
-                Sold by{' '}
-                {row.item.buyFromTrader
-                  .map((b) => `${traderNames.get(b.traderId) ?? 'a trader'}${b.minTraderLevel ? ` (loyalty ${b.minTraderLevel})` : ''} for ${formatRoubles(b.priceRUB)}`)
-                  .join(', ')}
-                .
-              </p>
+              <div className="text-sm">
+                <p>
+                  Catalog trader offers{' '}
+                  {row.item.buyFromTrader
+                    .map((b) => `· ${traderNames.get(b.traderId) ?? 'a trader'}${b.minTraderLevel ? ` (loyalty ${b.minTraderLevel})` : ''} for ${formatRoubles(b.priceRUB)}`)
+                    .join(' ')}
+                  .
+                </p>
+                <p className="mt-1 text-xs text-ink-dim">
+                  These are reference quotes. Buying one also needs the loyalty level, offer unlock quest and remaining per-restock purchase limit for your character, which this list does not verify.
+                </p>
+              </div>
             )}
           </section>
 

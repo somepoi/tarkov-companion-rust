@@ -73,6 +73,7 @@ export function Layout() {
   // Desktop search bar over the game: "Open in the app" on one of its results.
   useEffect(() => window.desktop?.onOpenInApp((to) => to.startsWith('/') && navigate(to)), [navigate])
   const settings = useDesktopStore((s) => s.settings)
+  const settingsError = useDesktopStore((s) => s.settingsError)
   const localSetupDone = useLocalFlags((s) => s.setupDone)
   const hasProgress = useProgressStore((s) => hasAnyProgress(s.profiles))
   // Set up here before (this progress store), or set up in an earlier version and already has quests ticked.
@@ -114,6 +115,7 @@ export function Layout() {
       <Sidebar />
       <main className={`min-w-0 flex-1 ${fullBleed ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-y-auto'}`}>
         <UpdateBanner />
+        {settingsError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Could not save desktop settings. {settingsError}</span><button type="button" className="btn" onClick={() => useDesktopStore.setState({ settingsError: null })}>Dismiss</button></div>}
         {searchbarError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Searchbar: {searchbarError}</span><button className="btn" onClick={() => setSearchbarError('')}>Dismiss</button></div>}
         {captureError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-danger/50 bg-surface px-4 py-2 text-sm text-danger"><span>Screenshot capture failed: {captureError}</span><button className="btn" onClick={() => setCaptureError('')}>Dismiss</button></div>}
         <WipeBanner />

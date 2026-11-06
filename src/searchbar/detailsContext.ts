@@ -8,7 +8,7 @@ import type { MapOption } from '../maps/useMapOptions'
 import type { GameMode } from '../api/client'
 import type { OverlayLayer, Ref } from './overlayPrefs'
 import type { MapPin } from './SearchBarMap'
-import type { MarketFeeContext } from '../lib/economy'
+import type { FleaRulesContext, MarketFeeContext } from '../lib/economy'
 
 /** Something a card or a side panel shows. */
 export type View =
@@ -52,6 +52,8 @@ export interface DetailsCtx {
   data: GameData
   items: ItemsById | undefined
   feeContext: MarketFeeContext | null
+  /** Catalog flea rules plus the character's level; enough to judge a purchase. */
+  fleaRules: FleaRulesContext | null
   stations: HideoutStation[]
   statuses: Record<string, TaskStatus>
   /** Done: ticked, or by deduction (a later quest is done or started). */

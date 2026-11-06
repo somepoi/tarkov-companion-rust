@@ -14,7 +14,7 @@ import path from 'node:path'
 import type { DesktopSettings, GameEvent, LogStatsData, PlayerPosition, WipeEvent } from '../src/shared/desktop-api'
 import { detectLogsFolder } from './logs/locator'
 import { LogWatcher } from './logs/watcher'
-import { SettingsStore } from './settings'
+import { SettingsStore, type StoredSettings } from './settings'
 import { latestPosition, parseScreenshotName, watchScreenshots } from './position'
 import { createRaidClock, trashWhenWritten } from './positionShots'
 import { backupDir, listBackups, readBackup, writeBackup } from './backups'
@@ -48,6 +48,7 @@ let quitting = false
 /** The search bar over the game (only while switched on in Settings). */
 let searchBar: BrowserWindow | null = null
 let settings: SettingsStore
+let pausedForSession = false
 const watcher = new LogWatcher()
 let stopScreenshots: (() => void) | null = null
 /** Raid in progress, from the live game log (for clearing position screenshots). */
@@ -76,6 +77,22 @@ function broadcast(channel: string, payload: unknown) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload)
 }
 
+/**
+ * Persists a setting the user did not ask for (window bounds, wipe bookkeeping, tray notice).
+ *
+ * `SettingsStore.update` now throws when the file could not be written, so an unrelated failure —
+ * a full disk, an antivirus lock, an unreadable settings file — must not take the app down. It is
+ * logged with the setting name instead of being swallowed, and the in-memory value is rolled back
+ * by the store, so nothing claims to be saved that is not.
+ */
+function persistBackgroundSettings(patch: Partial<StoredSettings>) {
+  try {
+    settings.update(patch)
+  } catch (error) {
+    console.error('[settings] could not save', Object.keys(patch).join(', '), error instanceof Error ? error.message : error)
+  }
+}
+
 function bootstrap() {
   // Same id as the installer's shortcuts, so Windows shows the app's notifications under its name.
   if (process.platform === 'win32') app.setAppUserModelId(APP_IDENTITY.appId)
@@ -89,7 +106,11 @@ function bootstrap() {
   // Installed builds: no menu (it carries Reload and the developer tools).
   if (app.isPackaged) Menu.setApplicationMenu(null)
   settings = new SettingsStore(app.getPath('userData'))
-  if (BENCHMARK_MODE) settings.update({ paused: true, startMinimized: true, startWithWindows: false, trackPosition: false, clearPositionShots: false, searchBar: false, scanHotkey: '', updateMode: 'off', cleanAfterUpdate: false })
+  // The store keeps an unreadable settings file untouched and refuses to overwrite it; say so
+  // once at start-up so the refusal is diagnosable, and let the first save attempt surface the
+  // same message to the user in Settings.
+  if (settings.recoveryError) console.error('[settings]', settings.recoveryError)
+  if (BENCHMARK_MODE) persistBackgroundSettings({ paused: true, startMinimized: true, startWithWindows: false, trackPosition: false, clearPositionShots: false, searchBar: false, scanHotkey: '', updateMode: 'off', cleanAfterUpdate: false })
   const startHidden = settings.get().startMinimized || process.argv.includes('--minimized')
 
   createWindow(!startHidden)
@@ -197,18 +218,18 @@ function detectWipe(e: GameEvent) {
   if (e.kind === 'profile') {
     if (s.knownProfileId && s.knownProfileId !== e.profileId) {
       const ev: WipeEvent = { reason: 'profile', previous: s.knownProfileId, current: e.profileId }
-      settings.update({ knownProfileId: e.profileId })
+      persistBackgroundSettings({ knownProfileId: e.profileId })
       broadcast('wipe:detected', ev)
     } else if (!s.knownProfileId) {
-      settings.update({ knownProfileId: e.profileId })
+      persistBackgroundSettings({ knownProfileId: e.profileId })
     }
   } else if (e.kind === 'gameVersion') {
     if (s.knownGameVersion && majorVersion(s.knownGameVersion) !== majorVersion(e.version)) {
       const ev: WipeEvent = { reason: 'version', previous: s.knownGameVersion, current: e.version }
-      settings.update({ knownGameVersion: e.version })
+      persistBackgroundSettings({ knownGameVersion: e.version })
       broadcast('wipe:detected', ev)
     } else if (!s.knownGameVersion || s.knownGameVersion !== e.version) {
-      settings.update({ knownGameVersion: e.version })
+      persistBackgroundSettings({ knownGameVersion: e.version })
     }
   }
 }
@@ -284,7 +305,7 @@ function createWindow(show: boolean) {
     if (!win) return
     const maximized = win.isMaximized()
     const bounds = maximized ? settings.get().window : win.getBounds()
-    settings.update({ window: { ...bounds, maximized } })
+    persistBackgroundSettings({ window: { ...bounds, maximized } })
   }
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
@@ -300,7 +321,7 @@ function createWindow(show: boolean) {
           content: 'It keeps tracking your quests from the tray. Right-click the tray icon to open it again or quit.',
           iconType: 'info',
         })
-        settings.update({ trayNoticeShown: true })
+        persistBackgroundSettings({ trayNoticeShown: true })
       }
     } else {
       quitting = true
@@ -476,7 +497,7 @@ function cornerSearchBar(corner: 'tl' | 'tr' | 'bl' | 'br') {
     x: right ? area.x + area.width - SEARCH_MARGIN - SEARCH_GLASS : area.x + SEARCH_MARGIN,
     y: bottom ? area.y + area.height - SEARCH_MARGIN - SEARCH_GLASS : area.y + SEARCH_MARGIN,
   }
-  settings.update({ searchBarPos: { ...searchAnchor } })
+  persistBackgroundSettings({ searchBarPos: { ...searchAnchor } })
   placeSearchBar()
 }
 
@@ -516,7 +537,7 @@ function scheduleCleanupAfterUpdate() {
     void cleanUp(false)
       .then((r) => {
         lastCleanup = r
-        settings.update({ lastCleanedVersion: app.getVersion() })
+        persistBackgroundSettings({ lastCleanedVersion: app.getVersion() })
       })
       .catch(() => undefined)
   }, 60_000)
@@ -576,11 +597,11 @@ function createTray() {
 
 function refreshTrayMenu() {
   if (!tray) return
-  const paused = settings.get().paused
+  const paused = publicSettings().paused
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: `Open ${APP_IDENTITY.name}`, click: showWindow },
-      { label: paused ? 'Resume log watching' : 'Pause log watching', click: () => updateSettings({ paused: !settings.get().paused }) },
+      { label: paused ? 'Resume log watching' : 'Pause log watching', click: toggleLogWatching },
       ...(searchBar && !searchBar.isDestroyed()
         ? ([
             { type: 'separator' },
@@ -601,13 +622,34 @@ function refreshTrayMenu() {
   )
 }
 
+function toggleLogWatching() {
+  const paused = !publicSettings().paused
+  try {
+    updateSettings({ paused })
+  } catch (error) {
+    void dialog.showMessageBox({
+      type: 'warning',
+      title: APP_IDENTITY.name,
+      message: pausedForSession && paused
+        ? 'Log watching is paused for this session. The preference could not be saved.'
+        : 'Could not change the saved log watching preference.',
+      detail: error instanceof Error ? error.message : String(error),
+    }).catch((cause: unknown) => console.error('[settings] could not show warning', cause))
+  }
+}
+
+function publicSettings(): DesktopSettings {
+  const saved = settings.getPublic()
+  return pausedForSession ? { ...saved, paused: true } : saved
+}
+
 function applyWatcherSettings() {
   if (BENCHMARK_MODE) {
     watcher.configure({ logsPath: null, detectedPath: null, paused: true })
     refreshTrayMenu()
     return
   }
-  const s = settings.get()
+  const s = publicSettings()
   const detected = detectLogsFolder()
   // A saved folder that is gone (or was never a folder) falls back to the detected one.
   const custom = s.logsPath && isSafeDirectory(s.logsPath) ? s.logsPath : null
@@ -617,7 +659,19 @@ function applyWatcherSettings() {
 
 function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
   const before = settings.get()
-  settings.update(patch)
+  try {
+    settings.update(patch)
+  } catch (error) {
+    if (patch.paused === true) {
+      pausedForSession = true
+      const { logsPath, detectedPath } = watcher.getState()
+      watcher.configure({ logsPath, detectedPath, paused: true })
+      refreshTrayMenu()
+      broadcast('settings:changed', publicSettings())
+    }
+    throw error
+  }
+  if (patch.paused !== undefined) pausedForSession = false
   const after = settings.get()
   if (patch.startWithWindows !== undefined && patch.startWithWindows !== before.startWithWindows) {
     app.setLoginItemSettings({ name: APP_IDENTITY.name, openAtLogin: after.startWithWindows, args: ['--minimized'] })
@@ -629,8 +683,9 @@ function updateSettings(patch: Partial<DesktopSettings>): DesktopSettings {
   if (patch.updateMode !== undefined) setUpdateMode(after.updateMode)
   if (patch.trackPosition !== undefined) applyPositionTracking()
   broadcast('watcher:state', watcher.getState())
-  broadcast('settings:changed', settings.getPublic())
-  return settings.getPublic()
+  const current = publicSettings()
+  broadcast('settings:changed', current)
+  return current
 }
 
 function registerIpc() {
@@ -673,13 +728,13 @@ function registerIpc() {
     if (fromSearchBar(e) && isDelta(dx) && isDelta(dy)) moveSearchBar(dx, dy)
   })
   handle('searchbar:moved', (e) => {
-    if (fromSearchBar(e)) settings.update({ searchBarPos: { ...searchAnchor } })
+    if (fromSearchBar(e)) persistBackgroundSettings({ searchBarPos: { ...searchAnchor } })
   })
   handle('searchbar:home', (e) => {
     if (!fromSearchBar(e)) return
     const area = screen.getPrimaryDisplay().workArea
     searchAnchor = { x: area.x + SEARCH_MARGIN, y: area.y + SEARCH_MARGIN }
-    settings.update({ searchBarPos: null })
+    persistBackgroundSettings({ searchBarPos: null })
     placeSearchBar()
   })
   handle('searchbar:passthrough', (e, on: unknown) => {
@@ -711,7 +766,7 @@ function registerIpc() {
     if (!PACK_NAMES.includes(name as PackName)) throw new Error('Unknown pack')
     await ensurePack(name as PackName, (p) => broadcast('pack:progress', p))
   })
-  handle('settings:get', () => settings.getPublic())
+  handle('settings:get', publicSettings)
   handle('settings:set', (_e, patch: unknown) => updateSettings(cleanSettingsPatch(patch)))
   handle('watcher:recent', () => watcher.getRecentEvents())
   handle('watcher:pickFolder', async () => {
@@ -728,7 +783,7 @@ function registerIpc() {
   })
   handle('watcher:backfill', async () => {
     const result = await watcher.backfillAsync((p) => broadcast('watcher:backfillProgress', p))
-    settings.update({ initialBackfillDone: true })
+    persistBackgroundSettings({ initialBackfillDone: true })
     const summary = {
       at: new Date().toISOString(),
       logsPath: watcher.getState().logsPath,

@@ -11,6 +11,7 @@ import { formatNumber, formatRoubles } from '../lib/format'
 import { keyVerdict } from '../lib/keyVerdict'
 import { remainingFor } from '../lib/needs'
 import { STATUS_LABEL } from '../lib/taskStatus'
+import { bestTraderOffer } from '../lib/traderAccess'
 import { ObjectiveFacts } from '../components/ObjectiveFacts'
 import { isRequirementMet, lockReasons } from '../lib/progression'
 import { requiredClosure } from '../quests/questGraph'
@@ -398,7 +399,9 @@ export function ItemDetails({ item }: { item: Item }) {
   const have = c.collected[item.id] ?? 0
   const remaining = need ? remainingFor(need, have) : 0
   const sell = [...item.sellToTrader].sort((a, b) => b.priceRUB - a.priceRUB)[0]
-  const buy = item.buyFromTrader[0]
+  const quotedBuy = item.buyFromTrader[0]
+  const buyAccess = bestTraderOffer(item.buyFromTrader, { levels: c.traderLevels, completedTaskIds: c.completed })
+  const buy = buyAccess.kind === 'available' ? buyAccess.offer : undefined
   const banned = item.types.includes('noFlea')
   const slots = Math.max(1, item.width * item.height)
   const isKey = item.types.includes('keys')
@@ -455,9 +458,12 @@ export function ItemDetails({ item }: { item: Item }) {
         )}
         {sell && (
           <>
-            <dt className="text-white/50">Sell to</dt>
+            <dt className="text-white/50">Trader sell reference</dt>
             <dd className="tabular-nums">
               {formatRoubles(sell.priceRUB)} <span className="text-white/50">({c.traderName(sell.traderId)})</span>
+              <span className="block text-[10px] text-white/40">
+                Catalog price, not a confirmed offer: condition and standing are not checked.
+              </span>
             </dd>
           </>
         )}
@@ -470,6 +476,14 @@ export function ItemDetails({ item }: { item: Item }) {
                 ({c.traderName(buy.traderId)}
                 {buy.minTraderLevel ? ` LL${buy.minTraderLevel}` : ''})
               </span>
+            </dd>
+          </>
+        )}
+        {quotedBuy && buyAccess.kind === 'unknown' && (
+          <>
+            <dt className="text-white/50">Trader quote</dt>
+            <dd className="text-white/70">
+              {formatRoubles(quotedBuy.priceRUB)} <span className="text-white/50">not purchasable: {buyAccess.reason}</span>
             </dd>
           </>
         )}

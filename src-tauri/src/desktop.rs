@@ -81,7 +81,14 @@ pub struct HostState {
     pub data_dir: PathBuf,
     settings: Mutex<Value>,
     pub inventory: Result<crate::inventory::InventoryService, String>,
+    /// Problems that block normal use until the user fixes them (unreadable settings,
+    /// unopenable database, missing packs, an unusable recovered profile). Shown in
+    /// the full-backup panel because recovery is the way out of all of them.
     pub startup_issues: Vec<String>,
+    /// Problems in optional desktop extras (autostart entry, global shortcuts). They
+    /// do not block the app and do not belong in the backup panel: the user fixes them
+    /// in Settings → Desktop app.
+    pub startup_warnings: Vec<String>,
     settings_read_error: bool,
     pub integrations: crate::integrations::Integrations,
     pub logs: crate::logs::Logs,
@@ -132,9 +139,14 @@ impl HostState {
                 if fs::metadata(&file).map_err(|e| e.to_string())?.len() > MAX_JSON_BYTES as u64 {
                     return Err("Settings file is too large".into());
                 }
-                let saved: Value =
-                    serde_json::from_slice(&fs::read(&file).map_err(|e| e.to_string())?)
-                        .map_err(|e| e.to_string())?;
+                let bytes = fs::read(&file).map_err(|e| e.to_string())?;
+                // Windows Notepad and some editors save UTF-8 with a byte-order mark.
+                // serde_json rejects it, but the JSON behind it is valid, so a file the
+                // user fixed by hand must not be reported as corrupt.
+                let bytes = bytes
+                    .strip_prefix(&[0xEF, 0xBB, 0xBF][..])
+                    .unwrap_or(&bytes);
+                let saved: Value = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
                 if !saved.is_object() {
                     return Err("Settings must contain an object".into());
                 }
@@ -187,6 +199,7 @@ impl HostState {
             settings: Mutex::new(settings),
             inventory,
             startup_issues,
+            startup_warnings: Vec::new(),
             settings_read_error,
             integrations: crate::integrations::Integrations::default(),
             logs: crate::logs::Logs::default(),
@@ -579,8 +592,11 @@ fn backup_list(state: &HostState) -> Result<Value, NativeError> {
 }
 
 #[tauri::command]
-pub fn desktop_metadata(window: tauri::WebviewWindow) -> Value {
-    json!({"platform": if cfg!(windows) {"win32"} else {std::env::consts::OS}, "appVersion": env!("CARGO_PKG_VERSION"), "windowKind": if window.label()=="searchbar" {"searchbar"} else {"main"}, "benchmarkMode": benchmark_mode()})
+pub fn desktop_metadata(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<HostState>>,
+) -> Value {
+    json!({"platform": if cfg!(windows) {"win32"} else {std::env::consts::OS}, "appVersion": env!("CARGO_PKG_VERSION"), "windowKind": if window.label()=="searchbar" {"searchbar"} else {"main"}, "benchmarkMode": benchmark_mode(), "startupWarnings": state.startup_warnings})
 }
 
 #[tauri::command]
@@ -1121,6 +1137,18 @@ fn dispatch(
         "update:status" | "update:check" => Ok(
             json!({"state":"disabled","message":"Fork updates are disabled until the release channel is verified."}),
         ),
+        "update:install" | "update:runInstaller" => Err(error(
+            "updates_disabled",
+            "Fork updates are disabled until the release channel is verified",
+        )),
+        // The log interpreter is deliberately shared TypeScript, not Rust (see
+        // docs/performance/native-logs.md): the native bridge composes a full
+        // pass from the watcher:history* jobs. These channels exist only for a
+        // caller that has no bridge, which the main window always does.
+        "watcher:backfill" | "stats:read" => Err(error(
+            "logs_window",
+            "Historical log reads are only available in the main window's native log bridge",
+        )),
         "update:outcome" if _window.label() == "main" => {
             crate::updates::outcome(state).map_err(|e| error("update_outcome", e))
         }

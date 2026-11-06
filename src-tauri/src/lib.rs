@@ -79,13 +79,16 @@ pub fn run() {
             app.handle()
                 .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
             let mut state = HostState::open(app.handle())?;
+            // Autostart and global shortcuts are optional extras. A failure here (a locked
+            // policy key, a shortcut another program owns) must not disable the rest of the
+            // app, so it is recorded as a warning and surfaced in Settings → Desktop app.
             if state.startup_issues.is_empty()
                 && let Err(message) =
                     state
                         .integrations
                         .apply(app.handle(), &state.settings()?, &state.profile_root)
             {
-                state.startup_issues.push(message);
+                state.startup_warnings.push(message);
             }
             let state = Arc::new(state);
             let minimized = state

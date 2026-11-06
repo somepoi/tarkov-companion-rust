@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Check, Crosshair, Minus, Search, X } from 'lucide-r
 import { useGameData, useItems } from '../api/hooks'
 import type { Trader } from '../api/types'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
+import { useTraderAccessFacts } from '../hooks/useTraderAccessFacts'
 import {
   armorVerdict,
   caliberLabel,
@@ -14,7 +15,9 @@ import {
   type AmmoSortKey,
   type ArmorVerdict,
 } from '../lib/ammo'
-import { acquireCost } from '../lib/economy'
+import { acquireCost, fleaPurchaseAccess, type FleaRulesContext } from '../lib/economy'
+import { useFleaRules } from '../hooks/useFleaRules'
+import { bestTraderOffer, type TraderAccessFacts } from '../lib/traderAccess'
 import { formatRoubles } from '../lib/format'
 import { useLinkParam } from '../lib/linkParam'
 import { useProgressStore } from '../store/progress'
@@ -27,7 +30,12 @@ interface AmmoRow {
   price: number | null
   /** Plain-English source of the cheapest price. */
   source: string | null
+  /** Why a catalog trader offer could not price this round, if it could not. */
+  traderNote: string | null
+  /** True only when the flea rules and level actually allow buying this round. */
   fleaBuyable: boolean
+  /** Why the flea average is not a price you can pay, when it is not. */
+  fleaNote: string | null
 }
 
 const VERDICT_STYLE: Record<ArmorVerdict, { cls: string; label: string; Icon: typeof Check }> = {
@@ -36,10 +44,15 @@ const VERDICT_STYLE: Record<ArmorVerdict, { cls: string; label: string; Icon: ty
   poor: { cls: 'text-danger', label: 'mostly stopped', Icon: X },
 }
 
-function buildRow(item: AmmoItem, tradersById: Record<string, Trader>): AmmoRow {
-  const fleaBuyable = !item.types.includes('noFlea') && item.avg24hPrice != null
-  const price = acquireCost(item)
-  const trader = item.buyFromTrader[0]
+function buildRow(item: AmmoItem, tradersById: Record<string, Trader>, facts: TraderAccessFacts, fleaContext: FleaRulesContext | null): AmmoRow {
+  // A catalog average is not a price this character can pay: the flea market
+  // gates purchases on the market minimum and the item's own level.
+  const flea = fleaPurchaseAccess(item, fleaContext)
+  const fleaBuyable = flea.available && item.avg24hPrice != null
+  const price = acquireCost(item, facts, fleaContext)
+  // Every offer is judged: the cheapest quote may be out of loyalty reach.
+  const access = bestTraderOffer(item.buyFromTrader, facts)
+  const trader = access.kind === 'available' ? access.offer : undefined
   let source: string | null = null
   if (price != null) {
     if (fleaBuyable && item.avg24hPrice === price && (!trader || item.avg24hPrice < trader.priceRUB)) source = 'Flea market'
@@ -48,13 +61,21 @@ function buildRow(item: AmmoItem, tradersById: Record<string, Trader>): AmmoRow 
       source = trader.minTraderLevel ? `${name} LL${trader.minTraderLevel}` : name
     }
   }
-  return { item, price, source, fleaBuyable }
+  const traderNote = item.buyFromTrader.length > 0 && access.kind === 'unknown'
+    ? `Catalog trader offers start at ${formatRoubles(item.buyFromTrader[0].priceRUB)} but are not a price you can pay: ${access.reason}.`
+    : null
+  const fleaNote = item.avg24hPrice != null && !fleaBuyable
+    ? `Catalog flea average ${formatRoubles(item.avg24hPrice)} is not a price you can pay: ${flea.available ? 'unknown reason' : flea.reason}.`
+    : null
+  return { item, price, source, traderNote, fleaBuyable, fleaNote }
 }
 
 export function AmmoPage() {
   const items = useItems()
   const gameData = useGameData()
   const gameMode = useProgressStore((s) => s.gameMode)
+  const traderFacts = useTraderAccessFacts()
+  const fleaContext = useFleaRules(items.data)
 
   const [caliber, setCaliber] = useState('all')
   const [search, setSearch] = useState('')
@@ -74,8 +95,8 @@ export function AmmoPage() {
     for (const t of gameData.data?.traders ?? []) tradersById[t.id] = t
     return Object.values(items.data.items)
       .filter((it): it is AmmoItem => it.ammo != null)
-      .map((it) => buildRow(it, tradersById))
-  }, [items.data, gameData.data])
+      .map((it) => buildRow(it, tradersById, traderFacts, fleaContext))
+  }, [items.data, gameData.data, traderFacts, fleaContext])
 
   const caliberGroups = useMemo(() => groupCalibers(rows.map((r) => r.item.ammo.caliber)), [rows])
   const anyFlea = rows.some((r) => r.fleaBuyable)
@@ -240,7 +261,11 @@ export function AmmoPage() {
                   <td className={`whitespace-nowrap px-2 py-1.5 text-right tabular-nums ${a.accuracyModifier > 0 ? 'text-success' : a.accuracyModifier < 0 ? 'text-danger' : 'text-ink-dim'}`}>{formatModifier(a.accuracyModifier)}</td>
                   <td className="px-2 py-1.5 text-xs">{a.tracer ? `Yes${a.tracerColor ? ` (${a.tracerColor})` : ''}` : <span className="text-ink-dim">—</span>}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-xs">{r.price == null ? <span className="text-ink-dim">—</span> : formatRoubles(r.price)}</td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-xs text-ink-muted">{r.source ?? <span className="text-ink-dim">Loot or barter only</span>}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-xs text-ink-muted">
+                    {r.source ?? <span className="text-ink-dim">{r.traderNote ? 'Trader offer not verified' : r.fleaNote ? 'Flea price not verified' : 'Loot or barter only'}</span>}
+                    {r.traderNote && <div className="max-w-56 whitespace-normal text-ink-dim">{r.traderNote}</div>}
+                    {r.fleaNote && <div className="max-w-56 whitespace-normal text-ink-dim">{r.fleaNote}</div>}
+                  </td>
                 </tr>
               )
             })}
@@ -249,7 +274,7 @@ export function AmmoPage() {
         {filtered.length === 0 && <p className="px-4 py-10 text-center text-sm text-ink-muted">No ammo matches these filters.</p>}
       </div>
       <p className="mt-2 text-xs text-ink-dim">
-        Stats from tarkov.dev. Trader prices may need a quest or loyalty level; buckshot damage is the total of all pellets.
+        Stats from tarkov.dev. Trader prices are only shown when your recorded loyalty level, quest unlock and the per-restock purchase limit allow buying that offer. Flea averages are only shown when the flea market's minimum level and this item's own level allow buying it. Anything else is labelled as a reference you cannot pay. Buckshot damage is the total of all pellets.
       </p>
     </div>
   )
