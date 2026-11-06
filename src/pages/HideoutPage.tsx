@@ -1,12 +1,27 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Check, Clock, Lock } from 'lucide-react'
 import { useGameData, useHideout, useItems } from '../api/hooks'
 import type { HideoutLevel, HideoutStation } from '../api/types'
 import { ErrorPanel, LoadingPanel } from '../components/DataState'
 import { SegmentButton } from '../components/SegmentButton'
+import { BunkerView } from '../hideout/BunkerView'
+import { useProgressContext } from '../hooks/useProgressContext'
 import { formatDuration } from '../lib/economy'
+import { bonusText, stationInfo } from '../lib/hideoutState'
+import { useHideoutTimers } from '../store/hideoutTimers'
 import { useInventoryStore, useModeInventory } from '../store/inventory'
 import { useProgressStore } from '../store/progress'
+
+type View = 'bunker' | 'stations' | 'build'
+const VIEW_KEY = 'tc-hideout-view'
+function loadView(): View {
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    return v === 'stations' || v === 'build' ? v : 'bunker'
+  } catch {
+    return 'bunker'
+  }
+}
 
 interface NextLevelInfo {
   station: HideoutStation
@@ -36,7 +51,7 @@ function LevelRequirements({ level, stations, stationLevels, traderName, items, 
               <li key={r.itemId + r.count} className="flex items-center gap-2 rounded bg-surface px-2 py-1">
                 {item?.iconLink && <img src={item.iconLink} alt="" className="h-6 w-6 object-contain" loading="lazy" />}
                 <span className="min-w-0 flex-1 truncate">{item?.name ?? '…'}</span>
-                <span className={`tabular-nums ${r.count !== null && have >= r.count ? 'text-success' : 'text-ink-muted'}`}>{r.count === null ? `${have}/?` : `${Math.min(have, r.count)}/${r.count}`}{r.foundInRaid === true ? ' FIR' : r.foundInRaid === null ? ' · FIR unknown' : ''}</span>
+                <span className={`tabular-nums ${r.count !== null && have >= r.count && (r.count === 0 || r.foundInRaid === false) ? 'text-success' : 'text-ink-muted'}`}>{r.count === null ? `${have}/?` : `${Math.min(have, r.count)}/${r.count}`}{r.foundInRaid === true ? ' FIR' : r.foundInRaid === null ? ' · FIR unknown' : ''}</span>
               </li>
             )
           })}
@@ -62,7 +77,7 @@ function LevelRequirements({ level, stations, stationLevels, traderName, items, 
       </div>
       {level.bonuses.length > 0 && (
         <div className="text-ink-dim">
-          Gives: {level.bonuses.map((b) => `${b.name}${b.value != null ? ` ${b.value > 0 && b.type !== 'TextBonus' ? '+' : ''}${b.value}${/Percent|Speed|Rate|Fee|Energy|Hydration|Regeneration|Debuff|Experience/i.test(b.type) ? '%' : ''}` : ''}`).join(' · ')}
+          Gives: {level.bonuses.map(bonusText).join(' · ')}
         </div>
       )}
     </div>
@@ -76,13 +91,48 @@ export function HideoutPage() {
   const gameMode = useProgressStore((s) => s.gameMode)
   const inventory = useModeInventory()
   const setStationLevel = useInventoryStore((s) => s.setStationLevel)
-  const [view, setView] = useState<'stations' | 'build'>('stations')
+  const setCollectedFor = useInventoryStore((s) => s.setCollected)
+  const clearTimer = useHideoutTimers((s) => s.clear)
+  const progress = useProgressContext()
+  const [view, setViewState] = useState<View>(loadView)
+  const setView = (v: View) => {
+    setViewState(v)
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      /* private window: only this visit */
+    }
+  }
+  // Setting a level by hand ends that station's build timer.
+  const setLevel = useCallback(
+    (stationId: string, level: number) => {
+      setStationLevel(gameMode, stationId, level)
+      clearTimer(gameMode, stationId)
+    },
+    [gameMode, setStationLevel, clearTimer],
+  )
+  const setCollected = useCallback((itemId: string, count: number) => setCollectedFor(gameMode, itemId, count), [gameMode, setCollectedFor])
+  // Both native and web catalogs can repeat a station's previous level. It's implicit in
+  // the level being upgraded, so remove it from the display without changing planner data.
+  const stations = useMemo(
+    () => (hideout.data ?? []).map((station) => ({
+      ...station,
+      levels: station.levels.map((level) => ({
+        ...level,
+        stationLevelRequirements: level.stationLevelRequirements.filter((requirement) => requirement.stationId !== station.id),
+      })),
+    })),
+    [hideout.data],
+  )
+  const infos = useMemo(
+    () => stationInfo(stations, inventory.stationLevels, inventory.collected, progress?.traderLevel ?? null),
+    [stations, inventory.stationLevels, inventory.collected, progress?.traderLevel],
+  )
 
-  const stationsById = useMemo(() => Object.fromEntries((hideout.data ?? []).map((s) => [s.id, s])), [hideout.data])
+  const stationsById = useMemo(() => Object.fromEntries(stations.map((s) => [s.id, s])), [stations])
   const traderName = (id: string) => gameData.data?.traders.find((t) => t.id === id)?.name ?? 'Trader'
 
   const nextLevels = useMemo<NextLevelInfo[]>(() => {
-    if (!hideout.data) return []
     const levels = inventory.stationLevels
     const out: NextLevelInfo[] = []
     // depth = how many station upgrades must happen before this one (rough ordering)
@@ -99,7 +149,7 @@ export function HideoutPage() {
       }
       return d
     }
-    for (const station of hideout.data) {
+    for (const station of stations) {
       const cur = levels[station.id] ?? 0
       const next = station.levels.find((l) => l.level === cur + 1)
       if (!next) continue
@@ -109,11 +159,10 @@ export function HideoutPage() {
       out.push({ station, level: next, blockedBy, prereqsMet: blockedBy.length === 0, depth: depthOf(next) })
     }
     return out.sort((a, b) => Number(!a.prereqsMet) - Number(!b.prereqsMet) || a.depth - b.depth || a.station.name.localeCompare(b.station.name))
-  }, [hideout.data, inventory.stationLevels, stationsById])
+  }, [stations, inventory.stationLevels, stationsById])
 
   if (hideout.isPending) return <LoadingPanel label="hideout" />
   if (hideout.isError && !hideout.data) return <ErrorPanel error={hideout.error} onRetry={() => void hideout.refetch()} />
-  const stations = hideout.data ?? []
   const builtLevels = stations.reduce((n, s) => n + (inventory.stationLevels[s.id] ?? 0), 0)
   const totalLevels = stations.reduce((n, s) => n + s.levels.length, 0)
 
@@ -123,16 +172,31 @@ export function HideoutPage() {
         <div>
           <h1 className="text-2xl font-semibold">Hideout</h1>
           <p className="text-sm text-ink-muted">
-            Set each station's current level ({gameMode === 'pve' ? 'PvE' : 'PvP'}). Items for the next levels appear in Item Collection automatically. {builtLevels}/{totalLevels} levels built.
+            {view === 'bunker'
+              ? `Your ${gameMode === 'pve' ? 'PvE' : 'PvP'} bunker. Click a station to set its level, see what the next one needs and start a build timer.`
+              : `Set each station's current level (${gameMode === 'pve' ? 'PvE' : 'PvP'}). Items for the next levels appear in Item Collection automatically. ${builtLevels}/${totalLevels} levels built.`}
           </p>
         </div>
         <div className="flex rounded border border-line bg-surface-2 p-0.5" role="group" aria-label="View">
+          <SegmentButton label="Bunker" active={view === 'bunker'} onClick={() => setView('bunker')} />
           <SegmentButton label="Stations" active={view === 'stations'} onClick={() => setView('stations')} />
           <SegmentButton label="Build order" active={view === 'build'} onClick={() => setView('build')} />
         </div>
       </div>
 
-      {view === 'stations' ? (
+      {view === 'bunker' ? (
+        <BunkerView
+          stations={stations}
+          infos={infos}
+          gameMode={gameMode}
+          items={items.data?.items}
+          traders={gameData.data?.traders ?? []}
+          traderLevel={progress?.traderLevel ?? null}
+          collected={inventory.collected}
+          setLevel={setLevel}
+          setCollected={setCollected}
+        />
+      ) : view === 'stations' ? (
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {stations.map((station) => {
             const cur = inventory.stationLevels[station.id] ?? 0
@@ -148,7 +212,7 @@ export function HideoutPage() {
                   </div>
                   <label className="flex items-center gap-1.5 text-xs text-ink-muted">
                     Level
-                    <select value={cur} onChange={(e) => setStationLevel(gameMode, station.id, Number(e.target.value))} aria-label={`${station.name} level`} className="rounded border border-line bg-surface px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none">
+                    <select value={cur} onChange={(e) => setLevel(station.id, Number(e.target.value))} aria-label={`${station.name} level`} className="rounded border border-line bg-surface px-2 py-1 text-sm text-ink focus:border-accent focus:outline-none">
                       {Array.from({ length: max + 1 }, (_, i) => (
                         <option key={i} value={i}>{i}</option>
                       ))}
@@ -179,7 +243,7 @@ export function HideoutPage() {
                   ) : (
                     <span className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] uppercase text-ink-muted">Needs {n.blockedBy.join(', ')}</span>
                   )}
-                  <button type="button" onClick={() => setStationLevel(gameMode, n.station.id, n.level.level)} className="btn ml-auto !px-2 !py-0.5 !text-[11px]">
+                  <button type="button" onClick={() => setLevel(n.station.id, n.level.level)} className="btn ml-auto !px-2 !py-0.5 !text-[11px]">
                     <Check className="h-3.5 w-3.5" /> Mark built
                   </button>
                 </div>

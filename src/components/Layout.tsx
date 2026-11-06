@@ -19,6 +19,7 @@ import { useInventoryStore } from '../store/inventory'
 import { WipeBanner } from '../desktop/WipeBanner'
 import { ItemLookup } from './ItemLookup'
 import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
+import { HideoutTimerWatcher } from '../hideout/HideoutTimerWatcher'
 import { AutoUntickCompleted } from '../maps/AutoUntick'
 import { WikiTickCarryOver } from '../quests/WikiTickCarryOver'
 import { RaidBriefingHost } from '../briefing/RaidBriefingHost'
@@ -92,6 +93,9 @@ export function Layout() {
         <StoryTimerWatcher />
         <AutoUntickCompleted />
         <WikiTickCarryOver />
+      </ErrorBoundary>
+      <ErrorBoundary area="Hideout timers" quiet>
+        <HideoutTimerWatcher />
       </ErrorBoundary>
       <ErrorBoundary area="Raid briefing" quiet>
         {/* Briefs when the game log (desktop) says a map is loading. */}

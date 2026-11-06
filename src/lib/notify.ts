@@ -4,7 +4,7 @@
  */
 import { prefs } from '../store/prefs'
 
-export type NotifyKind = 'trader' | 'story' | 'test'
+export type NotifyKind = 'trader' | 'story' | 'hideout' | 'test'
 
 export function notificationsAllowed(kind: NotifyKind): boolean {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false

@@ -448,7 +448,7 @@ function NotificationsSection() {
   const permText =
     permission === 'granted' ? 'Allowed' : permission === 'denied' ? 'Blocked (allow it in your browser or Windows settings)' : permission === 'unsupported' ? 'Not supported here' : 'Not asked yet'
   return (
-    <Section id="notifications" title="Notifications & sounds" icon={Bell} keywords="notification alert popup trader restock story timer toast sound beep volume">
+    <Section id="notifications" title="Notifications & sounds" icon={Bell} keywords="notification alert popup trader restock story timer hideout build toast sound beep volume">
       <Row label="System notifications" hint={`Pop-ups from Windows or the browser. Permission: ${permText}.`}>
         <div className="flex items-center gap-2">
           <button
