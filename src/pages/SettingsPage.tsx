@@ -41,6 +41,7 @@ import { AboutSection } from '../components/AboutSection'
 import { MAX_IMPORT_BYTES, buildProgressFile, importProgressFile, parseImportJson } from '../lib/progressFile'
 import { askNotificationPermission, notificationPermission, notify } from '../lib/notify'
 import { formatDateTime, formatRoubles } from '../lib/format'
+import { FONTS } from '../lib/fonts'
 import { JSON_API_BASE } from '../api/client'
 import { clearOfflineCache, retryCachePersistence, useCachePersistenceStatus } from '../api/persist'
 import type { DesktopSettings, UpdateMode } from '../shared/desktop-api'
@@ -166,6 +167,7 @@ function useDesktopSetting<K extends keyof DesktopSettings>(key: K, fallback: De
 function AppearanceSection() {
   const [theme, setTheme] = usePref('theme')
   const [uiScale, setUiScale] = usePref('uiScale')
+  const [font, setFont] = usePref('fontFamily')
   const [density, setDensity] = usePref('density')
   const [reduceMotion, setReduceMotion] = usePref('reduceMotion')
   return (
@@ -191,9 +193,26 @@ function AppearanceSection() {
           ))}
         </div>
       </Row>
-      <Row label="Text size" hint="Makes all text and controls bigger or smaller.">
+      <Row label="Font" hint="Applies to the app and the search bar. Uses fonts already installed on your device." wide>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {FONTS.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              onClick={() => setFont(choice.id)}
+              aria-pressed={font === choice.id}
+              className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${font === choice.id ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-ink-dim'}`}
+            >
+              <div className="truncate text-lg leading-tight" style={{ fontFamily: choice.stack }}>Aa Kappa 123</div>
+              <div className="mt-1 text-xs font-semibold" style={{ fontFamily: choice.stack }}>{choice.label}</div>
+              <div className="text-[11px] text-ink-muted">{choice.note}</div>
+            </button>
+          ))}
+        </div>
+      </Row>
+      <Row label="Text size" hint="Makes text and controls bigger or smaller. The search bar has its own size setting.">
         <div className="flex items-center gap-2">
-          <Slider value={uiScale} min={80} max={140} step={5} onChange={setUiScale} label="Text size" />
+          <Slider value={uiScale} min={70} max={160} step={5} onChange={setUiScale} label="Text size" />
           {uiScale !== 100 && (
             <button type="button" onClick={() => setUiScale(100)} className="text-xs text-accent underline">
               Reset

@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { FONT_IDS, type FontChoice } from '../lib/fonts'
 
 export const THEMES = [
   { id: 'tarkov', label: 'Tarkov', note: 'Warm dark, the default', swatch: ['#0c0c0b', '#1c1c19', '#c7a66b'] },
@@ -52,6 +53,7 @@ export interface Prefs {
   theme: ThemeId
   /** Text and controls size, percent. */
   uiScale: number
+  fontFamily: FontChoice
   density: Density
   reduceMotion: boolean
   // General
@@ -103,6 +105,7 @@ export interface Prefs {
 export const DEFAULT_PREFS: Prefs = {
   theme: 'tarkov',
   uiScale: 100,
+  fontFamily: 'system',
   density: 'comfortable',
   reduceMotion: false,
   landingPage: '/',
@@ -145,7 +148,8 @@ const oneOf = (...xs: readonly unknown[]) => (v: unknown) => xs.includes(v)
 const isBool = (v: unknown) => typeof v === 'boolean'
 const VALID: { [K in keyof Prefs]: (v: unknown) => boolean } = {
   theme: oneOf(...THEMES.map((t) => t.id)),
-  uiScale: clampNum(80, 140),
+  uiScale: clampNum(70, 160),
+  fontFamily: oneOf(...FONT_IDS),
   density: oneOf('comfortable', 'compact'),
   reduceMotion: isBool,
   landingPage: (v) => typeof v === 'string' && v.startsWith('/') && v.length < 40,
