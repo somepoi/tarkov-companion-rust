@@ -21,7 +21,6 @@ import { ItemLookup } from './ItemLookup'
 import { StoryTimerWatcher } from '../story/StoryTimerWatcher'
 import { AutoUntickCompleted } from '../maps/AutoUntick'
 import { WikiTickCarryOver } from '../quests/WikiTickCarryOver'
-import { RaidResultPrompt } from '../stats/RaidResultPrompt'
 import { RaidBriefingHost } from '../briefing/RaidBriefingHost'
 import { PositionListener, usePositionStore } from '../maps/position'
 import { AutoBackup } from '../desktop/HealthAndBackups'
@@ -49,7 +48,6 @@ export function Layout() {
   const navigate = useNavigate()
   const landingPage = usePrefs((s) => s.landingPage)
   const hiddenTabs = usePrefs((s) => s.hiddenTabs)
-  const raidResultPrompt = usePrefs((s) => s.raidResultPrompt)
   const liveTickToast = usePrefs((s) => s.liveTickToast)
   const autoBackup = usePrefs((s) => s.autoBackup)
   // Number and time formats are read while drawing: re-draw the page when they change.
@@ -101,7 +99,6 @@ export function Layout() {
       </ErrorBoundary>
       {isDesktop() && (
         <ErrorBoundary area="Game log features" quiet>
-          {raidResultPrompt && <RaidResultPrompt />}
           <PositionListener />
           {autoBackup && <AutoBackup />}
           {isDesktop() && <SyncReviewDialog />}

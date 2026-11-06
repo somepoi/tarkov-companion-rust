@@ -80,7 +80,6 @@ export interface Prefs {
   notifications: boolean
   traderRestockLeadMinutes: number
   storyTimerAlerts: boolean
-  raidResultPrompt: boolean
   liveTickToast: boolean
   soundVolume: number
   // Maps
@@ -125,7 +124,6 @@ export const DEFAULT_PREFS: Prefs = {
   notifications: true,
   traderRestockLeadMinutes: 2,
   storyTimerAlerts: true,
-  raidResultPrompt: true,
   liveTickToast: true,
   soundVolume: 50,
   markerScale: 100,
@@ -173,7 +171,6 @@ const VALID: { [K in keyof Prefs]: (v: unknown) => boolean } = {
   notifications: isBool,
   traderRestockLeadMinutes: clampNum(0, 30),
   storyTimerAlerts: isBool,
-  raidResultPrompt: isBool,
   liveTickToast: isBool,
   soundVolume: clampNum(0, 100),
   markerScale: clampNum(60, 200),

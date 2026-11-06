@@ -440,7 +440,6 @@ function NotificationsSection() {
   const [enabled, setEnabled] = usePref('notifications')
   const [lead, setLead] = usePref('traderRestockLeadMinutes')
   const [story, setStory] = usePref('storyTimerAlerts')
-  const [raidPrompt, setRaidPrompt] = usePref('raidResultPrompt')
   const [toast, setToast] = usePref('liveTickToast')
   const [volume, setVolume] = usePref('soundVolume')
   const sounds = useTimersStore((s) => s.soundsEnabled)
@@ -449,7 +448,7 @@ function NotificationsSection() {
   const permText =
     permission === 'granted' ? 'Allowed' : permission === 'denied' ? 'Blocked (allow it in your browser or Windows settings)' : permission === 'unsupported' ? 'Not supported here' : 'Not asked yet'
   return (
-    <Section id="notifications" title="Notifications & sounds" icon={Bell} keywords="notification alert popup trader restock story timer raid result toast sound beep volume">
+    <Section id="notifications" title="Notifications & sounds" icon={Bell} keywords="notification alert popup trader restock story timer toast sound beep volume">
       <Row label="System notifications" hint={`Pop-ups from Windows or the browser. Permission: ${permText}.`}>
         <div className="flex items-center gap-2">
           <button
@@ -485,9 +484,6 @@ function NotificationsSection() {
       </Row>
       {isDesktop() && (
         <>
-          <Row label="Ask for the raid result" hint="After each raid, a small card asks how it went (for My stats → Raid log).">
-            <Switch checked={raidPrompt} onChange={setRaidPrompt} label="Ask for the raid result" />
-          </Row>
           <Row label="Show quests ticked from the game log" hint="A short message with Undo whenever a quest is ticked automatically.">
             <Switch checked={toast} onChange={setToast} label="Show auto-tick messages" />
           </Row>
@@ -733,7 +729,7 @@ function ProgressSection() {
       if (window.desktop?.saveExport) {
         const result = await window.desktop.saveExport({ kind: 'progress', name, text }, () => exportAlive.current)
         if (exportAlive.current) setMessage({ kind: 'ok', text: result === 'saved'
-          ? 'Progress file saved (quests, item collection, keys, hideout, map drawings, story chapters and raid log).'
+          ? 'Progress file saved (quests, item collection, keys, hideout, map drawings, story chapters and legacy raid records).'
           : 'Export cancelled; no progress file was saved.' })
       } else {
         const url = URL.createObjectURL(blob)
@@ -767,7 +763,7 @@ function ProgressSection() {
       <Row label="Game edition (starting trader reputation)" hint="Trader loyalty levels are worked out from this, the reputation your finished quests gave, and your level. Prepare for Escape, Edge of Darkness and The Unheard start every main trader at +0.2; Standard and Left Behind at 0.">
         <Segmented value={startingReputation === 0.2 ? 'bonus' : 'none'} onChange={(v) => setPref('startingReputation', v === 'bonus' ? 0.2 : 0)} label="Starting trader reputation" options={[{ value: 'none', label: 'Standard / Left Behind' }, { value: 'bonus', label: 'PfE / EoD / Unheard (+0.2)' }]} />
       </Row>
-      <Row label="Export or import progress" hint="One file with your quests, items, keys, hideout, drawings, story and raid log. Use it to move to another PC or keep a copy.">
+      <Row label="Export or import progress" hint="One file with your quests, items, keys, hideout, drawings, story and any legacy raid records. Use it to move to another PC or keep a copy.">
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => void handleExport()} disabled={exporting} className="btn">
             <Download className="h-4 w-4" /> {exporting ? 'Saving…' : 'Export'}

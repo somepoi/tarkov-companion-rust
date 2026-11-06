@@ -7,7 +7,6 @@ import { isDesktop } from '../desktop/useDesktop'
 import { formatDateTime, formatNumber, formatRoubles } from '../lib/format'
 import { computeLogStats, formatMinutes, type LogStats } from '../lib/logStats'
 import { useProgressStore } from '../store/progress'
-import { RaidLog } from '../stats/RaidLog'
 
 type Range = 'all' | '30' | '7'
 const DAY = 24 * 3_600_000
@@ -235,8 +234,6 @@ export function StatsPage() {
               <RatingChart points={stats.rating} />
             </Card>
           </div>
-
-          <RaidLog raids={stats.raids} mode={mode} mapName={mapName} mapNames={[...new Set((gameData.data?.maps ?? []).map((m) => m.name))].sort()} />
 
           <section className="rounded-lg border border-line bg-surface-2 p-4">
             <div className="flex flex-wrap items-start gap-3">
