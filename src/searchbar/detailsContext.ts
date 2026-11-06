@@ -27,6 +27,9 @@ export type View =
   | { kind: 'story'; id: string | null }
   | { kind: 'settings' }
   | { kind: 'help' }
+  /** The last stash snip: what was found, and what it is worth (see stashScan.ts). */
+  | { kind: 'scanItems' }
+  | { kind: 'scanValues' }
 
 /** Side panels show the same things. */
 export type Panel = View

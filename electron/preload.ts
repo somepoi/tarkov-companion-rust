@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PackName, PackProgress, PlayerPosition, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
+import type { BackfillProgress, DesktopApi, DesktopSettings, GameEvent, PackName, PackProgress, PlayerPosition, SearchBarFrame, UpdateStatus, WatcherState, WipeEvent } from '../src/shared/desktop-api'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: Electron.IpcRendererEvent, payload: T) => cb(payload)
@@ -14,13 +14,12 @@ const api: DesktopApi = {
   platform: process.platform,
   appVersion: process.argv.find((a) => a.startsWith('--tc-version='))?.slice('--tc-version='.length) ?? '',
   windowKind: process.argv.includes('--tc-window=searchbar') ? 'searchbar' : 'main',
-  setSearchBarSize: (width, height) => ipcRenderer.invoke('searchbar:size', width, height),
   openInApp: (to) => ipcRenderer.invoke('searchbar:open', to),
-  moveSearchBar: (dx, dy) => ipcRenderer.invoke('searchbar:move', dx, dy),
-  searchBarMoved: () => ipcRenderer.invoke('searchbar:moved'),
+  getSearchBarFrame: () => ipcRenderer.invoke('searchbar:frame'),
+  onSearchBarFrame: (cb) => subscribe<SearchBarFrame>('searchbar:frame', cb),
+  searchBarMoved: (x, y) => ipcRenderer.invoke('searchbar:moved', x, y),
   searchBarHome: () => ipcRenderer.invoke('searchbar:home'),
-  setSearchBarPassthrough: (on) => ipcRenderer.invoke('searchbar:passthrough', on),
-  onSearchBarLayout: (cb) => subscribe<{ left: boolean; up: boolean }>('searchbar:layout', cb),
+  setSearchBarShape: (rects) => ipcRenderer.invoke('searchbar:shape', rects),
   setSearchBarLocked: (on) => ipcRenderer.invoke('searchbar:lock', on),
   isSearchBarLocked: () => ipcRenderer.invoke('searchbar:locked'),
   onSearchBarLocked: (cb) => subscribe<boolean>('searchbar:locked', cb),
@@ -29,6 +28,9 @@ const api: DesktopApi = {
   onSearchBarFocus: (cb) => subscribe<void>('searchbar:focus', () => cb()),
   onSearchBarMap: (cb) => subscribe<void>('searchbar:map', () => cb()),
   searchBarCorner: (corner) => ipcRenderer.invoke('searchbar:corner', corner),
+  startSnip: () => ipcRenderer.invoke('searchbar:snip'),
+  endSnip: () => ipcRenderer.invoke('searchbar:snipEnd'),
+  onSnipCancel: (cb) => subscribe<void>('searchbar:snipCancel', () => cb()),
   getState: () => ipcRenderer.invoke('watcher:getState'),
   ensurePack: (name: PackName) => ipcRenderer.invoke('pack:ensure', name),
   onPackProgress: (cb) => subscribe<PackProgress>('pack:progress', cb),

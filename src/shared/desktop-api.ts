@@ -222,6 +222,12 @@ export interface PackProgress {
   state: 'downloading' | 'installing' | 'done'
 }
 
+/** The search bar's window and glass (screen pixels). */
+export interface SearchBarFrame {
+  frame: { x: number; y: number; width: number; height: number }
+  anchor: { x: number; y: number }
+}
+
 export interface DesktopApi {
   /** Native user-selected export. isCurrent is checked after the picker closes. */
   saveExport?: (request: { kind: 'progress' | 'inventory-json' | 'inventory-csv'; name: string; text: string }, isCurrent?: () => boolean) => Promise<'saved' | 'cancelled'>
@@ -239,20 +245,21 @@ export interface DesktopApi {
    * They never block the app; Settings → Desktop app shows them.
    */
   startupWarnings?: string[]
-  /** Search bar only: its size once drawn (the window follows it). */
-  setSearchBarSize: (width: number, height: number) => Promise<void>
-  setSearchBarRegions?: (regions: { x: number; y: number; width: number; height: number }[]) => Promise<void>
   searchBarReady?: () => Promise<void>
-  onSearchBarGeometry?: (cb: () => void) => () => void
   onSearchBarError?: (cb: (message: string) => void) => () => void
   reportSearchBarError?: (message: string) => Promise<void>
-  /** Search bar only: drag the glass by this many pixels; `searchBarMoved` saves where it ended. */
-  moveSearchBar: (dx: number, dy: number) => Promise<void>
-  searchBarMoved: () => Promise<void>
+  /**
+   * Search bar only: its window (it covers the work area of one screen) and the glass's top-left
+   * corner, in screen pixels. `onSearchBarFrame` follows changes (another screen, a corner, home).
+   */
+  getSearchBarFrame: () => Promise<SearchBarFrame | null>
+  onSearchBarFrame: (cb: (f: SearchBarFrame) => void) => () => void
+  /** Search bar only: the glass was dragged to here (screen pixels); dropped on another screen, the bar moves there. */
+  searchBarMoved: (x: number, y: number) => Promise<void>
   /** Search bar only: back to the top left of the main screen. */
   searchBarHome: () => Promise<void>
-  /** Search bar only: true = clicks go through the window to the game (the see-through parts). */
-  setSearchBarPassthrough: (on: boolean) => Promise<void>
+  /** Search bar only: the parts it draws (window pixels); only they take the mouse, clicks elsewhere go to the game. */
+  setSearchBarShape: (rects: { x: number; y: number; width: number; height: number }[]) => Promise<void>
   /** Search bar only: lock (every click goes through to the game) or unlock; hide; hand the keyboard back. */
   setSearchBarLocked: (on: boolean) => Promise<void>
   isSearchBarLocked: () => Promise<boolean>
@@ -265,8 +272,15 @@ export interface DesktopApi {
   onSearchBarFocus: (cb: () => void) => () => void
   /** Search bar only: snap the glass into a screen corner. */
   searchBarCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => Promise<void>
-  /** Search bar only: which way the window grows from the glass (it flips near a screen edge). */
-  onSearchBarLayout: (cb: (flip: { left: boolean; up: boolean }) => void) => () => void
+  /**
+   * Search bar only: picture of the bar's screen (taken with the bar hidden), after which the bar
+   * covers that screen until `endSnip` so a box can be dragged; `scale` = picture pixels per page
+   * pixel. null when it cannot start (locked, already snipping).
+   */
+  startSnip: () => Promise<{ png: Uint8Array; scale: number } | null>
+  endSnip: () => Promise<void>
+  /** Search bar only: the snip was stopped from outside (another window clicked, too long). */
+  onSnipCancel: (cb: () => void) => () => void
   /** Search bar only: show the app window on this page. */
   openInApp: (to: string) => Promise<void>
   /** Makes sure a content pack is downloaded and installed (no-op in development). */

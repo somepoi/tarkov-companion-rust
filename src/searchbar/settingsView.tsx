@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowDownLeft, ArrowDownRight, ArrowUpLeft, ArrowUpRight, EyeOff, Keyboard, Lock } from 'lucide-react'
+import { ArrowDownLeft, ArrowDownRight, ArrowUpLeft, ArrowUpRight, EyeOff, Keyboard, LayoutGrid, Lock } from 'lucide-react'
 import type { DesktopSettings } from '../shared/desktop-api'
 import { ActionButton } from './details'
 import { LIMITS, useOverlayPrefs, type OverlayPrefs } from './overlayPrefs'
@@ -138,7 +138,12 @@ export function SettingsView({ onPreview }: { onPreview: (on: boolean) => void }
             <ArrowDownRight className="h-3 w-3" /> Bottom right
           </ActionButton>
         </div>
-        <p className="text-[10px] text-white/45">Or drag the magnifying glass (or the grip on the left of the bar) anywhere, on any screen.</p>
+        <p className="text-[10px] text-white/45">Or drag the magnifying glass (or the grip on the left of the bar) anywhere, on any screen. Cards, the map and side panels each have a move bar on top and a resize corner bottom right.</p>
+        <div className="flex flex-wrap gap-1">
+          <ActionButton onClick={() => useOverlayPrefs.getState().reset('boxes')} title="Cards, the map and side panels open next to the glass again, at their usual size">
+            <LayoutGrid className="h-3 w-3" /> Put boxes back next to the glass
+          </ActionButton>
+        </div>
         <div className="flex flex-wrap gap-1">
           <ActionButton onClick={() => void window.desktop?.setSearchBarLocked(true)} title="Every click goes through to the game">
             <Lock className="h-3 w-3" /> Lock (clicks go through)
@@ -174,6 +179,7 @@ export function SettingsView({ onPreview }: { onPreview: (on: boolean) => void }
         <Check label="Scav cooldown" k="stripScav" hint="The Dashboard's scav timer." />
         <Check label="Story wait timer" k="stripStory" hint="A wait started on the Story tab (shown while one runs)." />
         <Check label="Next trader restock" k="stripRestock" />
+        <Check label="Stash scan button (camera)" k="scanButton" hint="Drag a box over stash slots: keep or sell, and what they are worth." />
       </Group>
 
       <Group title="In raid">

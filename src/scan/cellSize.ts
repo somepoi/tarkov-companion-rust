@@ -24,3 +24,13 @@ export function rememberCellSize(pitch: number, sure: number, total: number): vo
     // storage unavailable: the scanner just measures every image
   }
 }
+
+/** The user fixed the grid by hand (Manual tuning): keep this cell size for the next snips. */
+export function keepCellSize(pitch: number): void {
+  if (!(pitch >= 20 && pitch <= 300)) return
+  try {
+    localStorage.setItem(KEY, pitch.toFixed(3))
+  } catch {
+    // storage unavailable: the scanner just measures every image
+  }
+}

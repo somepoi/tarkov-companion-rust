@@ -63,6 +63,7 @@ pub fn run() {
             desktop::read_game_screenshot,
             desktop::read_pack_resource,
             desktop::capture_screen,
+            desktop::start_searchbar_snip,
             desktop::archive_screenshot,
             desktop::read_archived_screenshot,
             inventory::inventory_call,

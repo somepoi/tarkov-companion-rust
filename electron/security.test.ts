@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { canonicalPath, cleanSettingsPatch, isAccelerator, isAppPath, isSafeDirectory, isSameFileUrl, isScreenshotName, isWebUrl } from './security'
+import { canonicalPath, cleanSettingsPatch, cleanShapeRects, isAccelerator, isAppPath, isSafeDirectory, isSameFileUrl, isScreenshotName, isWebUrl } from './security'
 
 describe('settings from the page', () => {
   it('keeps only known fields with valid values', () => {
@@ -97,5 +97,17 @@ describe('search bar links', () => {
     expect(isAppPath('/settings')).toBe(false)
     expect(isAppPath('/flea?q=<script>')).toBe(false)
     expect(isAppPath(42)).toBe(false)
+  })
+})
+
+describe('cleanShapeRects', () => {
+  it('keeps whole-pixel rectangles inside the window', () => {
+    expect(cleanShapeRects([{ x: 10.4, y: -5, width: 100, height: 50 }, { x: 3000, y: 0, width: 10, height: 10 }], 2560, 1400)).toEqual([{ x: 10, y: 0, width: 100, height: 45 }])
+    expect(cleanShapeRects([], 100, 100)).toEqual([])
+  })
+  it('refuses anything malformed', () => {
+    expect(cleanShapeRects([{ x: 1, y: 1, width: 'a', height: 1 }], 100, 100)).toBeNull()
+    expect(cleanShapeRects('nope', 100, 100)).toBeNull()
+    expect(cleanShapeRects(Array.from({ length: 65 }, () => ({ x: 0, y: 0, width: 1, height: 1 })), 100, 100)).toBeNull()
   })
 })

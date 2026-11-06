@@ -12,6 +12,7 @@ use tauri::{
 const LABEL: &str = "searchbar";
 const GLASS: f64 = 48.0;
 const MARGIN: f64 = 16.0;
+const SNIP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 const LIMIT: f64 = 16_384.0;
 
 #[derive(Default, Clone)]
@@ -22,8 +23,9 @@ pub struct SearchBar {
 struct State {
     enabled: bool,
     anchor: (f64, f64),
-    size: (f64, f64),
-    flip: (bool, bool),
+    scale: f64,
+    snip: Option<u64>,
+    shape: Vec<Rect>,
     locked: bool,
     ready: bool,
     masked: bool,
@@ -35,8 +37,9 @@ impl Default for State {
         Self {
             enabled: false,
             anchor: (0.0, 0.0),
-            size: (GLASS, GLASS),
-            flip: (false, false),
+            scale: 1.0,
+            snip: None,
+            shape: Vec::new(),
             locked: false,
             ready: false,
             masked: false,
@@ -114,11 +117,19 @@ impl SearchBar {
         let controller = self.clone();
         let handle = app.clone();
         w.on_window_event(move |event| {
-            if matches!(event, tauri::WindowEvent::ScaleFactorChanged { .. }) {
+            if matches!(
+                event,
+                tauri::WindowEvent::ScaleFactorChanged { .. } | tauri::WindowEvent::Focused(false)
+            ) {
+                let blur = matches!(event, tauri::WindowEvent::Focused(false));
                 let controller = controller.clone();
                 let handle = handle.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    let _ = controller.refresh_geometry(&handle);
+                    if blur {
+                        let _ = controller.cancel_snip(&handle, None);
+                    } else {
+                        let _ = controller.refresh_geometry(&handle);
+                    }
                 });
             }
         });
@@ -130,10 +141,9 @@ impl SearchBar {
         let Some(w) = app.get_webview_window(LABEL) else {
             return Ok(());
         };
-        s.masked = false;
-        hide_native(&w)?;
+        finish_snip(&w, &mut s, true)?;
         place(app, &w, &mut s)?;
-        w.emit("searchbar-geometry", ()).map_err(err)
+        emit_frame(&w, &s)
     }
 
     pub fn command(&self, app: &AppHandle, channel: &str, args: &[Value]) -> Result<Value, String> {
@@ -142,23 +152,13 @@ impl SearchBar {
             .get_webview_window(LABEL)
             .ok_or("Search bar is disabled")?;
         match channel {
-            "searchbar:size" => {
-                s.size = (
-                    number(args.first(), 40.0, LIMIT)?,
-                    number(args.get(1), 40.0, LIMIT)?,
-                );
-                place(app, &w, &mut s)?;
-            }
-            "searchbar:move" => {
-                let monitor = nearest(app, s.anchor)?;
-                let dx = number(args.first(), -10_000.0, 10_000.0)?;
-                let dy = number(args.get(1), -10_000.0, 10_000.0)?;
-                s.anchor.0 += dx * monitor.scale_factor();
-                s.anchor.1 += dy * monitor.scale_factor();
-                place(app, &w, &mut s)?;
-            }
+            "searchbar:frame" => return frame(&w, &s),
             "searchbar:moved" => {
+                let x = number(args.first(), -1_000_000.0, 1_000_000.0)?;
+                let y = number(args.get(1), -1_000_000.0, 1_000_000.0)?;
+                s.anchor = (x * s.scale, y * s.scale);
                 place(app, &w, &mut s)?;
+                emit_frame(&w, &s)?;
                 return Ok(anchor(&s));
             }
             "searchbar:home" => {
@@ -172,6 +172,7 @@ impl SearchBar {
                     area.position.y as f64 + MARGIN * monitor.scale_factor(),
                 );
                 place(app, &w, &mut s)?;
+                emit_frame(&w, &s)?;
                 return Ok(anchor(&s));
             }
             "searchbar:corner" => {
@@ -200,30 +201,32 @@ impl SearchBar {
                     },
                 );
                 place(app, &w, &mut s)?;
+                emit_frame(&w, &s)?;
                 return Ok(anchor(&s));
             }
-            "searchbar:regions" => {
+            "searchbar:shape" => {
                 let rects = rectangles(args.first())?;
-                let scale = w.scale_factor().map_err(err)?;
+                let scale = s.scale;
+                if s.snip.is_some() {
+                    return Ok(Value::Null);
+                }
                 if let Err(error) = native_region(&w, &rects, scale) {
                     s.masked = false;
                     let _ = hide_native(&w);
                     let _ = app.emit("searchbar-error", &error);
                     return Err(error);
                 }
+                s.shape = rects;
                 s.masked = true;
                 show_if_ready(&w, &s)?;
             }
             "searchbar:ready" => {
                 s.ready = true;
-                emit_layout(&w, &s)?;
+                emit_frame(&w, &s)?;
                 w.emit("searchbar-locked", s.locked).map_err(err)?;
                 show_if_ready(&w, &s)?;
             }
-            // Forwarded hover events are unavailable in Tauri. The native region replaces this.
-            "searchbar:passthrough" => {
-                boolean(args.first())?;
-            }
+            "searchbar:snipEnd" => finish_snip(&w, &mut s, false)?,
             "searchbar:lock" => {
                 set_locked(&w, &mut s, boolean(args.first())?)?;
             }
@@ -233,6 +236,7 @@ impl SearchBar {
                 if s.visible {
                     show_if_ready(&w, &s)?;
                 } else {
+                    finish_snip(&w, &mut s, true)?;
                     hide_native(&w)?;
                 }
             }
@@ -247,6 +251,73 @@ impl SearchBar {
         Ok(Value::Null)
     }
 
+    pub fn start_snip(&self, app: &AppHandle) -> Result<Vec<u8>, String> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT_SNIP: AtomicU64 = AtomicU64::new(1);
+        let mut s = self.inner.lock().map_err(|e| e.to_string())?;
+        let w = app
+            .get_webview_window(LABEL)
+            .ok_or("Search bar is disabled")?;
+        if s.locked || !s.visible || !s.ready || !s.masked || s.snip.is_some() {
+            return Ok(Vec::new());
+        }
+        let id = NEXT_SNIP.fetch_add(1, Ordering::Relaxed);
+        let position = w.inner_position().map_err(err)?;
+        let size = w.inner_size().map_err(err)?;
+        hide_native(&w)?;
+        // Give the compositor a frame to remove the overlay before reading its work area.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let result = crate::capture::capture_area(position.x, position.y, size.width, size.height)
+            .and_then(|png| {
+                native_region(
+                    &w,
+                    &[[
+                        0.0,
+                        0.0,
+                        size.width as f64 / s.scale,
+                        size.height as f64 / s.scale,
+                    ]],
+                    s.scale,
+                )?;
+                s.snip = Some(id);
+                show_if_ready(&w, &s)?;
+                focus_search(&w)?;
+                Ok(png)
+            });
+        if result.is_err() {
+            if s.snip.is_some() {
+                let _ = finish_snip(&w, &mut s, true);
+            } else {
+                let _ = show_if_ready(&w, &s);
+            }
+        } else {
+            let controller = self.clone();
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(SNIP_TIMEOUT).await;
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    controller.cancel_snip(&app, Some(id))
+                })
+                .await;
+            });
+        }
+        result
+    }
+
+    fn cancel_snip(&self, app: &AppHandle, expected: Option<u64>) -> Result<(), String> {
+        let mut s = self.inner.lock().map_err(|e| e.to_string())?;
+        if expected.is_some() && s.snip != expected {
+            return Ok(());
+        }
+        if let Some(w) = app.get_webview_window(LABEL) {
+            // Hiding for capture can queue a blur before the newly active snip takes focus.
+            if expected.is_some() || !w.is_focused().map_err(err)? {
+                finish_snip(&w, &mut s, true)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn hotkey(&self, app: &AppHandle, action: &str) -> Result<(), String> {
         let mut s = self.inner.lock().map_err(|e| e.to_string())?;
         if !s.enabled {
@@ -256,12 +327,14 @@ impl SearchBar {
             .get_webview_window(LABEL)
             .ok_or("Search bar window is unavailable")?;
         place(app, &w, &mut s)?;
+        emit_frame(&w, &s)?;
         match action {
             "show" => {
                 s.visible = !s.visible;
                 if s.visible {
                     show_if_ready(&w, &s)?;
                 } else {
+                    finish_snip(&w, &mut s, true)?;
                     hide_native(&w)?;
                 }
             }
@@ -304,9 +377,17 @@ fn boolean(v: Option<&Value>) -> Result<bool, String> {
 fn anchor(s: &State) -> Value {
     json!({"x": s.anchor.0.round() as i32, "y": s.anchor.1.round() as i32})
 }
-fn emit_layout(w: &WebviewWindow, s: &State) -> Result<(), String> {
-    w.emit("searchbar-layout", json!({"left":s.flip.0,"up":s.flip.1}))
-        .map_err(err)
+fn frame(w: &WebviewWindow, s: &State) -> Result<Value, String> {
+    let p = w.inner_position().map_err(err)?;
+    let size = w.inner_size().map_err(err)?;
+    Ok(json!({
+        "frame": {"x": p.x as f64 / s.scale, "y": p.y as f64 / s.scale, "width": size.width as f64 / s.scale, "height": size.height as f64 / s.scale},
+        "anchor": {"x": s.anchor.0 / s.scale, "y": s.anchor.1 / s.scale}
+    }))
+}
+
+fn emit_frame(w: &WebviewWindow, s: &State) -> Result<(), String> {
+    w.emit("searchbar-frame", frame(w, s)?).map_err(err)
 }
 
 fn nearest(app: &AppHandle, point: (f64, f64)) -> Result<tauri::Monitor, String> {
@@ -342,38 +423,38 @@ fn place(app: &AppHandle, w: &WebviewWindow, s: &mut State) -> Result<(), String
     let glass = GLASS * scale;
     s.anchor.0 = s.anchor.0.clamp(x, (right - glass).max(x)).round();
     s.anchor.1 = s.anchor.1.clamp(y, (bottom - glass).max(y)).round();
-    let width = (s.size.0 * scale)
-        .round()
-        .clamp(1.0, a.size.width.max(1) as f64) as u32;
-    let height = (s.size.1 * scale)
-        .round()
-        .clamp(1.0, a.size.height.max(1) as f64) as u32;
-    let flip = (
-        s.anchor.0 + width as f64 > right,
-        s.anchor.1 + height as f64 > bottom,
-    );
-    let pos = PhysicalPosition::new(
-        if flip.0 {
-            (s.anchor.0 + glass - width as f64).max(x)
-        } else {
-            s.anchor.0
-        } as i32,
-        if flip.1 {
-            (s.anchor.1 + glass - height as f64).max(y)
-        } else {
-            s.anchor.1
-        } as i32,
-    );
-    let size = PhysicalSize::new(width, height);
-    if w.outer_position().map_err(err)? != pos {
-        w.set_position(pos).map_err(err)?;
+    let pos = PhysicalPosition::new(a.position.x, a.position.y);
+    let size = PhysicalSize::new(a.size.width, a.size.height);
+    let moved = w.outer_position().map_err(err)? != pos;
+    let resized = w.inner_size().map_err(err)? != size;
+    if moved || resized || s.scale != scale {
+        s.masked = false;
+        s.shape.clear();
+        hide_native(w)?;
+        s.scale = scale;
+        if moved {
+            w.set_position(pos).map_err(err)?;
+        }
+        if resized {
+            w.set_size(size).map_err(err)?;
+        }
     }
-    if w.inner_size().map_err(err)? != size {
-        w.set_size(size).map_err(err)?;
+    Ok(())
+}
+
+fn finish_snip(w: &WebviewWindow, s: &mut State, cancelled: bool) -> Result<(), String> {
+    if s.snip.take().is_none() {
+        return Ok(());
     }
-    if s.flip != flip {
-        s.flip = flip;
-        emit_layout(w, s)?;
+    s.masked = false;
+    hide_native(w)?;
+    if cancelled {
+        w.emit("searchbar-snip-cancel", ()).map_err(err)?;
+    }
+    if !s.shape.is_empty() {
+        native_region(w, &s.shape, s.scale)?;
+        s.masked = true;
+        show_if_ready(w, s)?;
     }
     Ok(())
 }
@@ -381,6 +462,9 @@ fn place(app: &AppHandle, w: &WebviewWindow, s: &mut State) -> Result<(), String
 fn set_locked(w: &WebviewWindow, s: &mut State, locked: bool) -> Result<(), String> {
     if s.locked == locked {
         return w.emit("searchbar-locked", locked).map_err(err);
+    }
+    if locked {
+        finish_snip(w, s, true)?;
     }
     w.set_ignore_cursor_events(locked).map_err(err)?;
     s.locked = locked;

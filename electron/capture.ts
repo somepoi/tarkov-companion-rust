@@ -5,6 +5,7 @@
  * Nothing here touches the game: a screen capture is the same as Win+Shift+S.
  */
 import { app, desktopCapturer, screen } from 'electron'
+import type { Display } from 'electron'
 import fs from 'node:fs'
 import { isScreenshotName } from './security'
 import { installedPackDir, packsEnabled } from './packs'
@@ -12,16 +13,23 @@ import path from 'node:path'
 import type { PackName } from '../src/shared/desktop-api'
 
 /** Captures the display under the mouse at full resolution, as PNG bytes. */
-export async function captureScreenUnderCursor(): Promise<Uint8Array> {
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+export function captureScreenUnderCursor(): Promise<Uint8Array> {
+  return captureDisplay(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
+}
+
+/** Captures one display at full resolution, as PNG bytes. */
+export async function captureDisplay(display: Display): Promise<Uint8Array> {
   const size = {
     width: Math.round(display.size.width * display.scaleFactor),
     height: Math.round(display.size.height * display.scaleFactor),
   }
+  if (size.width * size.height > 40_000_000) throw new Error('Monitor dimensions exceed the capture memory budget')
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size })
-  const source = sources.find((s) => s.display_id === String(display.id)) ?? sources[0]
-  if (!source) throw new Error('No screen to capture')
-  return new Uint8Array(source.thumbnail.toPNG())
+  const source = sources.find((s) => s.display_id === String(display.id))
+  if (!source || source.thumbnail.isEmpty()) throw new Error('No picture is available for the selected screen')
+  const bytes = source.thumbnail.toPNG()
+  if (bytes.byteLength > 64 * 1024 * 1024) throw new Error('Screenshot exceeds the capture byte budget')
+  return new Uint8Array(bytes)
 }
 
 /** Where the game saves its own screenshots (Print Screen in game). */

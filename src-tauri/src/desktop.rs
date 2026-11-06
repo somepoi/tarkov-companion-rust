@@ -1234,6 +1234,31 @@ pub async fn read_game_screenshot(
 }
 
 #[tauri::command]
+pub async fn start_searchbar_snip(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<HostState>>,
+) -> Result<tauri::ipc::Response, NativeError> {
+    if window.label() != "searchbar" || benchmark_mode() {
+        return Err(error(
+            "window",
+            "Only the active searchbar can start a snip",
+        ));
+    }
+    let lease = crate::jobs::enter().map_err(|e| error("update_busy", e))?;
+    let searchbar = state.searchbar.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
+        searchbar
+            .start_snip(&app)
+            .map(tauri::ipc::Response::new)
+            .map_err(|message| error("capture", message))
+    })
+    .await
+    .map_err(|e| error("capture_job", e.to_string()))?
+}
+
+#[tauri::command]
 pub async fn capture_screen() -> Result<tauri::ipc::Response, NativeError> {
     let lease = crate::jobs::enter().map_err(|e| error("update_busy", e))?;
     tauri::async_runtime::spawn_blocking(move || {

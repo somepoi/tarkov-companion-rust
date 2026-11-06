@@ -144,3 +144,23 @@ export function isSameFileUrl(url: string, filePath: string): boolean {
 export function isAppPath(to: unknown): to is string {
   return typeof to === 'string' && to.length <= 300 && /^\/(?:flea|keys|quests|items|ammo|hideout|maps|story)?(?:\?[\w%=&.+-]*)?$/.test(to)
 }
+
+/**
+ * The search bar's window shape (the parts that take the mouse) as sent by its page: whole
+ * pixels inside the window, at most 64 rectangles. Anything malformed refuses the lot (null).
+ */
+export function cleanShapeRects(rects: unknown, width: number, height: number): { x: number; y: number; width: number; height: number }[] | null {
+  if (!Array.isArray(rects) || rects.length > 64) return null
+  const out: { x: number; y: number; width: number; height: number }[] = []
+  for (const r of rects) {
+    if (!r || typeof r !== 'object') return null
+    const { x, y, width: w, height: h } = r as Record<string, unknown>
+    if (![x, y, w, h].every((v) => typeof v === 'number' && Number.isFinite(v))) return null
+    const x0 = Math.max(0, Math.min(width, Math.round(x as number)))
+    const y0 = Math.max(0, Math.min(height, Math.round(y as number)))
+    const x1 = Math.max(0, Math.min(width, Math.round((x as number) + (w as number))))
+    const y1 = Math.max(0, Math.min(height, Math.round((y as number) + (h as number))))
+    if (x1 > x0 && y1 > y0) out.push({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 })
+  }
+  return out
+}

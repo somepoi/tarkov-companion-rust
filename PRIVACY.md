@@ -10,7 +10,7 @@ The native application uses the data directory associated with `io.github.somepo
 
 Settings progress exports/daily JSON backups cover interface progress stores. Stash Manager's full recovery bundles also include the database, retained evidence, settings and corrections. Unsaved edits are not saved-state backups. Exported copies remain in the chosen destination until you manage them. Profiles and backups are not encrypted by the app: treat them as personal files, especially on shared or cloud-synced disks.
 
-Desktop integrations read ordinary game text logs and screenshot filenames for local quest/raid/position tracking. Imported or user-triggered captured screenshots are processed locally. Position-screenshot recycling is separate from stash evidence and remains opt-in. No game-memory access, injection, traffic interception or gameplay input is implemented.
+Desktop integrations read ordinary game text logs and screenshot filenames for local quest/raid/position tracking. Imported screenshots and screenshots captured with the hotkey or search bar camera are processed locally. Search bar capture starts when you click the camera. Position-screenshot recycling is separate from stash evidence and remains opt-in. No game-memory access, injection, traffic interception or gameplay input is implemented.
 
 ## Remote requests
 

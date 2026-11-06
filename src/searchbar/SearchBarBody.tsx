@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, BookOpen, DoorOpen, ExternalLink, GripVertical, HelpCircle, Home, Lock, Map as MapIcon, Search, Settings2, Skull, Star, Store, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, DoorOpen, ExternalLink, GripHorizontal, GripVertical, HelpCircle, Home, Lock, Map as MapIcon, Search, Settings2, Skull, Star, Store, X } from 'lucide-react'
 import { readOnlyPersistOptions } from '../api/persist'
 import { queryClient } from '../api/queryClient'
 import type { StoryData } from '../api/storyWiki'
@@ -21,6 +21,8 @@ import { useMapOverlayStore } from '../store/mapOverlay'
 import { useProfile, useProgressStore } from '../store/progress'
 import { useStoryStore } from '../store/story'
 import { useUiStore } from '../store/ui'
+import { Box } from './Box'
+import { anchorStyle, boxPlace, GLASS, hangX, panelSpots } from './boxes'
 import { ItemDetails, OnMapBox, PictureDetails, QuestDetails, SideButton } from './details'
 import { DetailsContext, panelKey, type DetailsCtx, type KeyMap, type MapRequest, type View } from './detailsContext'
 import { useFleaFees } from '../hooks/useFleaFees'
@@ -30,17 +32,59 @@ import { useOverlayPrefs, type Ref } from './overlayPrefs'
 import type { Request } from './SearchBarApp'
 import { MAP_ROWS_EVENT, MAP_ROWS_KEY, RESTOCKS_KEY } from './SearchBarApp'
 import { hitKey, searchAll, type Hit, type SearchSource } from './search'
+import { useFrame } from './frameContext'
 import { SettingsView } from './settingsView'
 import { columnClass, type DragProps, type Flip } from './shell'
 import { useTickedOnMap } from './tickedOnMap'
+import { ScanItemsView, ScanValuesView } from './scanViews'
+import { runStashScan, useStashScan } from './stashScan'
 import { AmmoView, BossView, HelpView, HideoutView, PathView, QuestlineView, StationView, StoryView, TradersView, TraderView } from './views'
 
-// The map (Leaflet) loads only when a map is opened.
+// The map (Leaflet) loads only when a map is opened, the box editor only for Manual tuning.
 const SearchBarMap = lazy(() => import('./SearchBarMap').then((m) => ({ default: m.SearchBarMap })))
+const TuneLayer = lazy(() => import('./TuneLayer'))
 
 /** Side panels at once (newest first). */
 const MAX_PANELS = 3
+/** The stash scan's two panels stay while other panels come and go. */
+const isScanPanel = (p: View) => p.kind === 'scanItems' || p.kind === 'scanValues'
+/** Widest the Item scan panel grows for a big picture (page pixels; drag its corner for more). */
+const SCAN_PANEL_MAX = 900
+/** Item scan on top, Values under it. */
+const SCAN_PANELS: View[] = [{ kind: 'scanItems' }, { kind: 'scanValues' }]
+/** Panels without app pages to open them in. */
+const NO_APP_PAGE = new Set<View['kind']>(['settings', 'help', 'scanItems', 'scanValues'])
+
+/** Newest first, at most MAX_PANELS: the oldest other panel goes before a scan panel does. */
+function trimPanels(ps: View[]): View[] {
+  const out = [...ps]
+  while (out.length > MAX_PANELS) {
+    let i = out.length - 1
+    while (i > 0 && isScanPanel(out[i])) i--
+    out.splice(i, 1)
+  }
+  return out
+}
 const CARD_W = 'w-[372px]'
+const CARD_PX = 372
+
+/** Each open panel keeps one saved spot while it is open (two quest panels: "panel:quest" and "panel:quest#1"). */
+const slots = new Map<string, string>()
+function slotIds(open: { key: string; kind: string }[]): string[] {
+  for (const k of [...slots.keys()]) if (!open.some((o) => o.key === k)) slots.delete(k)
+  return open.map(({ key, kind }) => {
+    let id = slots.get(key)
+    if (!id) {
+      const used = new Set(slots.values())
+      for (let n = 0; !id; n++) {
+        const c = n ? `panel:${kind}#${n}` : `panel:${kind}`
+        if (!used.has(c)) id = c
+      }
+      slots.set(key, id)
+    }
+    return id
+  })
+}
 
 /** The tallest a card or the panel column may get (the window itself is capped by the screen). */
 const heightCap = () => Math.max(240, Math.round(window.screen.availHeight * 0.8) - 70)
@@ -48,7 +92,6 @@ const heightCap = () => Math.max(240, Math.round(window.screen.availHeight * 0.8
 type Picked = { kind: 'view'; view: View } | { kind: 'map'; map: MapOption; req: MapRequest; nonce: number }
 
 export interface BodyProps {
-  flip: Flip
   expanded: boolean
   setExpanded: (on: boolean) => void
   glass: ReactElement
@@ -82,7 +125,8 @@ export default function SearchBarBody(props: BodyProps) {
   )
 }
 
-function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, raidRow, request, locked }: BodyProps) {
+function Body({ expanded, setExpanded, glass, strip, grip, onState, raid, raidRow, request, locked }: BodyProps) {
+  const { frame, anchor, flip } = useFrame()
   const { needs, gameData, hideout, items, inventory } = useNeeds()
   const feeContext = useFleaFees(items.data)
   const fleaRules = useFleaRules(items.data)
@@ -96,7 +140,8 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const [picked, setPicked] = useState<Picked | null>(null)
-  const [panels, setPanels] = useState<View[]>([])
+  // A snip that woke the bar opens with its two panels.
+  const [panels, setPanels] = useState<View[]>(() => (useStashScan.getState().scan?.status === 'waiting' ? SCAN_PANELS : []))
   const [preview, setPreview] = useState(false)
   // A screenshot position, and whether it just arrived (only a new one opens the raid's map).
   const [shot, setShot] = useState<{ pos: PlayerPosition; live: boolean } | null>(null)
@@ -125,7 +170,10 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
   }, [expanded])
 
   const mapShown = picked?.kind === 'map'
-  useEffect(() => onState(mapShown || panels.length > 0, mapShown || panels.length > 0, preview), [onState, mapShown, panels.length, preview])
+  const tuning = useStashScan((s) => s.tuning)
+  // The Item scan panel is as wide as its picture wants (drag the picture taller and it widens).
+  const snipShape = useStashScan((s) => (s.scan ? s.scan.width / Math.max(1, s.scan.height) : 0))
+  useEffect(() => onState(mapShown || panels.length > 0 || tuning, mapShown || panels.length > 0 || tuning, preview), [onState, mapShown, panels.length, tuning, preview])
 
   // The map table for the raid pill (names and raid lengths), kept between starts.
   useEffect(() => {
@@ -166,7 +214,17 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
   const hits = useMemo(() => searchAll(query, source), [query, source])
 
   // --- Opening things -------------------------------------------------------
-  const openPanel = useCallback((p: View) => setPanels((ps) => [p, ...ps.filter((x) => panelKey(x) !== panelKey(p))].slice(0, MAX_PANELS)), [])
+  const openPanel = useCallback((p: View) => setPanels((ps) => trimPanels([p, ...ps.filter((x) => panelKey(x) !== panelKey(p))])), [])
+  // A stash snip: scan it; a later one also brings its two panels back (Item scan on top).
+  useEffect(() => {
+    const first = useStashScan.getState().scan
+    if (first?.status === 'waiting') void runStashScan(first.id)
+    return useStashScan.subscribe((s, prev) => {
+      if (!s.scan || s.scan.id === prev.scan?.id || s.scan.status !== 'waiting') return
+      for (const p of [...SCAN_PANELS].reverse()) openPanel(p)
+      void runStashScan(s.scan.id)
+    })
+  }, [openPanel])
   const closePanel = (p: View) => setPanels((ps) => ps.filter((x) => panelKey(x) !== panelKey(p)))
   const openMapOption = useCallback((option: MapOption, req: MapRequest = {}) => setPicked({ kind: 'map', map: option, req, nonce: Date.now() }), [])
   // A map opened: switch on the layers it asked for, and remember it.
@@ -422,6 +480,10 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
         return <SettingsView onPreview={setPreview} />
       case 'help':
         return <HelpView />
+      case 'scanItems':
+        return <ScanItemsView />
+      case 'scanValues':
+        return <ScanValuesView />
     }
   }
   const viewTitle = (v: View): string => {
@@ -456,6 +518,10 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
         return 'Settings'
       case 'help':
         return 'Help'
+      case 'scanItems':
+        return 'Item scan'
+      case 'scanValues':
+        return 'Values'
     }
   }
 
@@ -524,9 +590,21 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
     </li>
   )
 
+  // A card or the map opens under the bar; side panels open beside them on the side with room
+  // (until moved). Nothing opens off the screen.
+  const barW = Math.round(CARD_PX * zoom) + 2
+  const pickedW = Math.round(picked?.kind === 'map' ? (prefs.mapW + (prefs.sidebar ? prefs.sideW : 0) + 26) * zoom : CARD_PX * zoom) + 2
+  const barX = flip.left ? anchor.x - frame.x + GLASS - barW : anchor.x - frame.x
+  const pickedX = hangX(anchor, frame, flip, pickedW)
+  const below = boxPlace(anchor, frame, flip, pickedX, 50)
+  const column = picked ? { left: Math.min(barX, pickedX), right: Math.max(barX + barW, pickedX + pickedW) } : { left: barX, right: barX + barW }
+  const panelWidth = (p: View) => (p.kind === 'scanItems' && snipShape ? Math.min(SCAN_PANEL_MAX, Math.max(prefs.panelW, Math.round(prefs.snipH * snipShape) + 22)) : prefs.panelW)
+  const spots = panelSpots(column, frame.width, panels.map((p) => Math.round(panelWidth(p) * zoom) + 2), flip.left)
+  const panelIds = slotIds(panels.map((p) => ({ key: panelKey(p), kind: p.kind })))
+
   return (
     <DetailsContext.Provider value={ctx}>
-      <div className={columnClass(flip)}>
+      <div className={`absolute ${columnClass(flip)}`} style={anchorStyle(anchor, frame, flip)}>
         {expanded ? bar : glass}
         {expanded && strip}
 
@@ -573,56 +651,84 @@ function Body({ flip, expanded, setExpanded, glass, strip, grip, onState, raid, 
           </ul>
         )}
 
-        {picked?.kind === 'map' && (
-          <MapCard
-            key={`${picked.map.key}:${picked.nonce}`}
-            option={picked.map}
-            req={picked.req}
-            flip={flip}
-            zoom={zoom}
-            locked={locked}
-            position={positionFor(picked.map)}
-            starred={starred('map', picked.map.key)}
-            onStar={() => prefs.toggleStar({ kind: 'map', id: picked.map.key, label: picked.map.name })}
-            maps={mapOptions}
-            onSwitch={(m) => openMapOption(m)}
-            onBack={() => setPicked(null)}
-            onOpen={() => openInApp(picked)}
-          />
-        )}
-        {expanded && ctx && picked?.kind === 'view' && (
-          <div data-solid className={`sb-z ${CARD_W} overflow-y-auto rounded-lg border border-white/15 bg-black/85 p-3 shadow-2xl [scrollbar-width:thin]`} style={{ maxHeight: cap / zoom, zoom }}>
-            {renderView(picked.view)}
-            <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+      </div>
+
+      {picked?.kind === 'map' && (
+        <Box
+          id="map"
+          place={below}
+          resizable={false}
+          custom={(move) => (
+            <MapCard
+              key={`${picked.map.key}:${picked.nonce}`}
+              grip={move}
+              option={picked.map}
+              req={picked.req}
+              flip={flip}
+              zoom={zoom}
+              locked={locked}
+              position={positionFor(picked.map)}
+              starred={starred('map', picked.map.key)}
+              onStar={() => prefs.toggleStar({ kind: 'map', id: picked.map.key, label: picked.map.name })}
+              maps={mapOptions}
+              onSwitch={(m) => openMapOption(m)}
+              onBack={() => setPicked(null)}
+              onOpen={() => openInApp(picked)}
+            />
+          )}
+        />
+      )}
+      {expanded && ctx && picked?.kind === 'view' && (
+        <Box id="card" place={below} title={viewTitle(picked.view)} width={CARD_PX} maxHeight={cap / zoom} onClose={() => setPicked(null)}>
+          {renderView(picked.view)}
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
               <button type="button" onClick={() => setPicked(null)} className="inline-flex items-center gap-1 text-white/60 hover:text-white">
                 <ArrowLeft className="h-3 w-3" /> Back
               </button>
               <button type="button" onClick={() => openPanel(picked.view)} className="inline-flex items-center gap-1 text-white/60 hover:text-white" title="Keep it beside the search">
                 Pin beside
               </button>
-              {picked.view.kind !== 'settings' && picked.view.kind !== 'help' && (
-                <button type="button" onClick={() => openInApp(picked)} className="inline-flex items-center gap-1 text-white/60 hover:text-white">
-                  Open in the app <ExternalLink className="h-3 w-3" />
-                </button>
-              )}
-            </div>
+            {picked.view.kind !== 'settings' && picked.view.kind !== 'help' && (
+              <button type="button" onClick={() => openInApp(picked)} className="inline-flex items-center gap-1 text-white/60 hover:text-white">
+                Open in the app <ExternalLink className="h-3 w-3" />
+              </button>
+            )}
           </div>
-        )}
-      </div>
+        </Box>
+      )}
 
-      {ctx && panels.length > 0 && (
-        <div className={`sb-z flex flex-col gap-1 ${flip.up ? 'flex-col-reverse' : ''}`} style={{ width: prefs.panelW, maxHeight: (cap + 60) / zoom, zoom }}>
-          {panels.length > 1 && (
-            <button data-solid type="button" onClick={() => setPanels([])} className="self-end rounded border border-white/15 bg-black/80 px-2 py-0.5 text-[11px] text-white/60 shadow-xl hover:text-white">
-              Close all {panels.length}
-            </button>
-          )}
-          {panels.map((p) => (
-            <PanelFrame key={panelKey(p)} title={viewTitle(p)} onClose={() => closePanel(p)} onOpen={p.kind === 'settings' || p.kind === 'help' ? undefined : () => openInApp(p)}>
-              {renderView(p)}
-            </PanelFrame>
-          ))}
-        </div>
+      {ctx &&
+        panels.map((p, i) => (
+          <Box
+            key={panelKey(p)}
+            id={panelIds[i]}
+            place={boxPlace(anchor, frame, flip, spots[i].x, spots[i].dy)}
+            title={viewTitle(p)}
+            width={panelWidth(p)}
+            maxHeight={(cap + 60) / zoom}
+            onClose={() => closePanel(p)}
+            actions={
+              <>
+                {panels.length > 1 && (
+                  <button type="button" onClick={() => setPanels([])} title="Close every side panel" className="px-1 text-[10px] text-white/45 hover:text-white">
+                    Close all {panels.length}
+                  </button>
+                )}
+                {!NO_APP_PAGE.has(p.kind) && (
+                  <button type="button" onClick={() => openInApp(p)} title="Open in the app" aria-label="Open in the app" className="p-0.5 text-white/45 hover:text-white">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </>
+            }
+          >
+            {renderView(p)}
+          </Box>
+        ))}
+      {tuning && ctx && (
+        <Suspense fallback={null}>
+          <TuneLayer />
+        </Suspense>
       )}
     </DetailsContext.Provider>
   )
@@ -720,26 +826,8 @@ function HitIcon({ h }: { h: Hit }) {
   return <span className={`${box} text-[10px]`}>{h.kind === 'quest' ? 'Q' : h.kind === 'ammo' ? '•••' : '★'}</span>
 }
 
-function PanelFrame({ title, onClose, onOpen, children }: { title: string; onClose: () => void; onOpen?: () => void; children: ReactNode }) {
-  return (
-    <section data-solid className="flex min-h-0 shrink flex-col rounded-lg border border-white/15 bg-black/85 shadow-2xl">
-      <header className="flex items-center gap-1 border-b border-white/10 px-2.5 py-1">
-        <span className="min-w-0 flex-1 truncate text-[11px] uppercase tracking-wide text-white/55">{title}</span>
-        {onOpen && (
-          <button type="button" onClick={onOpen} title="Open in the app" aria-label="Open in the app" className="p-0.5 text-white/45 hover:text-white">
-            <ExternalLink className="h-3.5 w-3.5" />
-          </button>
-        )}
-        <button type="button" onClick={onClose} title="Close" aria-label="Close this panel" className="p-0.5 text-white/45 hover:text-white">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </header>
-      <div className="min-h-0 overflow-y-auto p-2.5 [scrollbar-width:thin]">{children}</div>
-    </section>
-  )
-}
-
 function MapCard({
+  grip,
   option,
   req,
   flip,
@@ -753,6 +841,7 @@ function MapCard({
   onBack,
   onOpen,
 }: {
+  grip: DragProps
   maps: MapOption[]
   onSwitch: (m: MapOption) => void
   option: MapOption
@@ -771,6 +860,9 @@ function MapCard({
   return (
     <div data-solid className="w-max rounded-lg border border-white/20 bg-black/85 p-2 shadow-2xl">
       <div className="sb-z mb-1.5 flex items-center gap-1.5 px-1" style={{ zoom }}>
+        <span {...grip} title="Drag to move the map" aria-label="Move the map" className="flex shrink-0 cursor-move touch-none items-center text-white/35 hover:text-white">
+          <GripHorizontal className="h-4 w-4" />
+        </span>
         <button type="button" onClick={onBack} title="Back to the results" aria-label="Back" className="p-0.5 text-white/55 hover:text-white">
           <ArrowLeft className="h-3.5 w-3.5" />
         </button>

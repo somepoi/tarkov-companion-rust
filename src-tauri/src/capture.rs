@@ -2,6 +2,32 @@
 
 #[cfg(windows)]
 pub fn capture_screen_under_cursor() -> Result<Vec<u8>, String> {
+    capture(None)
+}
+
+#[cfg(windows)]
+pub fn capture_area(x: i32, y: i32, width: u32, height: u32) -> Result<Vec<u8>, String> {
+    let right = x
+        .checked_add(i32::try_from(width).map_err(|e| e.to_string())?)
+        .ok_or("Invalid capture width")?;
+    let bottom = y
+        .checked_add(i32::try_from(height).map_err(|e| e.to_string())?)
+        .ok_or("Invalid capture height")?;
+    capture(Some(windows_sys::Win32::Foundation::RECT {
+        left: x,
+        top: y,
+        right,
+        bottom,
+    }))
+}
+
+#[cfg(not(windows))]
+pub fn capture_area(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<Vec<u8>, String> {
+    Err("Screen capture is only supported on Windows".into())
+}
+
+#[cfg(windows)]
+fn capture(area: Option<windows_sys::Win32::Foundation::RECT>) -> Result<Vec<u8>, String> {
     use image::ImageEncoder;
     use std::{ffi::c_void, mem::size_of, ptr::null_mut};
     use windows_sys::Win32::{
@@ -63,20 +89,24 @@ pub fn capture_screen_under_cursor() -> Result<Vec<u8>, String> {
             return Err(failed("SetThreadDpiAwarenessContext"));
         }
         let _dpi = Dpi(previous);
-        let mut cursor = POINT { x: 0, y: 0 };
-        if GetPhysicalCursorPos(&mut cursor) == 0 {
-            return Err(failed("GetPhysicalCursorPos"));
-        }
-        let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
-        if monitor.is_null() {
-            return Err(failed("MonitorFromPoint"));
-        }
-        let mut monitor_info: MONITORINFO = std::mem::zeroed();
-        monitor_info.cbSize = size_of::<MONITORINFO>() as u32;
-        if GetMonitorInfoW(monitor, &mut monitor_info) == 0 {
-            return Err(failed("GetMonitorInfoW"));
-        }
-        let bounds = monitor_info.rcMonitor;
+        let bounds = if let Some(area) = area {
+            area
+        } else {
+            let mut cursor = POINT { x: 0, y: 0 };
+            if GetPhysicalCursorPos(&mut cursor) == 0 {
+                return Err(failed("GetPhysicalCursorPos"));
+            }
+            let monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+            if monitor.is_null() {
+                return Err(failed("MonitorFromPoint"));
+            }
+            let mut monitor_info: MONITORINFO = std::mem::zeroed();
+            monitor_info.cbSize = size_of::<MONITORINFO>() as u32;
+            if GetMonitorInfoW(monitor, &mut monitor_info) == 0 {
+                return Err(failed("GetMonitorInfoW"));
+            }
+            monitor_info.rcMonitor
+        };
         let width = bounds
             .right
             .checked_sub(bounds.left)
@@ -157,6 +187,9 @@ pub fn capture_screen_under_cursor() -> Result<Vec<u8>, String> {
                 image::ExtendedColorType::Rgba8,
             )
             .map_err(|error| format!("PNG encoding failed: {error}"))?;
+        if png.len() > 64 * 1024 * 1024 {
+            return Err("Screenshot exceeds the capture byte budget".into());
+        }
         Ok(png)
     }
 }

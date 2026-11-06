@@ -5,6 +5,8 @@
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { cleanBoxes, type BoxPos } from './boxes'
+import { DEFAULT_KEEP, KEEP_KIND_IDS, type KeepKind } from '../scan/keepKinds'
 
 /** Map layers the bar can draw (its own choice, separate from the Maps tab). */
 export type OverlayLayer =
@@ -84,6 +86,8 @@ export interface OverlayPrefs {
   stripScav: boolean
   stripStory: boolean
   stripRestock: boolean
+  /** The camera button next to the glass (stash scan). */
+  scanButton: boolean
   /** Open the raid's map when a raid starts; show your screenshot position on it. */
   autoRaidMap: boolean
   followPosition: boolean
@@ -92,6 +96,12 @@ export interface OverlayPrefs {
   lastMapKey: string | null
   recent: Ref[]
   stars: Ref[]
+  /** Boxes (cards, the map, side panels) moved or resized by hand, by box id (boxes.ts). */
+  boxes: Record<string, BoxPos>
+  /** Stash snip: what the sell list keeps back, whether that list of checkboxes is open, picture height. */
+  keep: KeepKind[]
+  keepOpen: boolean
+  snipH: number
 }
 
 export const DEFAULT_LAYERS: Record<OverlayLayer, boolean> = {
@@ -153,12 +163,17 @@ export const DEFAULT_PREFS: OverlayPrefs = {
   stripScav: true,
   stripStory: true,
   stripRestock: false,
+  scanButton: true,
   autoRaidMap: true,
   followPosition: true,
   restoreMap: false,
   lastMapKey: null,
   recent: [],
   stars: [],
+  boxes: {},
+  keep: DEFAULT_KEEP,
+  keepOpen: true,
+  snipH: 224,
 }
 
 export const LIMITS = {
@@ -171,6 +186,7 @@ export const LIMITS = {
   sideW: [160, 360],
   panelW: [240, 520],
   lootMin: [0, 10_000_000],
+  snipH: [100, 1400],
 } as const
 
 const clamp = (v: unknown, [lo, hi]: readonly [number, number], d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d)
@@ -211,12 +227,17 @@ export function cleanOverlayPrefs(raw: unknown): OverlayPrefs {
     stripScav: bool(p.stripScav, d.stripScav),
     stripStory: bool(p.stripStory, d.stripStory),
     stripRestock: bool(p.stripRestock, d.stripRestock),
+    scanButton: bool(p.scanButton, d.scanButton),
     autoRaidMap: bool(p.autoRaidMap, d.autoRaidMap),
     followPosition: bool(p.followPosition, d.followPosition),
     restoreMap: bool(p.restoreMap, d.restoreMap),
     lastMapKey: typeof p.lastMapKey === 'string' && /^[a-z0-9-]{1,40}$/.test(p.lastMapKey) ? p.lastMapKey : null,
     recent: refs(p.recent, 10),
     stars: refs(p.stars, 40),
+    boxes: cleanBoxes(p.boxes),
+    keep: Array.isArray(p.keep) ? KEEP_KIND_IDS.filter((k) => (p.keep as unknown[]).includes(k)) : DEFAULT_KEEP,
+    keepOpen: bool(p.keepOpen, d.keepOpen),
+    snipH: clamp(p.snipH, LIMITS.snipH, d.snipH),
   }
 }
 
@@ -226,7 +247,9 @@ interface OverlayStore extends OverlayPrefs {
   toggleContainer: (name: string) => void
   addRecent: (r: Ref) => void
   toggleStar: (r: Ref) => void
-  reset: (part: 'look' | 'size' | 'all') => void
+  /** A box let go after a move or resize; null forgets it (back next to the glass). */
+  setBox: (id: string, pos: BoxPos | null) => void
+  reset: (part: 'look' | 'size' | 'all' | 'boxes') => void
 }
 
 export const useOverlayPrefs = create<OverlayStore>()(
@@ -239,13 +262,22 @@ export const useOverlayPrefs = create<OverlayStore>()(
       toggleContainer: (name) => set((s) => ({ containersOff: s.containersOff.includes(name) ? s.containersOff.filter((n) => n !== name) : [...s.containersOff, name] })),
       addRecent: (r) => set((s) => ({ recent: [r, ...s.recent.filter((x) => !(x.kind === r.kind && x.id === r.id))].slice(0, 10) })),
       toggleStar: (r) => set((s) => ({ stars: s.stars.some((x) => x.kind === r.kind && x.id === r.id) ? s.stars.filter((x) => !(x.kind === r.kind && x.id === r.id)) : [r, ...s.stars].slice(0, 40) })),
+      setBox: (id, pos) =>
+        set((s) => {
+          const boxes = { ...s.boxes }
+          if (pos) boxes[id] = pos
+          else delete boxes[id]
+          return { boxes: cleanBoxes(boxes) }
+        }),
       reset: (part) =>
         set(
           part === 'look'
             ? { idle: DEFAULT_PREFS.idle, map: DEFAULT_PREFS.map, scale: DEFAULT_PREFS.scale, markerScale: DEFAULT_PREFS.markerScale }
             : part === 'size'
-              ? { mapW: DEFAULT_PREFS.mapW, mapH: DEFAULT_PREFS.mapH, sideW: DEFAULT_PREFS.sideW, panelW: DEFAULT_PREFS.panelW }
-              : { ...DEFAULT_PREFS, recent: get().recent, stars: get().stars },
+              ? { mapW: DEFAULT_PREFS.mapW, mapH: DEFAULT_PREFS.mapH, sideW: DEFAULT_PREFS.sideW, panelW: DEFAULT_PREFS.panelW, boxes: {} }
+              : part === 'boxes'
+                ? { boxes: {} }
+                : { ...DEFAULT_PREFS, recent: get().recent, stars: get().stars },
         ),
     }),
     {

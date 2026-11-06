@@ -54,6 +54,8 @@ The legacy Item Collection remains separately labeled checklist data. Its counts
 
 The Hideout tab includes a zoomable bunker floor plan with station dependencies, upgrade requirements, and build timers. Start timers and mark levels built manually. Timer completion can show a notification while the app is open.
 
+The optional Windows search bar has independently movable and resizable panels. Click its camera to capture the work area and select stash slots for local recognition. The preview stays pinned while the results scroll. Manual tuning can save scanner corrections, and the Values panel shows catalog references for review. Snips do not update inventory counts or establish safe surplus.
+
 Settings → Clean up now previews eligible older fork installers in Downloads and unused native content packs. Confirmation sends only unchanged previewed targets to the Windows Recycle Bin. Active resources, stash evidence, backups, prepared updates and browser caches are retained; automatic update cleanup remains disabled.
 
 Tauri uses its separate app identifier `io.github.somepoi.tarkov-companion-rust` and application-data directory. The active directory is displayed in Stash Manager. Do not point it at the original application's profile or assume an original installation is migrated in place.

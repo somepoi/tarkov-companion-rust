@@ -18,13 +18,13 @@ import { SettingsStore, type StoredSettings } from './settings'
 import { latestPosition, parseScreenshotName, watchScreenshots } from './position'
 import { createRaidClock, trashWhenWritten } from './positionShots'
 import { backupDir, listBackups, readBackup, writeBackup } from './backups'
-import { captureScreenUnderCursor, gameScreenshotsDir, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
+import { captureDisplay, captureScreenUnderCursor, gameScreenshotsDir, listGameScreenshots, readAppResource, readGameScreenshot, resourceResponse } from './capture'
 
 // Read-only access to the app's own bundled scanner/OCR files (the page is a local file and
 // Chromium cannot fetch() file:// URLs). Must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: 'tcres', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 import { checkForUpdates, getUpdateOutcome, getUpdateStatus, installUpdate, runInstallerManually, setUpdateMode, setupUpdater } from './updater'
-import { cleanSettingsPatch, isAppPath, isSafeDirectory, isSameFileUrl, isScreenshotName, isTrustedSender, isWebUrl, lockPermissions } from './security'
+import { cleanSettingsPatch, cleanShapeRects, isAppPath, isSafeDirectory, isSameFileUrl, isScreenshotName, isTrustedSender, isWebUrl, lockPermissions } from './security'
 import { PACK_NAMES, currentPackDirNames, ensurePack, packsEnabled } from './packs'
 import { cleanLeftovers, sizeOf } from './cleanup'
 import type { CleanupResult } from '../src/shared/desktop-api'
@@ -335,14 +335,18 @@ function createWindow(show: boolean) {
 // The search bar over the game
 // ---------------------------------------------------------------------------
 
-/** The magnifying glass with its margin: the window's size when nothing is open. */
+/** The magnifying glass with its margin (the window's shape before its page has drawn anything). */
 const SEARCH_GLASS = 48
 const SEARCH_MARGIN = 16
+/** Tests only (unpackaged): the bar is never shown, so a test run cannot pop up over a running game. */
+const SEARCH_HIDDEN = !app.isPackaged && process.env.TC_SEARCHBAR_HIDDEN === '1'
 
-/** Top-left corner of the glass on screen; the window grows right/down from it, or left/up near a screen edge. */
+type Rect = { x: number; y: number; width: number; height: number }
+
+/** Top-left corner of the glass on screen. */
 let searchAnchor = { x: 0, y: 0 }
-let searchSize = { width: SEARCH_GLASS, height: SEARCH_GLASS }
-let searchFlip = { left: false, up: false }
+/** What the page draws (window coordinates): only these parts take the mouse, the rest of the window lets everything through. */
+let searchShape: Rect[] = []
 
 /** Keeps the glass on a screen (a monitor may have been unplugged since it was dragged there). */
 function clampAnchor(p: { x: number; y: number }) {
@@ -353,29 +357,59 @@ function clampAnchor(p: { x: number; y: number }) {
   }
 }
 
-/** Puts the window around the glass at its current size, flipping towards the room on the screen. */
+/**
+ * The bar's window covers the work area of the screen its glass is on and is cut to the shape of
+ * what it draws (setShape: outside the shape the mouse goes straight to whatever is behind), so the
+ * cards, the map and every side panel can be moved and resized anywhere on that screen.
+ */
 function placeSearchBar() {
-  if (!searchBar || searchBar.isDestroyed()) return
+  if (!searchBar || searchBar.isDestroyed() || snipping) return
   const area = screen.getDisplayNearestPoint(searchAnchor).workArea
-  const w = Math.max(40, Math.min(Math.round(searchSize.width), area.width))
-  const h = Math.max(40, Math.min(Math.round(searchSize.height), area.height))
-  const left = searchAnchor.x + w > area.x + area.width
-  const up = searchAnchor.y + h > area.y + area.height
-  const x = left ? Math.max(area.x, searchAnchor.x + SEARCH_GLASS - w) : searchAnchor.x
-  const y = up ? Math.max(area.y, searchAnchor.y + SEARCH_GLASS - h) : searchAnchor.y
   const b = searchBar.getBounds()
-  if (b.x !== x || b.y !== y || b.width !== w || b.height !== h) searchBar.setBounds({ x, y, width: w, height: h })
-  if (left !== searchFlip.left || up !== searchFlip.up) {
-    searchFlip = { left, up }
-    searchBar.webContents.send('searchbar:layout', searchFlip)
+  if (b.x !== area.x || b.y !== area.y || b.width !== area.width || b.height !== area.height) {
+    // Another screen (or size): the old shape belongs to the old one; the page sends a new one.
+    searchShape = []
+    searchBar.setBounds(area)
   }
+  applySearchShape()
+  sendSearchFrame()
+}
+
+/** Tells the page where its window is and where the glass sits (screen pixels). */
+function sendSearchFrame() {
+  if (!searchBar || searchBar.isDestroyed()) return
+  searchBar.webContents.send('searchbar:frame', { frame: searchBar.getBounds(), anchor: { ...searchAnchor } })
+}
+
+function applySearchShape() {
+  if (!searchBar || searchBar.isDestroyed()) return
+  // While snipping the whole window takes the mouse (an empty list = the plain rectangle).
+  if (snipping) return searchBar.setShape([])
+  const b = searchBar.getBounds()
+  const glass = { x: Math.max(0, searchAnchor.x - b.x), y: Math.max(0, searchAnchor.y - b.y), width: SEARCH_GLASS, height: SEARCH_GLASS }
+  searchBar.setShape(searchShape.length ? searchShape : [glass])
+}
+
+/** Screens added, removed or rearranged: the bar stays on one that exists. */
+let watchingScreens = false
+function watchScreens() {
+  if (watchingScreens) return
+  watchingScreens = true
+  const again = () => {
+    if (!searchBar || searchBar.isDestroyed()) return
+    searchAnchor = clampAnchor(searchAnchor)
+    placeSearchBar()
+  }
+  screen.on('display-added', again)
+  screen.on('display-removed', again)
+  screen.on('display-metrics-changed', again)
 }
 
 /**
  * A small magnifying glass above the game (borderless or windowed), top left of the main screen
  * or wherever it was dragged. It shows only the app's own page: click it and type an item, key,
- * quest or map. It never takes focus by itself; clicking into it does, like any window. The empty
- * parts of the window let clicks through to the game. Nothing about the game is read or touched.
+ * quest or map. It never takes focus by itself; clicking into it does, like any window. Everything
+ * outside what it draws lets clicks through to the game. Nothing about the game is read or touched.
  */
 function applySearchBar() {
   if (BENCHMARK_MODE) return
@@ -388,13 +422,11 @@ function applySearchBar() {
   if (searchBar && !searchBar.isDestroyed()) return
   const area = screen.getPrimaryDisplay().workArea
   searchAnchor = clampAnchor(settings.get().searchBarPos ?? { x: area.x + SEARCH_MARGIN, y: area.y + SEARCH_MARGIN })
-  searchSize = { width: SEARCH_GLASS, height: SEARCH_GLASS }
-  searchFlip = { left: false, up: false }
+  searchShape = []
+  watchScreens()
+  const frame = screen.getDisplayNearestPoint(searchAnchor).workArea
   const w = new BrowserWindow({
-    x: searchAnchor.x,
-    y: searchAnchor.y,
-    width: SEARCH_GLASS,
-    height: SEARCH_GLASS,
+    ...frame,
     show: false,
     frame: false,
     transparent: true,
@@ -424,15 +456,27 @@ function applySearchBar() {
   w.setAlwaysOnTop(true, 'screen-saver')
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   lockNavigation(w)
+  // Only the glass takes the mouse until the page has drawn.
+  w.setShape([{ x: searchAnchor.x - frame.x, y: searchAnchor.y - frame.y, width: SEARCH_GLASS, height: SEARCH_GLASS }])
   w.webContents.once('did-finish-load', () => {
-    w.showInactive()
-    w.webContents.send('searchbar:layout', searchFlip)
+    if (!SEARCH_HIDDEN) w.showInactive()
+    sendSearchFrame()
   })
   load(w, '/searchbar')
   w.on('closed', () => {
-    if (searchBar === w) searchBar = null
+    if (searchBar === w) {
+      searchBar = null
+      pendingSnip = null
+      if (snipTimer) clearTimeout(snipTimer)
+      snipTimer = null
+      snipping = false
+    }
     searchLocked = false
     refreshTrayMenu()
+  })
+  // Snipping stops when you click into another window (or the game takes the focus back).
+  w.on('blur', () => {
+    if (searchBar === w) endSnip(true)
   })
   // The tray says Show or Hide to match (hotkeys and the first load show it too).
   w.on('show', refreshTrayMenu)
@@ -441,15 +485,10 @@ function applySearchBar() {
   refreshTrayMenu()
 }
 
-/** The window follows the search bar: the glass, the bar, a card, a map, side panels. */
-function sizeSearchBar(width: number, height: number) {
-  searchSize = { width, height }
-  placeSearchBar()
-}
-
-/** Dragging the glass: moves it by the pointer's movement (saved when the drag ends). */
-function moveSearchBar(dx: number, dy: number) {
-  searchAnchor = clampAnchor({ x: searchAnchor.x + dx, y: searchAnchor.y + dy })
+/** The glass was dragged to here (screen pixels): saved; dropped on another screen, the bar moves there. */
+function moveSearchBar(x: number, y: number) {
+  searchAnchor = clampAnchor({ x, y })
+  persistBackgroundSettings({ searchBarPos: { ...searchAnchor } })
   placeSearchBar()
 }
 
@@ -458,8 +497,11 @@ let searchLocked = false
 
 function setSearchLocked(on: boolean) {
   if (!searchBar || searchBar.isDestroyed()) return
+  if (pendingSnip && !SEARCH_HIDDEN) searchBar.showInactive()
+  pendingSnip = null
+  endSnip(true)
   searchLocked = on
-  searchBar.setIgnoreMouseEvents(on, on ? undefined : { forward: true })
+  searchBar.setIgnoreMouseEvents(on)
   searchBar.webContents.send('searchbar:locked', on)
   refreshTrayMenu()
 }
@@ -467,9 +509,72 @@ function setSearchLocked(on: boolean) {
 /** Hotkey / tray: hide the bar completely, or bring it back where it was. */
 function toggleSearchBarVisible() {
   if (!searchBar || searchBar.isDestroyed()) return
-  if (searchBar.isVisible()) searchBar.hide()
+  const wasCapturing = pendingSnip !== null
+  pendingSnip = null
+  endSnip(true)
+  if (wasCapturing || searchBar.isVisible()) searchBar.hide()
   else searchBar.showInactive()
   refreshTrayMenu()
+}
+
+/**
+ * Snip for a stash scan (the bar's camera button): a picture of the bar's screen is taken with the
+ * bar hidden, then the bar covers that screen and shows the picture so a box can be dragged around
+ * the slots. Esc, a click into another window or two minutes end it. Only the screen is read, the
+ * same as Win+Shift+S; nothing is sent to the game.
+ */
+let snipping = false
+let pendingSnip: symbol | null = null
+let snipTimer: NodeJS.Timeout | null = null
+const SNIP_MAX_MS = 120_000
+
+async function startSnip(): Promise<{ png: Uint8Array; scale: number } | null> {
+  const w = searchBar
+  if (!w || w.isDestroyed() || !w.isVisible() || searchLocked || snipping || pendingSnip) return null
+  const capture = pendingSnip = Symbol()
+  const display = screen.getDisplayMatching(w.getBounds())
+  // The bar must not be in its own picture.
+  w.hide()
+  await new Promise((r) => setTimeout(r, 150))
+  let png: Uint8Array
+  try {
+    png = await captureDisplay(display)
+  } catch (err) {
+    if (pendingSnip === capture) {
+      pendingSnip = null
+      if (!w.isDestroyed() && !SEARCH_HIDDEN) w.showInactive()
+    }
+    throw err
+  }
+  if (pendingSnip !== capture) return null
+  pendingSnip = null
+  if (w.isDestroyed() || searchLocked) return null
+  snipping = true
+  w.setBounds(display.bounds)
+  w.setIgnoreMouseEvents(false)
+  applySearchShape()
+  sendSearchFrame()
+  if (!SEARCH_HIDDEN) {
+    w.show()
+    w.focus()
+  }
+  snipTimer = setTimeout(() => endSnip(true), SNIP_MAX_MS)
+  return { png, scale: display.scaleFactor }
+}
+
+/** Back to the bar's own size; `cancelled` tells the page (it keeps no box). */
+function endSnip(cancelled: boolean) {
+  if (!snipping) return
+  snipping = false
+  if (snipTimer) clearTimeout(snipTimer)
+  snipTimer = null
+  const w = searchBar
+  if (!w || w.isDestroyed()) return
+  w.setIgnoreMouseEvents(false)
+  placeSearchBar()
+  if (cancelled) w.webContents.send('searchbar:snipCancel')
+  // The keyboard goes back to the game.
+  w.blur()
 }
 
 /** Hotkey: show the bar and put the cursor in the search box (this takes focus from the game). */
@@ -716,19 +821,20 @@ function registerIpc() {
       fs.renameSync(pending, output)
     }
   })
-  handle('searchbar:size', (e, width: unknown, height: unknown) => {
-    // Only the search bar itself says how big it is.
-    if (!searchBar || searchBar.isDestroyed() || e.sender !== searchBar.webContents) return
-    if (typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height)) return
-    sizeSearchBar(width, height)
-  })
+  // Only the search bar itself may move, shape or ask about its own window.
   const fromSearchBar = (e: IpcMainInvokeEvent) => Boolean(searchBar && !searchBar.isDestroyed() && e.sender === searchBar.webContents)
-  const isDelta = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 10000
-  handle('searchbar:move', (e, dx: unknown, dy: unknown) => {
-    if (fromSearchBar(e) && isDelta(dx) && isDelta(dy)) moveSearchBar(dx, dy)
+  const isCoord = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 100_000
+  handle('searchbar:frame', (e) => (fromSearchBar(e) ? { frame: searchBar!.getBounds(), anchor: { ...searchAnchor } } : null))
+  handle('searchbar:moved', (e, x: unknown, y: unknown) => {
+    if (fromSearchBar(e) && isCoord(x) && isCoord(y)) moveSearchBar(x, y)
   })
-  handle('searchbar:moved', (e) => {
-    if (fromSearchBar(e)) persistBackgroundSettings({ searchBarPos: { ...searchAnchor } })
+  handle('searchbar:shape', (e, rects: unknown) => {
+    if (!fromSearchBar(e) || snipping) return
+    const b = searchBar!.getBounds()
+    const clean = cleanShapeRects(rects, b.width, b.height)
+    if (!clean) return
+    searchShape = clean
+    applySearchShape()
   })
   handle('searchbar:home', (e) => {
     if (!fromSearchBar(e)) return
@@ -737,9 +843,9 @@ function registerIpc() {
     persistBackgroundSettings({ searchBarPos: null })
     placeSearchBar()
   })
-  handle('searchbar:passthrough', (e, on: unknown) => {
-    // Clicks on the see-through parts go to the game; mouse moves still arrive so the bar knows when to take them back.
-    if (fromSearchBar(e) && typeof on === 'boolean' && !searchLocked) searchBar!.setIgnoreMouseEvents(on, { forward: true })
+  handle('searchbar:snip', (e) => (fromSearchBar(e) ? startSnip() : null))
+  handle('searchbar:snipEnd', (e) => {
+    if (fromSearchBar(e)) endSnip(false)
   })
   handle('searchbar:lock', (e, on: unknown) => {
     if (fromSearchBar(e) && typeof on === 'boolean') setSearchLocked(on)
