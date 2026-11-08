@@ -167,6 +167,10 @@ fn run() -> Result<(), String> {
     release
         .signature("windows-x86_64")
         .map_err(|e| e.to_string())?;
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?;
+    if manifest_bytes.len() > update_signature::MAX_MANIFEST_BYTES {
+        return Err("Update manifest exceeds the 512 KiB limit".into());
+    }
     let evidence = json!({"kind":"tarkov-companion-rust-update-preparation","version":version,"platform":"windows-x86_64","artifact":filename,"bytes":bytes.len(),"sha256":digest,"signatureVerified":true,"signedVersionVerified":true,"published":false});
     fs::create_dir(&staging).map_err(|e| e.to_string())?;
     write(&staging.join(&filename), &bytes)?;
@@ -174,10 +178,7 @@ fn run() -> Result<(), String> {
         &staging.join(format!("{filename}.sig")),
         signature.as_bytes(),
     )?;
-    write(
-        &staging.join("latest.json"),
-        &serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,
-    )?;
+    write(&staging.join("latest.json"), &manifest_bytes)?;
     write(
         &staging.join("release-evidence.json"),
         &serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,

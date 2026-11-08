@@ -8,6 +8,25 @@ static CANDIDATE: std::sync::Mutex<Option<crate::staged_download::Candidate>> =
     std::sync::Mutex::new(None);
 
 #[cfg(feature = "staged-updates")]
+fn public_https(url: &tauri::Url) -> bool {
+    url.scheme() == "https"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
+        && matches!(url.host(), Some(url::Host::Domain(host)) if host.contains('.') && !host.ends_with('.') && !host.ends_with(".localhost"))
+}
+
+#[cfg(feature = "staged-updates")]
+fn fork_path(url: &tauri::Url) -> bool {
+    let prefix = match url.host_str() {
+        Some("github.com") => "/somepoi/tarkov-companion-rust/releases/",
+        Some("raw.githubusercontent.com") => "/somepoi/tarkov-companion-rust/",
+        _ => return true,
+    };
+    url.path().starts_with(prefix)
+}
+
+#[cfg(feature = "staged-updates")]
 fn configuration() -> Result<Option<(tauri::Url, String)>, String> {
     let endpoint = option_env!("TC_STAGED_UPDATE_ENDPOINT")
         .unwrap_or("")
@@ -33,27 +52,98 @@ fn configuration() -> Result<Option<(tauri::Url, String)>, String> {
     }
     minisign_verify::PublicKey::decode(decoded).map_err(|_| "Invalid minisign public key")?;
     let url = tauri::Url::parse(endpoint).map_err(|_| "Invalid staging endpoint")?;
-    if url.scheme() != "https"
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-        || !matches!(url.host(), Some(url::Host::Domain(host)) if host.contains('.') && !host.ends_with(".localhost"))
-    {
+    if !public_https(&url) || url.query().is_some() {
         return Err(
             "Staging endpoint must be public HTTPS without credentials, query or fragment".into(),
         );
     }
     // No upstream GitHub fallback or accidental original-project channel.
-    let github = match url.host_str() {
-        Some("github.com") => Some("/somepoi/tarkov-companion-rust/releases/"),
-        Some("raw.githubusercontent.com") => Some("/somepoi/tarkov-companion-rust/"),
-        _ => None,
-    };
-    if github.is_some_and(|prefix| !url.path().starts_with(prefix)) {
+    if !fork_path(&url) {
         return Err("GitHub staging updates must belong to the fork repository".into());
     }
+    if endpoint.contains("{{") || endpoint.to_ascii_lowercase().contains("%7b%7b") {
+        return Err("Use a static staging manifest URL without template variables".into());
+    }
     Ok(Some((url, key.to_owned())))
+}
+
+#[cfg(feature = "staged-updates")]
+async fn read_manifest(endpoint: tauri::Url) -> Result<Option<Value>, String> {
+    use crate::update_signature::MAX_MANIFEST_BYTES;
+    use reqwest::{StatusCode, header, redirect::Policy};
+    use std::time::Duration;
+
+    let origin = endpoint.origin();
+    let github_release = endpoint.host_str() == Some("github.com");
+    let client = reqwest::Client::builder()
+        .https_only(true)
+        .no_gzip()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .user_agent("TarkovCompanionRust/staged-update")
+        .redirect(Policy::custom(move |attempt| {
+            let target = attempt.url();
+            let same_origin = target.origin() == origin && fork_path(target);
+            let release_cdn = github_release
+                && target.port().is_none()
+                && matches!(
+                    target.host_str(),
+                    Some("release-assets.githubusercontent.com" | "objects.githubusercontent.com")
+                );
+            if attempt.previous().len() > 4
+                || !public_https(target)
+                || !(same_origin || release_cdn)
+            {
+                attempt.error("Update manifest redirect is outside the staging channel")
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
+        .map_err(|_| "Could not initialize update manifest transport")?;
+    let mut response = client
+        .get(endpoint)
+        .header(header::ACCEPT, "application/json")
+        .header(header::ACCEPT_ENCODING, "identity")
+        .send()
+        .await
+        .map_err(|error| {
+            if error.is_redirect() {
+                "Update manifest redirect was refused"
+            } else {
+                "Could not download the update manifest"
+            }
+        })?;
+    if response.status() == StatusCode::NO_CONTENT {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(format!(
+            "Update manifest server returned HTTP {}",
+            response.status().as_u16()
+        ));
+    }
+    let too_large = "Update manifest exceeds the 512 KiB limit";
+    if response
+        .content_length()
+        .is_some_and(|size| size > MAX_MANIFEST_BYTES as u64)
+    {
+        return Err(too_large.into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "Update manifest transfer was interrupted")?
+    {
+        if chunk.len() > MAX_MANIFEST_BYTES - bytes.len() {
+            return Err(too_large.into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .map_err(|_| "Update manifest is not valid JSON".into())
 }
 
 pub fn initialize(_app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -93,16 +183,17 @@ pub async fn check_staged_update(
                 json!({"state":"disabled","message":"No fork staging endpoint/public key was compiled into this build"}),
             );
         };
+        let Some(manifest) = read_manifest(endpoint.clone()).await? else {
+            return Ok(json!({"state":"none"}));
+        };
         let update = _app
             .updater_builder()
             .endpoints(vec![endpoint])
             .map_err(|e| e.to_string())?
             .pubkey(key)
-            .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?
-            .check()
-            .await
+            .restore_update(manifest)
             .map_err(|e| e.to_string())?;
         Ok(match update {
             Some(update) => {

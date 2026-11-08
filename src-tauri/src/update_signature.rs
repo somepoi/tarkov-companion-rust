@@ -2,6 +2,7 @@
 use base64::Engine;
 use sha2::{Digest, Sha256};
 pub const MAX_UPDATE_BYTES: usize = 512 * 1024 * 1024;
+pub const MAX_MANIFEST_BYTES: usize = 512 * 1024;
 
 fn signed_text(value: &str) -> Result<String, String> {
     let bytes = base64::engine::general_purpose::STANDARD
