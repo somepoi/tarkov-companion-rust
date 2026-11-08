@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -23,6 +23,8 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 const MAX_JSON: u64 = 20 * 1024 * 1024;
 const MAX_FILE: u64 = 1024 * 1024 * 1024;
 const MAX_TOTAL: u64 = 8 * 1024 * 1024 * 1024;
+// The version-1 correction format stores 12 × 12 RGB samples per stash cell.
+const CORRECTION_FP_V1: u64 = 12;
 
 // One reporter per serialized job; updates are scoped to the requesting window.
 struct Progress {
@@ -279,18 +281,93 @@ fn verify(root: &Path, progress: &mut Progress) -> Result<Manifest, String> {
     }
     Ok(manifest)
 }
-fn validate_renderer(value: &Value) -> Result<(), String> {
-    if value["kind"] != "tarkov-companion-rust-renderer-state"
-        || value["version"] != 1
-        || !value["localStorage"].is_object()
-        || !value["corrections"].is_object()
-    {
+fn validate_renderer(value: &Value) -> Result<Vec<u8>, String> {
+    if value["kind"] != "tarkov-companion-rust-renderer-state" || value["version"] != 1 {
         return Err("Unsupported renderer backup state".into());
     }
-    if serde_json::to_vec(value).map_err(|e| e.to_string())?.len() as u64 > MAX_JSON {
+    let bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > MAX_JSON {
         return Err("Renderer state exceeds 20 MiB".into());
     }
-    Ok(())
+    let storage = value["localStorage"]
+        .as_object()
+        .ok_or("Renderer backup preferences must be an object")?;
+    for (key, saved) in storage {
+        if !renderer_key(key) || !saved.is_string() {
+            return Err("Renderer backup contains an invalid saved preference".into());
+        }
+    }
+    let corrections = &value["corrections"];
+    if corrections["kind"] != "tarkov-companion-scan-corrections"
+        || corrections["version"] != 1
+        || corrections["fp"] != CORRECTION_FP_V1
+    {
+        return Err("Unsupported scanner correction backup".into());
+    }
+    let records = corrections["records"]
+        .as_array()
+        .filter(|records| records.len() <= 400)
+        .ok_or("Invalid scanner correction list")?;
+    let mut ids = BTreeSet::new();
+    for (index, record) in records.iter().enumerate() {
+        if !valid_correction(record, &mut ids) {
+            return Err(format!("Invalid scanner correction record {}", index + 1));
+        }
+    }
+    Ok(bytes)
+}
+
+// Match the renderer's capture filter and require a nonempty ASCII key suffix.
+fn renderer_key(key: &str) -> bool {
+    !key.starts_with("tarkov-companion-assistant")
+        && ["tarkov-companion-", "tc-"].iter().any(|prefix| {
+            key.get(..prefix.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+                && key.get(prefix.len()..).is_some_and(|suffix| {
+                    !suffix.is_empty()
+                        && suffix
+                            .bytes()
+                            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                })
+        })
+}
+
+fn valid_correction<'a>(record: &'a Value, ids: &mut BTreeSet<&'a str>) -> bool {
+    let Some(id) = record["id"].as_str().filter(|id| !id.is_empty()) else {
+        return false;
+    };
+    let cells = record["w"]
+        .as_u64()
+        .zip(record["h"].as_u64())
+        .and_then(|(w, h)| w.checked_mul(h));
+    let Some(cells @ 1..=256) = cells else {
+        return false;
+    };
+    // RGB length is divisible by three, so an exact base64 length and alphabet
+    // verify the decoded fingerprint size without allocating decoded pixels.
+    let encoded_length = (cells * CORRECTION_FP_V1 * CORRECTION_FP_V1 * 4) as usize;
+    ids.insert(id)
+        && record["itemId"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty() && id.encode_utf16().count() <= 512)
+        && record["fp"].as_str().is_some_and(|fingerprint| {
+            fingerprint.len() == encoded_length
+                && fingerprint
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/'))
+        })
+        && record["thumb"].as_str().is_some_and(|thumb| {
+            (thumb.starts_with("data:image/jpeg;base64,")
+                || thumb.starts_with("data:image/png;base64,"))
+                && thumb.encode_utf16().count() <= 512 * 1024
+        })
+        && record["pitch"]
+            .as_f64()
+            .is_some_and(|pitch| pitch.is_finite() && pitch > 0.0)
+        && record["createdAt"].as_f64().is_some_and(f64::is_finite)
+        && record
+            .get("kind")
+            .is_none_or(|kind| matches!(kind.as_str(), Some("correct" | "confirmed" | "not")))
 }
 fn backup_root(state: &HostState) -> PathBuf {
     state.profile_root.join("full-backups")
@@ -349,7 +426,8 @@ fn create(
     progress: &mut Progress,
 ) -> Result<Value, String> {
     progress.stage("Creating database snapshot");
-    validate_renderer(&renderer)?;
+    let renderer_bytes = validate_renderer(&renderer)?;
+    drop(renderer);
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
     let id = name("backup");
     let staging = root.join(format!(".incomplete-{id}"));
@@ -359,7 +437,8 @@ fn create(
         .as_ref()
         .map_err(Clone::clone)?
         .backup_to(staging.join("user.sqlite"))?;
-    write_json(&staging.join("renderer-state.json"), &renderer)?;
+    atomic_write(&staging.join("renderer-state.json"), &renderer_bytes)
+        .map_err(|e| e.to_string())?;
     write_json(
         &staging.join("settings.json"),
         &state.settings().map_err(|e| e.to_string())?,
