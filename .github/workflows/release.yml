@@ -23,8 +23,7 @@ jobs:
         run: npm ci
       - name: Build content assets
         run: |
-          npm run tiles:fetch
-          npm run tiles:lighthouse
+          npm run tiles:restore
           npm run scan:fingerprints
           npm run ocr:assets
       - name: Lint

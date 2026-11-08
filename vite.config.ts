@@ -1,8 +1,9 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, type Plugin } from 'vite'
-import { readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { generatedPath, root } from './scripts/lib/content-assets.mjs'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; productName: string; repository?: { url?: string } }
 const repoUrl = (pkg.repository?.url ?? '').replace(/^git+/, '').replace(/.git$/, '')
@@ -28,15 +29,19 @@ const CSP = [
   "form-action 'none'",
 ].join('; ')
 
-const LIGHTHOUSE_DRAWING = 'tiles/lighthouse-re3mr/drawing-2026.svg'
-
-function lighthouseDrawing(tauri: boolean): Plugin {
+function separateLighthousePack(tauri: boolean): Plugin {
   return {
-    name: 'tc-lighthouse-drawing',
-    // Vite copies public assets before writing its bundle. The native drawing is supplied
-    // by the separately licensed pack, not embedded into the signed Tauri frontend.
+    name: 'tc-separate-lighthouse-pack',
+    // Vite copies public assets before writing its bundle. The entire map, including
+    // the drawing, belongs in the separately licensed content pack.
     writeBundle(output) {
-      if (tauri && output.dir) rmSync(join(output.dir, LIGHTHOUSE_DRAWING), { force: true })
+      if (!tauri || !output.dir) return
+      if (resolve(output.dir) !== generatedPath('dist-tauri')) throw new Error('Unexpected Tauri frontend output directory')
+      const packDirectory = generatedPath('dist-tauri/tiles/lighthouse-re3mr')
+      if (!existsSync(packDirectory)) return
+      if (realpathSync(packDirectory) !== join(realpathSync(root), 'dist-tauri', 'tiles', 'lighthouse-re3mr'))
+        throw new Error('Tauri Lighthouse output directory is redirected')
+      rmSync(packDirectory, { recursive: true })
     },
   }
 }
@@ -60,7 +65,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      lighthouseDrawing(tauri),
+      separateLighthousePack(tauri),
       ...(!tauri ? [contentSecurityPolicy()] : []),
     ],
   }

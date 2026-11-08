@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "tiles:lighthouse": "node scripts/tile-lighthouse.mjs",
+    "tiles:restore": "node scripts/restore-lighthouse-tiles.mjs",
     "dev:desktop": "npm run dev:tauri --",
     "build:desktop": "npm run build:tauri --",
     "dist:desktop": "npm run build:tauri --",

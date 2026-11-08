@@ -31,8 +31,10 @@ export function atomicBytes(file, bytes) {
   fs.renameSync(temporary, file)
 }
 
+const publicAssetDirs = new Map([['scan', 'scan'], ['ocr', 'ocr'], ['lighthouse', 'tiles/lighthouse-re3mr']])
+
 export function newAssetStage(name) {
-  if (!['scan', 'ocr'].includes(name)) throw new Error('Unknown generated asset directory')
+  if (!publicAssetDirs.has(name)) throw new Error('Unknown generated asset directory')
   const stage = generatedPath(`assets-src/builds/${name}-${crypto.randomUUID()}`)
   fs.mkdirSync(stage, { recursive: true })
   return stage
@@ -40,11 +42,12 @@ export function newAssetStage(name) {
 
 /** Retain old generated content outside Vite's public directory. */
 export function publishAssetStage(stage, name) {
-  if (!['scan', 'ocr'].includes(name)) throw new Error('Unknown generated asset directory')
+  const publicDir = publicAssetDirs.get(name)
+  if (!publicDir) throw new Error('Unknown generated asset directory')
   const source = generatedPath(path.relative(root, stage))
   if (!inside(source, generatedPath('assets-src/builds')) || !fs.statSync(source).isDirectory())
     throw new Error('Invalid asset staging directory')
-  const destination = generatedPath(`public/${name}`)
+  const destination = generatedPath(`public/${publicDir}`)
   const backup = generatedPath(`assets-src/generated-backups/${name}-${crypto.randomUUID()}`)
   fs.mkdirSync(path.dirname(destination), { recursive: true })
   fs.mkdirSync(path.dirname(backup), { recursive: true })
@@ -56,11 +59,20 @@ export function publishAssetStage(stage, name) {
   }
 }
 
-export async function fetchBytes(url, maxBytes, allowedHosts) {
-  const target = new URL(url)
-  if (target.protocol !== 'https:' || target.username || target.password || !allowedHosts.includes(target.hostname))
-    throw new Error(`Unexpected asset origin: ${target.origin}`)
-  const response = await fetch(target, { signal: AbortSignal.timeout(25_000), redirect: 'error' })
+export async function fetchBytes(url, maxBytes, allowedHosts, { redirects = 0, timeoutMs = 25_000 } = {}) {
+  let target = new URL(url)
+  const signal = AbortSignal.timeout(timeoutMs)
+  let response
+  for (let followed = 0; ; followed++) {
+    if (target.protocol !== 'https:' || target.username || target.password || target.port || !allowedHosts.includes(target.hostname))
+      throw new Error(`Unexpected asset origin: ${target.origin}`)
+    response = await fetch(target, { signal, redirect: 'manual' })
+    if (![301, 302, 303, 307, 308].includes(response.status)) break
+    const location = response.headers.get('location')
+    await response.body?.cancel()
+    if (!location || followed >= redirects) throw new Error('Unexpected asset redirect')
+    target = new URL(location, target)
+  }
   if (!response.ok) {
     await response.body?.cancel()
     throw new Error(`HTTP ${response.status}: ${target.pathname}`)

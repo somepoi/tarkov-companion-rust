@@ -23,12 +23,13 @@ Asset preparation obtains scanner references and the pinned English OCR resource
 ## Build a local Windows installer
 
 ```powershell
-npm run tiles:fetch
-npm run tiles:lighthouse
+npm run tiles:restore
 npm run build
 ```
 
-This checks content assets, creates the separate content packs in `release-packs/`, generates notices, builds the React interface and optimized Rust host, then packages the configured NSIS installer. Output:
+Tile preparation verifies a pinned [upstream Lighthouse archive](https://github.com/David04-09/tarkov-companion/releases/tag/v2.21.0) and combines its re3mr tiles with the fork's drawing. To regenerate the tiles from the original render, run `npm run tiles:fetch` followed by `npm run tiles:lighthouse`.
+
+The build checks content assets, creates the separate content packs in `release-packs/`, generates notices, builds the React interface and optimized Rust host, then packages the configured NSIS installer. Output:
 
 ```text
 target/release/bundle/nsis/Tarkov Companion Rust_<version>_x64-setup.exe
