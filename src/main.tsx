@@ -64,21 +64,26 @@ async function start() {
 
 void start().catch(async (error: unknown) => {
   const root = document.getElementById('root')
-  if (root)
-    root.textContent = `Could not start the desktop app: ${error instanceof Error ? error.message : String(error)}`
+  if (!root) return
+  root.textContent = `Could not start Tarkov Companion Rust: ${error instanceof Error ? error.message : String(error)}`
   const { isTauri, invoke } = await import('@tauri-apps/api/core')
-  if (root && isTauri()) {
-    const button = document.createElement('button')
-    button.textContent = 'Return to original profile and restart'
-    button.className = 'btn'
-    button.onclick = () => {
-      button.disabled = true
-      void invoke('native_backup', {
-        operation: { operation: 'revert' },
-      }).catch(() => {
-        button.disabled = false
-      })
-    }
-    root.append(document.createElement('br'), button)
+  if (!isTauri()) return
+  const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow')
+  if (getCurrentWebviewWindow().label !== 'main') return
+  const button = document.createElement('button')
+  const recoveryError = document.createElement('p')
+  recoveryError.setAttribute('role', 'alert')
+  button.textContent = 'Return to original profile and restart'
+  button.className = 'btn'
+  button.onclick = () => {
+    button.disabled = true
+    recoveryError.textContent = ''
+    void invoke('native_backup', {
+      operation: { operation: 'revert' },
+    }).catch((cause: unknown) => {
+      recoveryError.textContent = `Could not return to the original profile. ${cause instanceof Error ? cause.message : String(cause)}`
+      button.disabled = false
+    })
   }
+  root.append(document.createElement('br'), button, recoveryError)
 })
