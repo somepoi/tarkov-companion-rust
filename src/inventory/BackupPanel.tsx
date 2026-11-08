@@ -227,7 +227,9 @@ export function BackupPanel() {
         {list.data?.canRevert && (
           <div className="space-y-2">
             <p className="break-all text-xs text-ink-muted">
-              Active recovered profile: {list.data.activeProfile}
+              {list.data.activeProfile === list.data.originalProfile
+                ? 'The original profile is open. Clear the recovery selection to continue with it.'
+                : `Active recovered profile: ${list.data.activeProfile}`}
             </p>
             <button
               className="btn"

@@ -148,6 +148,13 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
     atomic_write(path, &bytes).map_err(|e| e.to_string())
 }
+fn read_settings(root: &Path) -> Result<Value, String> {
+    let settings = read_json(&source_file(root, "settings.json")?, MAX_JSON)?;
+    if !settings.is_object() {
+        return Err("Backup settings must contain a JSON object".into());
+    }
+    Ok(settings)
+}
 fn digest_file(
     path: &Path,
     destination: Option<&Path>,
@@ -261,10 +268,7 @@ fn verify(root: &Path, progress: &mut Progress) -> Result<Manifest, String> {
         &source_file(root, "renderer-state.json")?,
         MAX_JSON,
     )?)?;
-    let settings = read_json(&source_file(root, "settings.json")?, MAX_JSON)?;
-    if !settings.is_object() {
-        return Err("Backup settings must be an object".into());
-    }
+    read_settings(root)?;
     progress.stage("Verifying database and saved references");
     for hash in stash_core::Repository::verify_file(source_file(root, "user.sqlite")?)
         .map_err(|e| e.to_string())?
@@ -292,28 +296,51 @@ fn backup_root(state: &HostState) -> PathBuf {
     state.profile_root.join("full-backups")
 }
 
+fn recovery_parent(root: &Path) -> Result<PathBuf, String> {
+    let parent = root.join("recovered-profiles");
+    if parent.canonicalize().map_err(|e| e.to_string())? != parent || !parent.is_dir() {
+        return Err("Recovered profiles directory is redirected".into());
+    }
+    Ok(parent)
+}
+
+fn recovery_directory(root: &Path, recovery: &str) -> Result<PathBuf, String> {
+    if !valid_name(recovery, "recovery") {
+        return Err("Invalid recovery name".into());
+    }
+    let directory = recovery_parent(root)?.join(recovery);
+    if directory.canonicalize().map_err(|e| e.to_string())? != directory || !directory.is_dir() {
+        return Err("Recovered profile directory is redirected".into());
+    }
+    let ready = directory.join("recovery-ready.json");
+    if !fs::symlink_metadata(&ready)
+        .map_err(|e| e.to_string())?
+        .is_file()
+        || read_json(&ready, 4096)?["version"] != 1
+    {
+        return Err("Recovered profile has not been fully prepared".into());
+    }
+    // Do not silently create an empty database or settings file for a partial recovery.
+    for name in ["user.sqlite", "settings.json", "renderer-state.json"] {
+        source_file(&directory, name).map_err(|e| format!("Recovered profile {name}: {e}"))?;
+    }
+    Ok(directory)
+}
+
 pub fn active_profile(root: &Path) -> Result<PathBuf, String> {
     let pointer = root.join("active-profile.json");
-    if !pointer.exists() {
-        return Ok(root.to_owned());
+    match fs::symlink_metadata(&pointer) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(root.to_owned()),
+        Err(e) => return Err(e.to_string()),
+        Ok(metadata) if !metadata.is_file() => return Err("Invalid active profile pointer".into()),
+        Ok(_) => {}
     }
     let value = read_json(&pointer, 4096)?;
     let selected = value["recovery"]
         .as_str()
         .filter(|v| valid_name(v, "recovery"))
         .ok_or("Invalid active profile pointer; original profile remains in its root directory")?;
-    let path = root
-        .join("recovered-profiles")
-        .join(selected)
-        .canonicalize()
-        .map_err(|e| e.to_string())?;
-    if !path.starts_with(root) {
-        return Err("Active profile escapes the profile root".into());
-    }
-    if !path.join("recovery-ready.json").is_file() {
-        return Err("Recovered profile has not been fully prepared".into());
-    }
-    Ok(path)
+    recovery_directory(root, selected)
 }
 fn create(
     state: &HostState,
@@ -396,8 +423,12 @@ fn create(
 }
 fn restore(state: &HostState, source: &Path, progress: &mut Progress) -> Result<Value, String> {
     let manifest = verify(source, progress)?;
-    let parent = state.profile_root.join("recovered-profiles");
-    fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
+    match fs::create_dir(state.profile_root.join("recovered-profiles")) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    let parent = recovery_parent(&state.profile_root)?;
     let id = name("recovery");
     let staging = parent.join(format!(".incomplete-{id}"));
     fs::create_dir(&staging).map_err(|e| e.to_string())?;
@@ -424,24 +455,21 @@ fn restore(state: &HostState, source: &Path, progress: &mut Progress) -> Result<
             .map_err(|e| e.to_string())?;
     }
     drop(repository);
-    let settings_file = staging.join("settings.json");
-    if settings_file.exists() {
-        let mut settings = read_json(&settings_file, MAX_JSON)?;
-        if !settings.is_object() {
-            return Err("Recovered settings must contain an object".into());
-        }
-        settings["clearPositionShots"] = json!(false);
-        fs::write(
-            &settings_file,
-            serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
+    let mut settings = read_settings(&staging)?;
+    settings["clearPositionShots"] = json!(false);
+    let settings_bytes = serde_json::to_vec(&settings).map_err(|e| e.to_string())?;
+    if settings_bytes.len() as u64 > MAX_JSON {
+        return Err("Recovered settings exceed 20 MiB".into());
     }
+    atomic_write(&staging.join("settings.json"), &settings_bytes).map_err(|e| e.to_string())?;
     write_json(
         &staging.join("recovery-ready.json"),
         &json!({"version":1,"preparedAt":now()}),
     )?;
     let destination = parent.join(&id);
+    if staging.canonicalize().map_err(|e| e.to_string())? != staging || destination.exists() {
+        return Err("Recovered profile destination changed during preparation".into());
+    }
     fs::rename(staging, &destination).map_err(|e| e.to_string())?;
     Ok(json!({"recovery":id,"path":destination}))
 }
@@ -498,7 +526,7 @@ fn list(state: &HostState) -> Result<Value, String> {
     }
     backups.sort_by_key(|v| std::cmp::Reverse(v["createdAt"].as_u64().unwrap_or(0)));
     Ok(
-        json!({"backups":backups,"issues":issues,"activeProfile":state.data_dir,"originalProfile":state.profile_root,"startupIssues":state.startup_issues,"canRevert":state.profile_root.join("active-profile.json").exists()}),
+        json!({"backups":backups,"issues":issues,"activeProfile":state.data_dir,"originalProfile":state.profile_root,"startupIssues":state.startup_issues,"canRevert":fs::symlink_metadata(state.profile_root.join("active-profile.json")).is_ok()}),
     )
 }
 
@@ -584,23 +612,16 @@ pub async fn native_backup(
                 ),
             },
             Operation::Activate { recovery } => {
-                if !valid_name(&recovery, "recovery") {
-                    return Err("Invalid recovery name".into());
-                }
-                let target = state
-                    .profile_root
-                    .join("recovered-profiles")
-                    .join(&recovery)
-                    .canonicalize()
-                    .map_err(|e| e.to_string())?;
-                if !target.starts_with(&state.profile_root)
-                    || !target.join("recovery-ready.json").is_file()
-                {
-                    return Err("Recovery is not ready or is outside the profile root".into());
-                }
+                let target = recovery_directory(&state.profile_root, &recovery)?;
+                read_settings(&target)?;
+                validate_renderer(&read_json(
+                    &source_file(&target, "renderer-state.json")?,
+                    MAX_JSON,
+                )?)?;
                 progress.stage("Verifying database and saved references");
-                for hash in stash_core::Repository::verify_file(target.join("user.sqlite"))
-                    .map_err(|e| e.to_string())?
+                for hash in
+                    stash_core::Repository::verify_file(source_file(&target, "user.sqlite")?)
+                        .map_err(|e| e.to_string())?
                 {
                     let file = source_file(&target, &format!("screenshots/{hash}"))?;
                     if fs::metadata(&file).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024
@@ -609,7 +630,6 @@ pub async fn native_backup(
                         return Err("Recovered screenshot evidence is invalid".into());
                     }
                 }
-                validate_renderer(&read_json(&target.join("renderer-state.json"), MAX_JSON)?)?;
                 write_json(
                     &state.profile_root.join("active-profile.json"),
                     &json!({"recovery":recovery}),
@@ -619,27 +639,48 @@ pub async fn native_backup(
             }
             Operation::Revert => {
                 let pointer = state.profile_root.join("active-profile.json");
-                if pointer.exists() {
-                    fs::rename(
-                        &pointer,
-                        state.profile_root.join(name("inactive-profile-pointer")),
-                    )
-                    .map_err(|e| e.to_string())?;
+                match fs::symlink_metadata(&pointer) {
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        return Err("No recovered profile is selected".into());
+                    }
+                    Err(e) => return Err(e.to_string()),
+                    Ok(_) => {}
                 }
+                fs::rename(
+                    &pointer,
+                    state.profile_root.join(name("inactive-profile-pointer")),
+                )
+                .map_err(|e| e.to_string())?;
                 app.request_restart();
                 Ok(Value::Null)
             }
             Operation::PendingRenderer => {
-                let file = state.data_dir.join("renderer-state.json");
-                if file.exists() && !state.data_dir.join("renderer-imported.json").exists() {
-                    let value = read_json(&file, MAX_JSON)?;
-                    validate_renderer(&value)?;
-                    Ok(value)
-                } else {
-                    Ok(Value::Null)
+                if state.data_dir == state.profile_root {
+                    return Ok(Value::Null);
                 }
+                let imported = state.data_dir.join("renderer-imported.json");
+                match fs::symlink_metadata(&imported) {
+                    Ok(metadata) if metadata.is_file() => {
+                        if read_json(&imported, 4096)?["at"].as_u64().is_none() {
+                            return Err("Invalid renderer recovery receipt".into());
+                        }
+                        return Ok(Value::Null);
+                    }
+                    Ok(_) => return Err("Invalid renderer recovery receipt".into()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.to_string()),
+                }
+                let value = read_json(
+                    &source_file(&state.data_dir, "renderer-state.json")?,
+                    MAX_JSON,
+                )?;
+                validate_renderer(&value)?;
+                Ok(value)
             }
             Operation::AcknowledgeRenderer => {
+                if state.data_dir == state.profile_root {
+                    return Err("No recovered renderer state to acknowledge".into());
+                }
                 write_json(
                     &state.data_dir.join("renderer-imported.json"),
                     &json!({"at":now()}),
