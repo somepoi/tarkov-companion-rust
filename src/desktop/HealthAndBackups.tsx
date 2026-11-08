@@ -53,7 +53,6 @@ function CheckRow({ c }: { c: Check }) {
 /** Settings (desktop): one place that shows whether everything is working, plus the backups. */
 export function HealthAndBackups() {
   const state = useDesktopStore((s) => s.state)
-  const update = useDesktopStore((s) => s.updateStatus)
   const gameData = useGameData()
   const mode = useProgressStore((s) => s.gameMode)
   const now = useNow(60_000)
@@ -79,9 +78,6 @@ export function HealthAndBackups() {
     logs.data
       ? { ok: true, label: 'Profile reset / wipe', detail: reset ? `detected on ${formatDateTime(reset)}; older logs are ignored` : 'none found in the logs' }
       : { ok: null, label: 'Profile reset / wipe', detail: logs.isFetching ? 'reading the logs…' : 'press "Check logs"' },
-    update
-      ? { ok: update.state !== 'error', label: 'Updates', detail: update.state === 'none' ? 'up to date' : update.state === 'ready' ? `version ${update.version} downloaded, restart to apply` : update.state === 'error' ? update.message : update.state }
-      : { ok: null, label: 'Updates', detail: 'checking…' },
     backups === null
       ? { ok: null, label: 'Daily backup', detail: 'checking…' }
       : backups[0]

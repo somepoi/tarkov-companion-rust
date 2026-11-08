@@ -15,12 +15,9 @@
   "knownProfileId": null,
   "knownGameVersion": null,
   "setupDone": false,
-  "updateMode": "off",
   "trackPosition": true,
   "clearPositionShots": false,
   "backupKeep": 7,
-  "cleanAfterUpdate": false,
-  "lastCleanedVersion": null,
   "trayNoticeShown": false,
   "searchBarPos": null,
   "window": {

@@ -1,2 +1,2 @@
-// Compatibility entry point for the incumbent Electron host and scripts.
+// Entry point for the standalone log-analysis scripts.
 export * from '../../src/shared/logs/parser'

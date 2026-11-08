@@ -334,7 +334,7 @@ pub(crate) fn outcome(state: &crate::desktop::HostState) -> Result<Value, String
             .join(format!("staged-update-outcome-{at}.json")),
     )
     .map_err(|e| e.to_string())?;
-    let value = json!({"ok":current >= expected,"version":version,"native":true,"recoveryBackup":state.profile_root.join("full-backups").join(backup)});
+    let value = json!({"ok":current >= expected,"version":version,"recoveryBackup":state.profile_root.join("full-backups").join(backup)});
     *cached = Some(value.clone());
     Ok(value)
 }

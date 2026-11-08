@@ -9,7 +9,6 @@ import type {
   PackName,
   PackProgress,
   PlayerPosition,
-  UpdateStatus,
   WatcherState,
   WipeEvent,
 } from '../../shared/desktop-api'
@@ -201,9 +200,6 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
       }
     },
     onOpenInApp: (cb) => subscribe<string>('app:open', cb),
-    getUpdateStatus: () => call('update:status'),
-    checkForUpdates: () => call('update:check'),
-    installUpdate: () => call('update:install'),
     getUpdateOutcome: () => call('update:outcome'),
     readLogStats: logs?.readLogStats ?? (() => call('stats:read')),
     getLatestPosition: async () => {
@@ -218,8 +214,6 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
     lastCleanup: () => call('cleanup:last'),
     onPosition: (cb) => subscribe<PlayerPosition>('position:new', cb),
     onPositionError: (cb) => subscribe<string>('position:error', cb),
-    runInstaller: (version) => call('update:runInstaller', version),
-    onUpdateStatus: (cb) => subscribe<UpdateStatus>('update:status', cb),
     onEvent:
       logs?.onEvent ?? ((cb) => subscribe<GameEvent>('watcher:event', cb)),
     onState:

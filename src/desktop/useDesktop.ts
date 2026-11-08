@@ -10,7 +10,7 @@ import { gameDataKeys, useGameData } from '../api/hooks'
 import { fetchGameData } from '../api/queries'
 import { queryClient } from '../api/queryClient'
 import type { GameData } from '../api/types'
-import type { BackfillProgress, BackfillResult, DesktopSettings, GameEvent, SessionMode, UpdateStatus, WatcherState } from '../shared/desktop-api'
+import type { BackfillProgress, BackfillResult, DesktopSettings, GameEvent, SessionMode, WatcherState } from '../shared/desktop-api'
 import { useProgressStore } from '../store/progress'
 import { useUiStore } from '../store/ui'
 import { useLocalFlags } from './localFlags'
@@ -43,11 +43,9 @@ interface DesktopUiState {
   backfill: { running: boolean; progress: BackfillProgress | null; last: BackfillSummary | null; error: string | null }
   /** Location of the last matched raid (nameId), used when the raid starts. */
   lastRaidLocation: string | null
-  updateStatus: UpdateStatus | null
   /** Result of 'Read past logs' waiting for the user to confirm. */
   review: BackfillReview | null
   setReview: (r: BackfillReview | null) => void
-  setUpdateStatus: (u: UpdateStatus) => void
   setState: (s: WatcherState) => void
   setSettings: (s: DesktopSettings) => void
   setBackfill: (patch: Partial<DesktopUiState['backfill']>) => void
@@ -60,10 +58,8 @@ export const useDesktopStore = create<DesktopUiState>()((set) => ({
   settingsError: null,
   backfill: { running: false, progress: null, last: null, error: null },
   lastRaidLocation: null,
-  updateStatus: null,
   review: null,
   setReview: (review) => set({ review }),
-  setUpdateStatus: (updateStatus) => set({ updateStatus }),
   setState: (state) => set({ state }),
   setSettings: (settings) => set({ settings }),
   setBackfill: (patch) => set((s) => ({ backfill: { ...s.backfill, ...patch } })),
@@ -289,8 +285,6 @@ export function DesktopBridge() {
     const ui = useDesktopStore.getState()
     void api.getState().then(ui.setState)
     void api.getSettings().then(ui.setSettings)
-    void api.getUpdateStatus().then(ui.setUpdateStatus)
-    const offUpdate = api.onUpdateStatus((u) => useDesktopStore.getState().setUpdateStatus(u))
 
     const offState = api.onState((s) => useDesktopStore.getState().setState(s))
     const offSettings = api.onSettingsChanged((s) => useDesktopStore.getState().setSettings(s))
@@ -330,7 +324,6 @@ export function DesktopBridge() {
       offProgress()
       offWipe()
       offEvent()
-      offUpdate()
     }
   }, [])
 

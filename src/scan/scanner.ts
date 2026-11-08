@@ -1,8 +1,7 @@
 import { decodeScreenshot } from './imageBudget'
 /**
  * Page-side wrapper around the scan worker: loads the fingerprint files once
- * (from the web server, or through the desktop bridge because Chromium cannot
- * fetch() file:// URLs) and turns an image into detections.
+ * from the web build or desktop content packs and turns an image into detections.
  */
 import type { Detection, Grid, LearnedFingerprint, OcrWord } from './core'
 import type { IdentifyMatch, WorkerRequest, WorkerResponse } from './scan.worker'

@@ -103,16 +103,12 @@ export interface DesktopSettings {
   knownGameVersion: string | null
   /** First-run setup screen completed (logs folder, mode, faction). */
   setupDone: boolean
-  /** auto = download updates in the background; notify = only show that one exists; off = no automatic checks. */
-  updateMode: UpdateMode
   /** "Where am I": read positions from the names of new in-game screenshots. */
   trackPosition: boolean
   /** Move those screenshots to the Recycle Bin once read (raid screenshots only; off by default). */
   clearPositionShots: boolean
   /** Daily progress backups kept in userData\backups. */
   backupKeep: number
-  /** After an update, remove what older versions left behind (old installers, packs, crash reports). */
-  cleanAfterUpdate: boolean
 }
 
 /** What "Clean up" removed (or, for a dry run, would remove). */
@@ -124,24 +120,9 @@ export interface CleanupResult {
   warnings?: string[]
 }
 
-export type UpdateMode = 'auto' | 'notify' | 'off'
-
-export type UpdateStatus =
-  | { state: 'idle' | 'checking' }
-  | { state: 'disabled'; message: string }
-  | { state: 'none'; checkedAt: number }
-  | { state: 'downloading'; version?: string; percent: number }
-  | { state: 'ready'; version: string }
-  /** "Restart to update" clicked: the app is about to close and the installer to run. */
-  | { state: 'installing'; version: string }
-  /** A newer release exists and was not downloaded: portable exe (download by hand) or Settings → Updates "Only tell me" (installable: true). */
-  | { state: 'available'; version: string; url: string; installable?: boolean }
-  | { state: 'error'; message: string }
-
-/** What became of the last "Restart to update" (checked once at the next launch). */
+/** Outcome of a staged native update, read at the next launch. */
 export interface UpdateOutcome {
-  native?: boolean
-  recoveryBackup?: string
+  recoveryBackup: string
   ok: boolean
   /** Version that was being installed. */
   version: string
@@ -313,7 +294,7 @@ export interface DesktopApi {
   getRecentEvents: () => Promise<GameEvent[]>
   openLogsFolder: () => Promise<void>
   openExternal: (url: string) => Promise<void>
-  /** Reads a bundled scanner data file (desktop: file:// cannot be fetched). */
+  /** Reads scanner data from bundled assets or the matching installed content pack. */
   readAppResource: (rel: string) => Promise<ArrayBuffer>
   /** Native data-only URL resolver; append map tile template components afterwards. */
   appResourceUrl?: (rel: string) => string
@@ -326,13 +307,7 @@ export interface DesktopApi {
   onScanCapture: (cb: (png: Uint8Array) => void) => () => void
   /** Main window: the search bar asked to open a page ("/flea?…", "/quests?q=…"). */
   onOpenInApp: (cb: (to: string) => void) => () => void
-  getUpdateStatus: () => Promise<UpdateStatus>
-  checkForUpdates: () => Promise<UpdateStatus>
-  installUpdate: () => Promise<void>
   getUpdateOutcome: () => Promise<UpdateOutcome | null>
-  /** Opens the downloaded installer normally (fallback when the silent install failed). */
-  runInstaller: (version: string) => Promise<void>
-  onUpdateStatus: (cb: (s: UpdateStatus) => void) => () => void
   onEvent: (cb: (event: GameEvent) => void) => () => void
   onState: (cb: (state: WatcherState) => void) => () => void
   onBackfillProgress: (cb: (p: BackfillProgress) => void) => () => void

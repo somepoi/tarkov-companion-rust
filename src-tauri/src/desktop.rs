@@ -168,9 +168,6 @@ impl HostState {
                 }
             }
         }
-        // A saved file must not bypass the same migration gates as settings IPC.
-        settings["cleanAfterUpdate"] = Value::Bool(false);
-        settings["updateMode"] = Value::String("off".into());
         if !settings["backupKeep"]
             .as_u64()
             .is_some_and(|n| (1..=30).contains(&n))
@@ -238,7 +235,6 @@ impl HostState {
         let mut value = self.settings()?;
         for key in [
             "window",
-            "lastCleanedVersion",
             "trayNoticeShown",
             "searchBarPos",
             "nativeLogProfiles",
@@ -272,18 +268,6 @@ impl HostState {
                 return Err(error(
                     "invalid_settings",
                     format!("Invalid value for {key}"),
-                ));
-            }
-            if key == "updateMode" && value != "off" {
-                return Err(error(
-                    "updates_disabled",
-                    "Fork updates are disabled until the release channel is verified",
-                ));
-            }
-            if key == "cleanAfterUpdate" && value == true {
-                return Err(error(
-                    "migration_pending",
-                    "Automatic update cleanup is unavailable in this native build",
                 ));
             }
             if key == "backupKeep" && !value.as_u64().is_some_and(|n| (1..=30).contains(&n)) {
@@ -500,11 +484,7 @@ fn compatible(key: &str, default: &Value, value: &Value) -> bool {
                         .all(|key| v.get(*key).is_some_and(|n| n.as_i64().is_some()))
             });
     }
-    if matches!(
-        key,
-        "logsPath" | "knownProfileId" | "knownGameVersion" | "lastCleanedVersion"
-    ) || default.is_null()
-    {
+    if matches!(key, "logsPath" | "knownProfileId" | "knownGameVersion") || default.is_null() {
         return value.is_null() || value.as_str().is_some_and(|v| v.len() <= 4096);
     }
     (default.is_boolean() && value.is_boolean())
@@ -1169,13 +1149,6 @@ fn dispatch(
             }
             Ok(json!({"name":name,"at":at,"size":text.len()}))
         }
-        "update:status" | "update:check" => Ok(
-            json!({"state":"disabled","message":"Fork updates are disabled until the release channel is verified."}),
-        ),
-        "update:install" | "update:runInstaller" => Err(error(
-            "updates_disabled",
-            "Fork updates are disabled until the release channel is verified",
-        )),
         // The log interpreter is deliberately shared TypeScript, not Rust (see
         // docs/performance/native-logs.md): the native bridge composes a full
         // pass from the watcher:history* jobs. These channels exist only for a
@@ -1189,10 +1162,8 @@ fn dispatch(
         }
         "update:outcome" => Ok(Value::Null),
         _ => Err(error(
-            "migration_pending",
-            format!(
-                "Desktop operation {channel} has not yet been migrated. Use the Electron build for this feature."
-            ),
+            "unknown_operation",
+            format!("Unknown desktop operation: {channel}"),
         )),
     }
 }

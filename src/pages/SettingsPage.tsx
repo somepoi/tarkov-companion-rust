@@ -1,5 +1,4 @@
 import { StagedUpdateCheck } from '../desktop/StagedUpdateCheck'
-import { isTauri } from '@tauri-apps/api/core'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -44,7 +43,7 @@ import { formatDateTime, formatRoubles } from '../lib/format'
 import { FONTS } from '../lib/fonts'
 import { JSON_API_BASE } from '../api/client'
 import { clearOfflineCache, retryCachePersistence, useCachePersistenceStatus } from '../api/persist'
-import type { DesktopSettings, PackName, UpdateMode } from '../shared/desktop-api'
+import type { DesktopSettings, PackName } from '../shared/desktop-api'
 
 
 // ---------------------------------------------------------------------------
@@ -647,14 +646,11 @@ function ContentPackImport() {
 }
 
 function DesktopAppSection() {
-  const native = isTauri()
   const [tray, setTray] = useDesktopSetting('minimizeToTray', true)
   const [startWin, setStartWin] = useDesktopSetting('startWithWindows', false)
   const [startMin, setStartMin] = useDesktopSetting('startMinimized', false)
-  const [updates, setUpdates] = useDesktopSetting('updateMode', 'auto' as UpdateMode)
   const [track, setTrack] = useDesktopSetting('trackPosition', true)
   const [clearShots, setClearShots] = useDesktopSetting('clearPositionShots', false)
-  const [cleanAfter, setCleanAfter] = useDesktopSetting('cleanAfterUpdate', true)
   const [searchBar, setSearchBar] = useDesktopSetting('searchBar', false)
   const [autoSwitch, setAutoSwitch] = usePref('autoSwitchGameMode')
   const [autoTick, setAutoTick] = usePref('autoTickFromLogs')
@@ -677,20 +673,13 @@ function DesktopAppSection() {
         <Switch checked={startMin} onChange={setStartMin} label="Start minimized" />
       </Row>
       <StagedUpdateCheck />
-      {native ? <Row label="Updates" hint="In-app updates are unavailable in this build. To update, close the app and run a newer installer for this fork. Keep a full backup before changing versions.">
-        <span className="text-sm text-ink-muted">Off in this build</span>
-      </Row> : <Row label="Updates" hint="Automatic downloads new versions in the background and asks before restarting. 'Only tell me' shows a Download button instead. Off never checks by itself (About → Check for updates still works).">
-        <Segmented value={updates} onChange={setUpdates} label="Updates" options={[{ value: 'auto', label: 'Automatic' }, { value: 'notify', label: 'Only tell me' }, { value: 'off', label: 'Off' }]} />
-      </Row>}
-      {native ? <Row label="Clean up after updates" hint="Automatic update cleanup is unavailable in this build. Use Clean up now to review eligible older installers and resource packs yourself.">
-        <span className="text-sm text-ink-muted">Off in this build</span>
-      </Row> : <Row label="Clean up after updates" hint="A minute after a new version starts, removes what older versions left behind: downloaded update installers, old map and scanner packs, crash reports and compiled code. Older Tarkov Companion installers in your Downloads folder go to the Recycle Bin. Your progress, settings and backups are never touched.">
-        <Switch checked={cleanAfter} onChange={setCleanAfter} label="Clean up after updates" />
-      </Row>}
-      <Row label="Clean up now" hint={native ? "Lists old fork installers in Downloads and unused native resource packs. Only the previewed, unchanged files go to the Recycle Bin after you confirm. Backups, stash evidence, browser caches and prepared updates are retained." : "Shows what would be removed first; nothing goes until you click Remove."}>
+      <Row label="Updates" hint="Use About → Downloads to find a newer installer for this fork. Save a full backup and close the app before running it.">
+        <span className="text-sm text-ink-muted">Manual installer</span>
+      </Row>
+      <Row label="Clean up now" hint="Lists old fork installers in Downloads and unused native resource packs. Only the previewed, unchanged files go to the Recycle Bin after you confirm.">
         <CleanupPanel />
       </Row>
-      {native && <ContentPackImport />}
+      <ContentPackImport />
       <Row label="Stash scanner hotkey" hint="Captures the screen the game is on and opens the scanner with it.">
         <HotkeyRecorder />
       </Row>

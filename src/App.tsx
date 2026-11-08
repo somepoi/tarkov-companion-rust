@@ -13,7 +13,7 @@ const FeaturesPage = lazy(() => import('./pages/FeaturesPage').then((m) => ({ de
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 
 export default function App() {
-  // The packaged desktop app loads from file://, where only hash routing works.
+  // Hash routes keep packaged navigation on the embedded entry point.
   const Router = isDesktop() ? HashRouter : BrowserRouter
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions(queryClient)}>

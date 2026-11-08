@@ -1,5 +1,7 @@
 # Tarkov Companion — working notes for Claude
 
+> Historical notes from the upstream Electron app. This fork now uses Rust and Tauri. Follow [README.md](README.md) for current commands and the [migration ledger](docs/plans/2026-10-27-implementation-progress.md) for current architecture and release status.
+
 Web + Windows desktop app for Escape from Tarkov players: quest tracking, interactive maps with quest overlays, and (desktop only) automatic quest completion from the game's own log files. The owner is a non-programmer: explain results in plain English, give exact commands, and keep commits self-contained.
 
 ## Commands

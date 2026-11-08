@@ -59,7 +59,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: tauri ? './' : '/',
     ...(tauri ? { build: { outDir: 'dist-tauri' } } : {}),
-    // Classic (non-module) workers also load from file:// in the packaged desktop app.
+    // Keep generated workers self-contained for the packaged WebView.
     worker: { format: 'iife' as const },
     define: { 'import.meta.env.VITE_APP_NAME': JSON.stringify(pkg.productName), 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version), 'import.meta.env.VITE_REPO_URL': JSON.stringify(repoUrl) },
     plugins: [
