@@ -477,12 +477,17 @@ impl Packs {
 
     /// Blocking and serialized. A duplicate request waits and reuses the completed install.
     /// Without compiled pack metadata this is a no-op, leaving bundled/dev content to the caller.
-    pub fn ensure(&self, name: &str, progress: impl Fn(PackProgress)) -> Result<(), String> {
+    pub fn ensure(
+        &self,
+        name: &str,
+        local_archive: Option<&Path>,
+        progress: impl Fn(PackProgress),
+    ) -> Result<bool, String> {
         if !known(name) {
             return Err("Unknown content pack".into());
         }
         let Some(info) = self.manifest.get(name) else {
-            return Ok(());
+            return Ok(false);
         };
         self.requests
             .try_update(Ordering::AcqRel, Ordering::Acquire, |count| {
@@ -497,8 +502,24 @@ impl Packs {
             .lock()
             .map_err(|_| "Pack installation state unavailable")?;
         if self.load_current(name, info)? {
-            return Ok(());
+            return Ok(false);
         }
+        let local_file = local_archive
+            .map(|path| {
+                let matches =
+                    |metadata: fs::Metadata| metadata.is_file() && metadata.len() == info.size;
+                let wrong_file =
+                    || format!("Choose {} from the same release as this app", info.file);
+                if !matches(fs::metadata(path).map_err(io)?) {
+                    return Err(wrong_file());
+                }
+                let file = File::open(path).map_err(io)?;
+                if !matches(file.metadata().map_err(io)?) {
+                    return Err(wrong_file());
+                }
+                Ok(file)
+            })
+            .transpose()?;
         let root = self.root(true)?.ok_or("Pack directory unavailable")?;
         let id = unique();
         let stage = root.join(format!(".partial-{name}-{id}"));
@@ -507,7 +528,7 @@ impl Packs {
         if stage.parent() != Some(root.as_path()) {
             return Err("Invalid content-pack staging directory".into());
         }
-        let archive = stage.join("download.tcpack");
+        let archive = stage.join("archive.tcpack");
         let emit = |state, received| {
             progress(PackProgress {
                 name: name.into(),
@@ -517,8 +538,15 @@ impl Packs {
                 state,
             })
         };
-        emit("downloading", 0);
-        self.download(info, &archive, |received| emit("downloading", received))?;
+        if let Some(file) = local_file {
+            emit("installing", 0);
+            Self::stage_archive(info, file, &archive, |received| {
+                emit("installing", received)
+            })?;
+        } else {
+            emit("downloading", 0);
+            self.download(info, &archive, |received| emit("downloading", received))?;
+        }
         emit("installing", info.size);
         let content = stage.join("content");
         fs::create_dir(&content).map_err(io)?;
@@ -561,7 +589,7 @@ impl Packs {
                     files: marker.files,
                 },
             );
-        // Only this completed job's now-redundant download file is removed. No directory,
+        // Only this completed job's now-redundant archive file is removed. No directory,
         // previous installation, original app cache or user screenshot is deleted.
         if archive
             .canonicalize()
@@ -572,7 +600,7 @@ impl Packs {
             let _ = fs::remove_file(archive);
         }
         emit("done", info.size);
-        Ok(())
+        Ok(true)
     }
 
     fn download(
@@ -600,14 +628,14 @@ impl Packs {
             .user_agent("TarkovCompanionRust/content-packs")
             .build()
             .map_err(|e| format!("Cannot initialize content download: {e}"))?;
-        let mut response = client
+        let response = client
             .get(target)
             .header(reqwest::header::ACCEPT_ENCODING, "identity")
             .send()
-            .map_err(|e| format!("Content pack could not be downloaded: {}", e.without_url()))?;
+            .map_err(|e| format!("Content pack could not be downloaded ({}). Import a matching pack in Settings → Desktop app.", e.without_url()))?;
         if !response.status().is_success() {
             return Err(format!(
-                "Content pack unavailable for this fork release (HTTP {}). Build local assets or install matching fork content.",
+                "Content pack unavailable for this fork release (HTTP {}). Import a matching pack in Settings → Desktop app.",
                 response.status().as_u16()
             ));
         }
@@ -617,6 +645,15 @@ impl Packs {
         {
             return Err("Content-pack response length differs from this build".into());
         }
+        Self::stage_archive(info, response, destination, progress)
+    }
+
+    fn stage_archive(
+        info: &PackInfo,
+        mut input: impl Read,
+        destination: &Path,
+        progress: impl Fn(u64),
+    ) -> Result<(), String> {
         let mut output = OpenOptions::new()
             .create_new(true)
             .write(true)
@@ -627,7 +664,7 @@ impl Packs {
         let mut received = 0_u64;
         let mut reported = 0_u64;
         loop {
-            let count = response
+            let count = input
                 .read(&mut buffer)
                 .map_err(|error| format!("Content-pack stream interrupted ({:?})", error.kind()))?;
             if count == 0 {
@@ -635,7 +672,7 @@ impl Packs {
             }
             received += count as u64;
             if received > info.size {
-                return Err("Content-pack download exceeds its expected size".into());
+                return Err("Content-pack archive exceeds its expected size".into());
             }
             output.write_all(&buffer[..count]).map_err(io)?;
             hash.update(&buffer[..count]);
@@ -646,10 +683,10 @@ impl Packs {
         }
         output.sync_all().map_err(io)?;
         if received != info.size || format!("{:x}", hash.finalize()) != info.sha256 {
-            return Err(
-                "Content-pack download is incomplete or failed its checksum; nothing was installed"
-                    .into(),
-            );
+            return Err(format!(
+                "Content pack is incomplete or differs from this build. Expected {}.",
+                info.file
+            ));
         }
         Ok(())
     }

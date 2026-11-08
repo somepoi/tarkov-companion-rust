@@ -132,6 +132,7 @@ export async function createTauriDesktop(): Promise<DesktopApi> {
       if (!response?.ok || !response.headers.get('content-type')?.includes(resource.mime))
         await call('packs:ensure', name)
     },
+    importPack: (name) => call('packs:import', name),
     onPackProgress: (cb) => subscribe<PackProgress>('pack:progress', cb),
     getSettings: () => call('settings:get'),
     setSettings: (patch: Partial<DesktopSettings>) =>

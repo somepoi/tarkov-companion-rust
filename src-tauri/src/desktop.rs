@@ -614,6 +614,7 @@ pub async fn desktop_call(
         channel.as_str(),
         "settings:set"
             | "packs:ensure"
+            | "packs:import"
             | "backup:write"
             | "watcher:pickFolder"
             | "update:outcome"
@@ -788,7 +789,11 @@ fn dispatch(
             state.positions.revoke().map_err(|e| error("position", e))?;
             Ok(Value::Null)
         }
-        "packs:ensure" => {
+        "packs:ensure" | "packs:import" => {
+            let importing = channel == "packs:import";
+            if importing && _window.label() != "main" {
+                return Err(error("packs", "Open Desktop app settings to import a pack"));
+            }
             if benchmark_mode() {
                 return Err(error(
                     "packs",
@@ -797,7 +802,7 @@ fn dispatch(
             }
             let name = first
                 .as_str()
-                .filter(|name| matches!(*name, "scan" | "lighthouse"))
+                .filter(|name| args.len() == 1 && matches!(*name, "scan" | "lighthouse"))
                 .ok_or_else(|| error("packs", "Unknown content pack"))?;
             let packs = state
                 .packs
@@ -806,15 +811,45 @@ fn dispatch(
             if !packs.enabled() || !packs.contains(name) {
                 return Err(error(
                     "packs",
-                    "No downloadable content pack is described by this build. Prepare bundled scanner/map assets first.",
+                    "This build has no manifest for the requested content pack.",
                 ));
             }
-            packs
-                .ensure(name, |progress| {
+            let local_archive = if importing {
+                let title = if name == "lighthouse" {
+                    "Choose the Lighthouse content pack"
+                } else {
+                    "Choose the stash scanner content pack"
+                };
+                let Some(file) = app
+                    .dialog()
+                    .file()
+                    .set_title(title)
+                    .add_filter("Tarkov Companion content pack", &["tcpack"])
+                    .blocking_pick_file()
+                else {
+                    return Ok(json!("cancelled"));
+                };
+                Some(
+                    file.into_path()
+                        .map_err(|e| error("packs", e.to_string()))?,
+                )
+            } else {
+                None
+            };
+            let installed = packs
+                .ensure(name, local_archive.as_deref(), |progress| {
                     let _ = app.emit("pack-progress", progress);
                 })
                 .map_err(|e| error("packs", e))?;
-            Ok(Value::Null)
+            Ok(if importing {
+                json!(if installed {
+                    "installed"
+                } else {
+                    "alreadyInstalled"
+                })
+            } else {
+                Value::Null
+            })
         }
         "benchmark:catalog-ready" => {
             if !benchmark_mode() || _window.label() != "main" {

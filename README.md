@@ -43,7 +43,7 @@ npm run build:tauri:offline
 
 Both variants identify the same fork and reuse the bundler's output filename. A later build replaces that local output. No installer is executed or published by these commands. Default fork updates are disabled; signing-channel configuration is a separate distribution task and is not needed for local development. The original project's signing certificate/release policy does not apply to this fork.
 
-The 2026 Lighthouse drawing is served from the separate Lighthouse content pack. To test a local installer before publishing the pack, serve `release-packs/` on a loopback HTTP server and set `TC_PACKS_BASE_URL` to that server's URL in the shell that starts the app. You can also select another map picture from the layer menu.
+The 2026 Lighthouse drawing and tiles are served from the separate Lighthouse content pack. For a local or offline installation, open **Settings → Desktop app → Import content packs** and choose the Lighthouse `.tcpack` from the installer build's `release-packs/` directory. The installer checks the pack against its own manifest before activating it. The same section accepts the matching scanner pack. For HTTP staging, serve the packs on a loopback HTTP server and set `TC_PACKS_BASE_URL` to that URL when starting the app.
 
 ## Features and data
 

@@ -212,7 +212,7 @@ export interface BackfillResult {
   skippedOtherProfile: number
 }
 
-/** Content packs downloaded on first use (scripts/build-packs.mjs). */
+/** Content packs built by scripts/build-packs.mjs. */
 export type PackName = 'lighthouse' | 'scan'
 export interface PackProgress {
   name: PackName
@@ -285,6 +285,7 @@ export interface DesktopApi {
   openInApp: (to: string) => Promise<void>
   /** Makes sure a content pack is downloaded and installed (no-op in development). */
   ensurePack: (name: PackName, use?: 'drawing') => Promise<void>
+  importPack: (name: PackName) => Promise<'installed' | 'alreadyInstalled' | 'cancelled'>
   onPackProgress: (cb: (p: PackProgress) => void) => () => void
   onWipeDetected: (cb: (e: WipeEvent) => void) => () => void
   onSettingsChanged: (cb: (s: DesktopSettings) => void) => () => void

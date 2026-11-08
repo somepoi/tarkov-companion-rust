@@ -44,7 +44,7 @@ import { formatDateTime, formatRoubles } from '../lib/format'
 import { FONTS } from '../lib/fonts'
 import { JSON_API_BASE } from '../api/client'
 import { clearOfflineCache, retryCachePersistence, useCachePersistenceStatus } from '../api/persist'
-import type { DesktopSettings, UpdateMode } from '../shared/desktop-api'
+import type { DesktopSettings, PackName, UpdateMode } from '../shared/desktop-api'
 
 
 // ---------------------------------------------------------------------------
@@ -606,6 +606,46 @@ function HotkeyRecorder({ setting = 'scanHotkey' }: { setting?: 'scanHotkey' | '
   )
 }
 
+function ContentPackImport() {
+  const [pending, setPending] = useState<PackName | null>(null)
+  const [result, setResult] = useState<{ message: string; error?: boolean }>()
+  const packs = [
+    { name: 'lighthouse', label: 'Lighthouse' },
+    { name: 'scan', label: 'Stash scanner' },
+  ] as const
+
+  async function importPack(name: PackName, label: string) {
+    if (pending || !window.desktop) return
+    setPending(name)
+    setResult(undefined)
+    try {
+      const outcome = await window.desktop.importPack(name)
+      setResult({ message: outcome === 'cancelled' ? 'Selection cancelled.' : outcome === 'alreadyInstalled'
+        ? `${label} is already installed for this build.`
+        : `${label} pack installed.` })
+    } catch (cause) {
+      setResult({ message: cause instanceof Error ? cause.message : String(cause), error: true })
+    } finally {
+      setPending(null)
+    }
+  }
+
+  return (
+    <Row label="Import content packs" hint="Choose a .tcpack file from the same release as your installer. You can import it offline.">
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap gap-2">
+          {packs.map(({ name, label }) => (
+            <button type="button" key={name} className="btn" disabled={pending !== null} onClick={() => void importPack(name, label)}>
+              <Upload className="h-4 w-4" /> {pending === name ? 'Importing…' : label}
+            </button>
+          ))}
+        </div>
+        {result && <p role={result.error ? 'alert' : 'status'} className={`text-xs ${result.error ? 'text-danger' : 'text-ink-muted'}`}>{result.message}</p>}
+      </div>
+    </Row>
+  )
+}
+
 function DesktopAppSection() {
   const native = isTauri()
   const [tray, setTray] = useDesktopSetting('minimizeToTray', true)
@@ -621,7 +661,7 @@ function DesktopAppSection() {
   const scavMinutes = useTimersStore((s) => s.scavCooldownMinutes)
   const setScavMinutes = useTimersStore((s) => s.setScavCooldownMinutes)
   return (
-    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut search bar overlay update clean cleanup installer leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot recycle bin clear delete scav cooldown timer">
+    <Section id="desktop" title="Desktop app" icon={Monitor} desktopOnly keywords="windows start tray minimize close hotkey shortcut search bar overlay update clean cleanup installer content pack offline lighthouse leftover delete space disk logs game log watching folder pvp pve switch tick quests where am i position screenshot recycle bin clear delete scav cooldown timer">
       {window.desktop?.startupWarnings?.map((warning, i) => (
         <p key={i} role="status" className="text-sm text-warning">
           Optional desktop extra unavailable: {warning}
@@ -650,6 +690,7 @@ function DesktopAppSection() {
       <Row label="Clean up now" hint={native ? "Lists old fork installers in Downloads and unused native resource packs. Only the previewed, unchanged files go to the Recycle Bin after you confirm. Backups, stash evidence, browser caches and prepared updates are retained." : "Shows what would be removed first; nothing goes until you click Remove."}>
         <CleanupPanel />
       </Row>
+      {native && <ContentPackImport />}
       <Row label="Stash scanner hotkey" hint="Captures the screen the game is on and opens the scanner with it.">
         <HotkeyRecorder />
       </Row>
