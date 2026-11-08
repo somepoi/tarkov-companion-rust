@@ -1,12 +1,12 @@
 # Reproducible desktop and scanner measurements
 
-Status: measurement tooling prepared. Preliminary observations are recorded in [2026-10-30/README.md](2026-10-30/README.md), and a fresh release pair with matching catalog snapshots is recorded in [2026-11-01/README.md](2026-11-01/README.md). Repeated controlled-workload acceptance remains open. No tests or accuracy suite were run, and no performance target or speedup is claimed. These commands are opt-in developer operations, not CI checks.
+Preliminary observations are recorded in [2026-10-30](2026-10-30/README.md), the paired host release observations in [2026-11-01](2026-11-01/README.md), and repeated observations of the Tauri release in [2026-11-08](2026-11-08/README.md). Repeated controlled-workload acceptance remains open. These are opt-in developer measurements.
 
 ## Environment record
 
 Record the application commit, dependency lock hash, release/debug mode, Windows build, CPU/logical cores, power plan, RAM, GPU/driver, monitor resolution/DPI/HDR, WebView2 version, app settings, catalog/asset hashes and scenario. Compare release builds with identical workload and copied data. Separate foreground, minimized, hidden and searchbar scenarios. Keep original-user data and the original application's installation untouched.
 
-Use a clean run directory for every sample. The supplied desktop runner creates its own unique temporary directory and a new empty profile; it never accepts an existing profile, recursively deletes a directory, or terminates the measured app. Outputs stay in that directory. Close the launched companion normally after measurement and before launching the next sample. Do not put tokens or personal information in command arguments or the isolation-contract description; these are recorded in launch.json.
+Use a clean run directory for every sample. The desktop runner creates a unique directory under Windows' temporary path and a new empty profile. This matches the native host's isolation check when `TEMP` and `TMP` differ. Outputs stay in that directory. Close the launched companion after measurement and before launching the next sample. Do not put tokens or personal information in command arguments or the isolation-contract description, which are recorded in `launch.json`.
 
 ## Host isolation contract
 
@@ -25,10 +25,10 @@ Catalog instrumentation runs only in the main isolated benchmark host. It subscr
 From the repository root, after separately building an isolated release executable:
 
 ```powershell
-node scripts/bench/desktop-baseline.mjs --exe 'D:\Builds\TarkovCompanionRust.exe' --arg '--user-data-dir={profile}' --isolation-contract 'Fork host supports explicit userData isolation and TC_BENCH_DISABLE_INTEGRATIONS' --duration 300 --settle 30 --sample-ms 1000 --label hidden
+node scripts/bench/desktop-baseline.mjs --exe 'D:\Builds\tarkov-companion-rust.exe' --arg '--profile-dir={profile}' --isolation-contract 'Tauri host claims a fresh profile and honors TC_BENCH_DISABLE_INTEGRATIONS' --duration 300 --settle 30 --sample-ms 1000 --label hidden
 ```
 
-For a Tauri host that implements the equivalent contract, replace the argument with `--profile-dir={profile}`. If a host instead supports a dedicated environment variable, use `--profile-env TC_HOST_PROFILE_DIR`; system environment variables are refused. Do not assume either interface is implemented merely because this document names it.
+For a host that implements isolation through a dedicated environment variable, use `--profile-env TC_HOST_PROFILE_DIR`. Verify that the measured executable actually honors the specified profile and integration controls before launching it.
 
 The helper starts the executable with `Start-Process -WindowStyle Hidden`. It labels but does not enforce foreground/minimized workload: for those scenarios, change the window state manually after launch and record the timing. It uses CIM only to discover parent relationships; process resource inspection is limited to the launched process and observed descendants. It never opens game memory, sends game input, captures the game automatically or inspects game traffic.
 

@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const usage = `Usage: node scripts/bench/desktop-baseline.mjs --exe ABSOLUTE.exe --isolation-contract HOST_CONTRACT_DESCRIPTION [--profile-env HOST_PROFILE_VARIABLE] --arg TOKEN_WITH_{profile} [--duration 300] [--settle 30] [--sample-ms 1000] [--label foreground|hidden|other]
@@ -46,7 +46,14 @@ const sampling = {
 const minimumFreeBytes = 2 * 1024 ** 3
 const systemRoot = process.env.SystemRoot
 if (!systemRoot || !path.isAbsolute(systemRoot)) throw new Error('Could not establish the Windows system filesystem')
-const roots = [{ purpose: 'temporary-profile', root: os.tmpdir() }, { purpose: 'system', root: systemRoot }]
+// Node and Windows can prefer different variables when TEMP and TMP differ.
+// The Tauri host validates measurement directories against the Windows path.
+const temporaryRoot = execFileSync('powershell.exe', [
+  '-NoProfile', '-NonInteractive', '-Command',
+  '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); [Console]::Write([IO.Path]::GetTempPath())',
+], { encoding: 'utf8', windowsHide: true, timeout: 10_000 })
+if (!path.isAbsolute(temporaryRoot)) throw new Error('Could not establish the Windows temporary directory')
+const roots = [{ purpose: 'temporary-profile', root: temporaryRoot }, { purpose: 'system', root: systemRoot }]
 const disks = roots.map(({ purpose, root }) => {
   const canonical = fs.realpathSync(root)
   const disk = fs.statfsSync(canonical)
@@ -62,7 +69,7 @@ const environment = {
   totalMemoryBytes: os.totalmem(), freeMemoryBytes: os.freemem(), logicalProcessors: os.cpus().length,
   disks, minimumFreeBytes,
 }
-const out = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-desktop-baseline-'))
+const out = fs.mkdtempSync(path.join(temporaryRoot, 'tc-desktop-baseline-'))
 const profile = path.join(out, 'profile')
 fs.mkdirSync(profile)
 const readyFile = path.join(out, 'ready.json')

@@ -96,6 +96,7 @@ try {
   if ($launched.HasExited -and $null -eq $rootExitedAtMs) { $rootExitedAtMs = $clock.Elapsed.TotalMilliseconds }
   $samplingSamples = @($samples.ToArray() | Where-Object { $_.phase -eq 'sampling' }).Count
   $result.completion = @{ samplingSamples = $samplingSamples; rootExitedAtMs = $rootExitedAtMs; fullWindowObserved = ($windowCompleted -and $null -eq $rootExitedAtMs -and $samplingSamples -gt 0); layoutReadyObserved = ($null -ne $ready); catalogReadyObserved = ($null -ne $catalogReady) }
+  if ($null -ne $rootExitedAtMs) { $result.completion.rootExitCode = $launched.ExitCode }
   $result.catalogReadySignal = $catalogReady
   $json = $result | ConvertTo-Json -Depth 8
   $stream = [IO.File]::Open($config.output, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
